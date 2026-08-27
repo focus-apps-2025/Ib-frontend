@@ -64,7 +64,7 @@ export default function DashboardLayout() {
       {/* Logo */}
       <Box
         sx={{
-          p: 2.5,
+          p: 1.6,
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
@@ -83,7 +83,7 @@ export default function DashboardLayout() {
           <DirectionsCar sx={{ color: '#fff', fontSize: 22 }} />
         </Box>
         <Box>
-          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: c.textPrimary, lineHeight: 1.1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: c.textPrimary, lineHeight: 0.6 }}>
             VehicleIQ
           </Typography>
           <Typography variant="caption" sx={{ color: c.textMuted, fontSize: '0.65rem' }}>
