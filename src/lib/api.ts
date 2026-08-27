@@ -1,7 +1,11 @@
 import axios from 'axios'
 
+const API_BASE_URL = import.meta.env.DEV
+  ? 'http://localhost:8000/api'
+  : 'https://ib-backend-uao1.onrender.com/api'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
 })
 
