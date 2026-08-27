@@ -1,0 +1,593 @@
+import { useState, useEffect } from 'react'
+import {
+  Box, Card, CardContent, Typography, Accordion, AccordionSummary,
+  AccordionDetails, Table, TableBody, TableCell, TableHead, TableRow,
+  Chip, LinearProgress, CircularProgress, Alert, Button,
+  TextField, FormControl, InputLabel, Select, MenuItem, Grid,
+} from '@mui/material'
+import { ExpandMore } from '@mui/icons-material'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts'
+import { issuesApi } from '../../lib/api'
+import { useThemeColors } from '../../utils/colors'
+
+const ISSUE_COLORS = [
+  '#6C63FF', '#FF6584', '#4ECCA3', '#FFD93D', '#FF8A65',
+  '#AB47BC', '#26C6DA', '#EC407A', '#66BB6A', '#FFA726',
+  '#42A5F5', '#EF5350', '#8D6E63', '#78909C', '#00BCD4',
+]
+
+interface FilterState {
+  regionId: string
+  countryId: string
+  ibVersionId: string
+  brandModel: string
+  surveyLocation: string
+  dateFrom: string
+  dateTo: string
+  search: string
+}
+
+export default function IssuesTab({ filters }: { filters: FilterState }) {
+  const c = useThemeColors()
+  const [issues, setIssues] = useState<IssueData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [summary, setSummary] = useState<Record<string, unknown>>({})
+  const [expandedIssue, setExpandedIssue] = useState<string | false>(false)
+  const [searchIssue, setSearchIssue] = useState('')
+  const [sortBy, setSortBy] = useState<'name' | 'count'>('count')
+
+  interface AnswerData {
+    value: string
+    count: number
+    percentage: number
+  }
+
+  interface FollowUpData {
+    question_text: string
+    column_letter: string
+    answers: AnswerData[]
+    total_responses: number
+  }
+
+  interface IssueData {
+    issue_name: string
+    total_complaints: number
+    percentage: number
+    follow_ups: FollowUpData[]
+  }
+
+  // Helper function to check if a value is blank/nil
+  const isBlankValue = (value: string): boolean => {
+    const trimmed = value?.trim() || ''
+    if (!trimmed) return true
+    const blankPatterns = [
+      /^nil$/i, /^blank$/i, /^none$/i, /^n\/a$/i, /^na$/i,
+      /^dont know$/i, /^don't know$/i, /^not applicable$/i,
+      /^no issue$/i, /^no issues$/i, /^-$/i, /^_$/i,
+      /^not answered$/i, /^no response$/i, /^unknown$/i,
+      /^not specified$/i, /^null$/i, /^undefined$/i,
+    ]
+    return blankPatterns.some(pattern => pattern.test(trimmed))
+  }
+
+  // ✅ Helper function to clean issue names (remove "issues" or "issue")
+  const cleanIssueName = (name: string): string => {
+    let cleaned = name.replace(/\s+issues$/i, '')
+    cleaned = cleaned.replace(/\s+issue$/i, '')
+    return cleaned || name
+  }
+
+  // Filter valid answers (remove blank/nil)
+  const filterValidAnswers = (answers: AnswerData[]): AnswerData[] => {
+    return answers.filter(answer => !isBlankValue(answer.value))
+  }
+
+  // Calculate valid totals after filtering
+  const calculateValidTotals = (issue: IssueData): { totalComplaints: number; percentage: number } => {
+    const validFollowUps = issue.follow_ups
+      .map(fu => ({
+        ...fu,
+        answers: filterValidAnswers(fu.answers)
+      }))
+      .filter(fu => fu.answers.length > 0)
+
+    let validTotal = 0
+    validFollowUps.forEach(fu => {
+      fu.answers.forEach(answer => {
+        validTotal += answer.count
+      })
+    })
+
+    if (validTotal === 0) {
+      return { totalComplaints: 0, percentage: 0 }
+    }
+
+    const firstValidFu = validFollowUps[0]
+    const totalResponses = firstValidFu?.total_responses || 0
+    const percentage = totalResponses > 0 ? (validTotal / totalResponses) * 100 : 0
+
+    return { totalComplaints: validTotal, percentage }
+  }
+
+  // Clean issue data
+  const cleanIssueData = (rawIssues: IssueData[]): IssueData[] => {
+    return rawIssues
+      .map(issue => {
+        const cleanedFollowUps = issue.follow_ups
+          .map(fu => ({
+            ...fu,
+            answers: filterValidAnswers(fu.answers)
+          }))
+          .filter(fu => fu.answers.length > 0)
+
+        const { totalComplaints, percentage } = calculateValidTotals({
+          ...issue,
+          follow_ups: cleanedFollowUps
+        })
+
+        return {
+          ...issue,
+          follow_ups: cleanedFollowUps,
+          total_complaints: totalComplaints,
+          percentage: percentage
+        }
+      })
+      .filter(issue => {
+        const issueName = (issue.issue_name || '').trim()
+        if (!issueName || isBlankValue(issueName)) return false
+        return issue.total_complaints > 0
+      })
+  }
+
+  // Calculate summary
+  const calculateSummary = (issues: IssueData[]): Record<string, unknown> => {
+    if (issues.length === 0) {
+      return {
+        total_issues_reported: 0,
+        unique_issues: 0,
+        most_common_issue: null,
+        least_common_issue: null
+      }
+    }
+
+    const sorted = [...issues].sort((a, b) => b.total_complaints - a.total_complaints)
+    const totalComplaints = issues.reduce((sum, issue) => sum + issue.total_complaints, 0)
+
+    return {
+      total_issues_reported: totalComplaints,
+      unique_issues: issues.length,
+      most_common_issue: sorted[0]?.issue_name || null,
+      least_common_issue: sorted[sorted.length - 1]?.issue_name || null
+    }
+  }
+
+  const loadAnalysis = async () => {
+    setLoading(true)
+    try {
+      const params: Record<string, string | undefined> = {
+        region_id: filters.regionId || undefined,
+        country_id: filters.countryId || undefined,
+        ib_version_id: filters.ibVersionId || undefined,
+      }
+      const res = await issuesApi.analysis(params)
+      const rawIssues: IssueData[] = res.data.data || []
+
+      const cleanedIssues = cleanIssueData(rawIssues)
+      setIssues(cleanedIssues)
+
+      const newSummary = calculateSummary(cleanedIssues)
+      setSummary(newSummary)
+    } catch (error) {
+      console.error('Error loading analysis:', error)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { loadAnalysis() }, [filters.regionId, filters.countryId, filters.ibVersionId])
+
+  const filtered = issues
+    .filter((i) => i.issue_name.toLowerCase().includes(searchIssue.toLowerCase()))
+    .sort((a, b) =>
+      sortBy === 'count' ? b.total_complaints - a.total_complaints
+        : a.issue_name.localeCompare(b.issue_name)
+    )
+
+  // Calculate correct percentages for top 10 issues
+  const calculatePieData = () => {
+    const top10 = filtered.slice(0, 10)
+
+    // Calculate total complaints across ALL issues (not just top 10)
+    const totalAllComplaints = filtered.reduce((sum, issue) => sum + issue.total_complaints, 0)
+
+    if (totalAllComplaints === 0) return []
+
+    // Calculate percentage for each issue based on total
+    return top10.map(issue => ({
+      name: issue.issue_name,
+      value: issue.total_complaints,
+      percentage: (issue.total_complaints / totalAllComplaints) * 100
+    }))
+  }
+
+  const pieData = calculatePieData()
+
+  // ✅ Create a copy of topIssues with cleaned names for display
+  const topIssues = filtered.slice(0, 10).map(issue => ({
+    ...issue,
+    display_name: cleanIssueName(issue.issue_name)
+  }))
+
+  // Custom tooltip for pie chart
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <Box sx={{
+          background: c.chartTooltipBg || '#fff',
+          border: `1px solid ${c.borderStrong || '#ddd'}`,
+          borderRadius: 2,
+          p: 1.5,
+          minWidth: 150
+        }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: c.textPrimary }}>
+            {data.name}
+          </Typography>
+          <Typography variant="body2" sx={{ color: c.textSecondary }}>
+            Complaints: {data.value.toLocaleString()}
+          </Typography>
+
+        </Box>
+      )
+    }
+    return null
+  }
+
+  // Custom label for pie chart
+  const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }: any) => {
+    const RADIAN = Math.PI / 180
+    const radius = outerRadius * 1.1
+    const x = cx + radius * Math.cos(-midAngle * RADIAN)
+    const y = cy + radius * Math.sin(-midAngle * RADIAN)
+
+    // Only show label if percentage is significant (> 3%)
+    if (percent < 0.03) return null
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill={c.textPrimary}
+        textAnchor={x > cx ? 'start' : 'end'}
+        dominantBaseline="central"
+        fontSize={10}
+        fontWeight={600}
+      >
+        {`${(percent * 100).toFixed(1)}%`}
+      </text>
+    )
+  }
+
+  return (
+    <Box>
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {[
+          {
+            label: 'Total Issues Reported',
+            value: (summary.total_issues_reported as number) || 0,
+            color: '#6C63FF'
+          },
+          {
+            label: 'Unique Issues',
+            value: issues.length,
+            color: '#4ECCA3'
+          },
+          {
+            label: 'Most Common',
+            value: (summary.most_common_issue as string) || 'N/A',
+            color: '#FFD93D'
+          },
+          {
+            label: 'Least Common',
+            value: (summary.least_common_issue as string) || 'N/A',
+            color: '#FF6584'
+          },
+        ].map((s) => (
+          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={s.label}>
+            <Card sx={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="caption" sx={{ color: c.textSecondary, display: 'block' }}>
+                  {s.label}
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: s.color }}>
+                  {typeof s.value === 'number' ? s.value.toLocaleString() : s.value}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Charts Row */}
+      {filtered.length > 0 && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {/* ✅ Bar Chart with cleaned Y-axis labels */}
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
+                  Top 10 Issues by Complaint Count
+                </Typography>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={topIssues} layout="vertical" margin={{ left: 100 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={c.chartGrid} />
+                    <XAxis type="number" tick={{ fill: c.chartTick, fontSize: 11 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="issue_name"
+                      tick={{ fill: c.chartTick, fontSize: 10 }}
+                      width={100}
+                      // ✅ FIX: Remove "issues" from Y-axis labels
+                      tickFormatter={(value: string) => cleanIssueName(value)}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }}
+                      labelStyle={{ color: c.textPrimary }}
+                      formatter={(value: number) => [value.toLocaleString(), 'Complaints']}
+                      // ✅ FIX: Clean tooltip label as well
+                      labelFormatter={(label: string) => cleanIssueName(label)}
+                    />
+                    <Bar dataKey="total_complaints" radius={[0, 4, 4, 0]}>
+                      {topIssues.map((_, i) => (
+                        <Cell key={i} fill={ISSUE_COLORS[i % ISSUE_COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Pie Chart with cleaned legend */}
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
+                  Issue Distribution
+                </Typography>
+                {pieData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={90}
+                        innerRadius={40}
+                        paddingAngle={2}
+                        label={renderCustomLabel}
+                        labelLine={false}
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={ISSUE_COLORS[index % ISSUE_COLORS.length]}
+                            stroke={c.isDarkTheme ? '#1a1a2e' : '#fff'}
+                            strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend
+                        layout="horizontal"
+                        verticalAlign="bottom"
+                        align="center"
+                        wrapperStyle={{
+                          fontSize: '10px',
+                          paddingTop: '10px'
+                        }}
+                        // ✅ FIX: Remove "issues" from legend labels
+                        formatter={(value: string) => {
+                          const cleaned = cleanIssueName(value)
+                          return cleaned.length > 20 ? `${cleaned.substring(0, 20)}...` : cleaned
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 280 }}>
+                    <Typography variant="body2" sx={{ color: c.textMuted }}>
+                      No data available
+                    </Typography>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Controls */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          id="search-issues"
+          label="Search Issues"
+          value={searchIssue}
+          onChange={(e) => setSearchIssue(e.target.value)}
+          sx={{ minWidth: 200 }}
+        />
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Sort By</InputLabel>
+          <Select
+            id="sort-issues"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'count')}
+            label="Sort By"
+          >
+            <MenuItem value="count">By Complaint Count</MenuItem>
+            <MenuItem value="name">Alphabetical</MenuItem>
+          </Select>
+        </FormControl>
+        <Button size="small" onClick={() => setExpandedIssue('all')} sx={{ color: c.primaryLight }}>
+          Expand All
+        </Button>
+        <Button size="small" onClick={() => setExpandedIssue(false)} sx={{ color: c.textSecondary }}>
+          Collapse All
+        </Button>
+        <Typography variant="caption" sx={{ color: c.textMuted, ml: 'auto' }}>
+          {filtered.length} issues shown
+        </Typography>
+      </Box>
+
+      {/* Issues Accordion */}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress sx={{ color: c.primary }} />
+        </Box>
+      ) : filtered.length === 0 ? (
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          No issue data found. Upload an Excel file first.
+        </Alert>
+      ) : (
+        filtered.map((issue, idx) => (
+          <Accordion
+            key={issue.issue_name}
+            id={`issue-accordion-${idx}`}
+            expanded={expandedIssue === issue.issue_name || expandedIssue === 'all'}
+            onChange={(_, exp) => setExpandedIssue(exp ? issue.issue_name : false)}
+            sx={{
+              mb: 1,
+              background: c.accordionBg,
+              border: `1px solid ${c.border}`,
+              borderRadius: '8px !important',
+              '&:before': { display: 'none' },
+              '&.Mui-expanded': {
+                border: `1px solid ${c.borderStrong}`,
+              },
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMore sx={{ color: c.primaryLight }} />}
+              sx={{ '& .MuiAccordionSummary-content': { alignItems: 'center', gap: 2 } }}
+            >
+              <Box
+                sx={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: ISSUE_COLORS[idx % ISSUE_COLORS.length], flexShrink: 0,
+                }}
+              />
+              <Typography sx={{ fontWeight: 600, color: c.textPrimary, flex: 1 }}>
+                {issue.issue_name}
+              </Typography>
+              <Chip
+                label={`${issue.total_complaints.toLocaleString()} complaints`}
+                size="small"
+                sx={{
+                  background: `${ISSUE_COLORS[idx % ISSUE_COLORS.length]}20`,
+                  color: ISSUE_COLORS[idx % ISSUE_COLORS.length],
+                  fontWeight: 700,
+                  fontSize: '0.7rem',
+                }}
+              />
+              <Chip
+                label={`${issue.percentage?.toFixed(1)}%`}
+                size="small"
+                sx={{ background: c.chipWhiteBg, color: c.textSecondary, fontSize: '0.7rem' }}
+              />
+            </AccordionSummary>
+
+            <AccordionDetails sx={{ p: 0 }}>
+              {issue.follow_ups.length === 0 ? (
+                <Typography sx={{ p: 2, color: c.textMuted, fontSize: '0.85rem' }}>
+                  No follow-up questions available
+                </Typography>
+              ) : (
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ width: 200, pl: 3 }}>Follow-up Question</TableCell>
+                        <TableCell>Answer</TableCell>
+                        <TableCell align="right">Count</TableCell>
+                        <TableCell align="right">%</TableCell>
+                        <TableCell sx={{ width: 150 }}>Distribution</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {issue.follow_ups.map((fu) =>
+                        fu.answers.map((ans, aIdx) => (
+                          <TableRow
+                            key={`${fu.question_text}-${ans.value}`}
+                            sx={{ '&:hover': { background: c.tableHover } }}
+                          >
+                            {aIdx === 0 && (
+                              <TableCell
+                                rowSpan={fu.answers.length}
+                                sx={{
+                                  pl: 3, verticalAlign: 'top', pt: 1.5, fontSize: '0.8rem',
+                                  color: c.textSecondary,
+                                  borderRight: `1px solid ${c.borderMuted}`,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {fu.question_text}
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <Chip
+                                label={ans.value}
+                                size="small"
+                                sx={{
+                                  fontSize: '0.7rem',
+                                  background: ans.value === 'Yes' ? 'rgba(78,204,163,0.15)' :
+                                    ans.value === 'No' ? 'rgba(255,107,107,0.15)' :
+                                      'rgba(144,144,192,0.1)',
+                                  color: ans.value === 'Yes' ? '#4ECCA3' :
+                                    ans.value === 'No' ? '#FF6B6B' : '#9090C0',
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, color: c.textPrimary }}>
+                              {ans.count.toLocaleString()}
+                            </TableCell>
+                            <TableCell align="right" sx={{ color: c.textSecondary }}>
+                              {ans.percentage?.toFixed(1)}%
+                            </TableCell>
+                            <TableCell sx={{ pr: 2 }}>
+                              <LinearProgress
+                                variant="determinate"
+                                value={ans.percentage || 0}
+                                sx={{
+                                  height: 6, borderRadius: 3,
+                                  background: 'rgba(108,99,255,0.1)',
+                                  '& .MuiLinearProgress-bar': {
+                                    background: ans.value === 'Yes'
+                                      ? 'linear-gradient(90deg, #4ECCA3, #26C6DA)'
+                                      : ans.value === 'No'
+                                        ? 'linear-gradient(90deg, #FF6B6B, #FF6584)'
+                                        : 'linear-gradient(90deg, #6C63FF, #9A94FF)',
+                                    borderRadius: 3,
+                                  },
+                                }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </Box>
+              )}
+            </AccordionDetails>
+          </Accordion>
+        ))
+      )}
+    </Box>
+  )
+}
