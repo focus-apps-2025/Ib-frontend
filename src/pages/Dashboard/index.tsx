@@ -360,618 +360,374 @@ export default function DashboardPage() {
         })
       }
 
-      let currentSlideNum = 2
-
-      // ─── Slide 1: Title Page ───
+      // ─── Slide 1: Title Page (Redesigned with Solid White Background) ───
       setPptProgress('Generating Slide 1: Title...')
       const slide1 = pptx.addSlide()
-      try { slide1.background = slide1Bg } catch (e) { slide1.background = { fill: 'FFFFFF' } }
-
-      slide1.addShape(pptx.shapes.RECTANGLE, {
-        x: 0.8,
-        y: 1.5,
-        w: 8.4,
-        h: 2.8,
-        fill: { color: '000000', transparency: 60 },
-        line: { color: '4FC3F7', width: 2 }
-      })
+      slide1.background = { fill: 'FFFFFF' }
 
       slide1.addText('Survey Analysis Report', {
         x: 1.0,
-        y: 1.7,
+        y: 2.0,
         w: 8.0,
         h: 0.8,
-        fontSize: 32,
+        fontSize: 36,
         bold: true,
-        color: 'FFFFFF',
-        align: 'center',
+        color: '1E293B',
+        align: 'left',
         fontFace: 'Arial',
       })
 
       slide1.addText('Brand Performance & Customer Feedback Analysis', {
         x: 1.0,
-        y: 2.5,
+        y: 2.8,
         w: 8.0,
         h: 0.6,
-        fontSize: 16,
-        color: '4FC3F7',
-        align: 'center',
+        fontSize: 18,
+        color: '6C63FF',
+        align: 'left',
         fontFace: 'Arial',
+      })
+
+      slide1.addShape(pptx.shapes.LINE, {
+        x: 1.0,
+        y: 3.5,
+        w: 4.0,
+        h: 0.0,
+        line: { color: '3B82F6', width: 3 }
       })
 
       slide1.addText(`Report Generated: ${displayDate}`, {
         x: 1.0,
-        y: 3.2,
+        y: 3.8,
         w: 8.0,
-        h: 0.8,
-        fontSize: 11,
-        color: 'CCCCCC',
-        align: 'center',
-        fontFace: 'Arial',
-      })
-
-      // ─── Slide 2: Age Group Distribution ───
-      setPptProgress('Generating Slide 2: Age Group Distribution...')
-      const slide2 = pptx.addSlide()
-      try { slide2.background = slideBg } catch (e) { slide2.background = { fill: 'FFFFFF' } }
-
-      slide2.addText('Age Group Distribution', {
-        x: 0.5,
-        y: 0.3,
-        w: 9.0,
-        h: 0.5,
-        fontSize: 22,
-        bold: true,
-        color: '333333',
-        fontFace: 'Arial',
-      })
-
-      // Table (Left)
-      if (analytics.age_group) {
-        addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.5, 1.0, 4.0, 3.8)
-      }
-
-      // Chart (Right) - Just image, no title
-      const ageGroupImg = await captureElement('capture-age-group')
-      if (ageGroupImg) {
-        slide2.addImage({
-          data: ageGroupImg,
-          x: 4.8,
-          y: 1.0,
-          w: 4.7,
-          h: 3.8,
-        })
-      }
-
-
-      // ─── Slide 3: Age Group by City & Brand ───
-      setPptProgress('Generating Slide 3: Age Group by City & Brand...')
-      const slide3 = pptx.addSlide()
-      try { slide3.background = slideBg } catch (e) { slide3.background = { fill: 'FFFFFF' } }
-
-      slide3.addText('Age Group by City & Brand', {
-        x: 0.5,
-        y: 0.3,
-        w: 9.0,
-        h: 0.5,
-        fontSize: 22,
-        bold: true,
-        color: '333333',
-        fontFace: 'Arial',
-      })
-
-      // Age City Table (Top)
-      if (analytics.age_city) {
-        addAgeCityTable(slide3, analytics.age_city, 0.5, 1.0, 9.0, 2.8)
-      }
-
-      // Chart (Bottom) - Just image, no title
-      const ageCityImg = await captureElement('capture-age-city')
-      if (ageCityImg) {
-        slide3.addImage({
-          data: ageCityImg,
-          x: 0.5,
-          y: 3.9,
-          w: 9.0,
-          h: 1.3,
-        })
-      }
-
-
-      // ─── Slide 4: Mode of Purchase & Ownership ───
-      setPptProgress('Generating Slide 4: Mode of Purchase & Ownership...')
-      const slide4 = pptx.addSlide()
-      try { slide4.background = slideBg } catch (e) { slide4.background = { fill: 'FFFFFF' } }
-
-      slide4.addText('Mode of Purchase & Ownership', {
-        x: 0.5,
-        y: 0.3,
-        w: 9.0,
-        h: 0.5,
-        fontSize: 22,
-        bold: true,
-        color: '333333',
-        fontFace: 'Arial',
-      })
-
-      // Left: Mode of Purchase Table
-      slide4.addText('Mode of Purchase', {
-        x: 0.5,
-        y: 0.85,
-        w: 4.3,
-        h: 0.3,
+        h: 0.4,
         fontSize: 12,
-        bold: true,
-        color: '4FC3F7',
-        fontFace: 'Arial',
-      })
-      if (analytics.mode_of_purchase) {
-        addMatrixTable(slide4, analytics.mode_of_purchase, 'Mode', 0.5, 1.2, 4.3, 3.5)
-      }
-
-      // Right: Ownership Table
-      slide4.addText('Ownership', {
-        x: 5.0,
-        y: 0.85,
-        w: 4.5,
-        h: 0.3,
-        fontSize: 12,
-        bold: true,
-        color: '66BB6A',
-        fontFace: 'Arial',
-      })
-      if (analytics.ownership) {
-        addMatrixTable(slide4, analytics.ownership, 'Ownership', 5.0, 1.2, 4.5, 3.5)
-      }
-
-      // Chart (Bottom) - Just image, no title
-      const purchaseImg = await captureElement('capture-purchase-ownership')
-      if (purchaseImg) {
-        slide4.addImage({
-          data: purchaseImg,
-          x: 0.5,
-          y: 4.8,
-          w: 9.0,
-          h: 0.5,
-        })
-      }
-
-
-      // ─── Slide 5: User Profession Distribution ───
-      setPptProgress('Generating Slide 5: User Profession Distribution...')
-      const slide5 = pptx.addSlide()
-      try { slide5.background = slideBg } catch (e) { slide5.background = { fill: 'FFFFFF' } }
-
-      slide5.addText('User Profession Distribution', {
-        x: 0.5,
-        y: 0.3,
-        w: 9.0,
-        h: 0.5,
-        fontSize: 22,
-        bold: true,
-        color: '333333',
+        color: '64748B',
+        align: 'left',
         fontFace: 'Arial',
       })
 
-      // Table (Left)
-      if (analytics.profession) {
-        addMatrixTable(slide5, analytics.profession, 'Profession', 0.5, 1.0, 4.0, 3.8)
-      }
+      // ─── Follow-up Questions Slide (Redesigned with Solid White Background & Merged Cell Grid) ───
+      setPptProgress('Generating Follow-up Questions summary slide...')
 
-      // Chart (Right) - Just image, no title
-      const professionImg = await captureElement('capture-profession')
-      if (professionImg) {
-        slide5.addImage({
-          data: professionImg,
-          x: 4.8,
-          y: 1.0,
-          w: 4.7,
-          h: 3.8,
-        })
-      }
+      // Reorder and normalize brand names
+      const orderedFuBrands: string[] = []
+      const tvsBrand = issueBrands.find(b => b.toUpperCase().includes('TVS') || b.toUpperCase().includes('NTORQ'))
+      const hondaBrand = issueBrands.find(b => b.toUpperCase().includes('HONDA') || b.toUpperCase().includes('DIO'))
+      const yamahaBrand = issueBrands.find(b => b.toUpperCase().includes('YAMAHA') || b.toUpperCase().includes('ZR'))
 
+      if (tvsBrand) orderedFuBrands.push(tvsBrand)
+      else orderedFuBrands.push('TVS NTORQ 125 XP FI')
 
-      // ─── Issues Analysis Slides ───
-      // Max data rows per slide (excluding header + grand total).
-      // At fontSize 7, each row ≈ 0.17". Available height ≈ 3.8" → ~22 rows max.
-      const MAX_ISSUE_ROWS = 20
-      const getSubTopic = (name: string): string => {
-        if (!name) return ''
-        let parts = name.split(" - ")
-        let part = parts[0]
-        if (part.includes("?")) {
-          part = part.split("?")[0]
+      if (hondaBrand) orderedFuBrands.push(hondaBrand)
+      else orderedFuBrands.push('HONDA DIO 125')
+
+      if (yamahaBrand) orderedFuBrands.push(yamahaBrand)
+      else orderedFuBrands.push('YAMAHA RAY ZR 125 FI')
+
+      // Also add any other brands that might be present
+      issueBrands.forEach(b => {
+        if (!orderedFuBrands.includes(b)) {
+          orderedFuBrands.push(b)
         }
-        if (part.includes("-")) {
-          const subParts = part.split("-")
-          if (subParts[1] && subParts[1].length > 10) {
-            part = subParts[0]
-          }
-        }
-        let cleaned = part.trim()
-        if (cleaned.toLowerCase() === "muffler noise" || cleaned.toLowerCase() === "muffler vibration") {
-          cleaned = "Muffler"
-        }
-        return cleaned
-      }
-
-      for (let idx = 0; idx < issues.length; idx++) {
-        const issue = issues[idx]
-        setPptProgress(`Generating Issue: ${issue.issue_name}...`)
-
-        const cleanedTitle = cleanIssueName(issue.issue_name)
-
-        // ── Build hierarchical header row (shared across all pages) ──
-        const issueHeaderRow: any[] = [
-          { text: `Sub complaint of ${cleanedTitle}`, options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } },
-        ]
-        issueBrands.forEach((brandName: string) => {
-          issueHeaderRow.push({ text: brandName, options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right' } })
-        })
-
-        // ── Build flat list of all data rows ──
-        interface FlatPptRow {
-          sub_topic: string
-          brands: { name: string; count: number }[]
-        }
-        const flatRows: FlatPptRow[] = []
-
-        issue.sub_issues?.forEach((sub: any) => {
-          flatRows.push({
-            sub_topic: getSubTopic(sub.sub_issue),
-            brands: sub.brands || []
-          })
-        })
-
-        // Convert FlatPptRow → pptxgenjs cell array
-        const buildCellRow = (row: FlatPptRow): any[] => {
-          const cells: any[] = [
-            { text: row.sub_topic, options: { align: 'left', color: '222222', fontSize: 7 } },
-          ]
-          issueBrands.forEach((b: string) => {
-            const cnt = row.brands.find((br: any) => br.name === b)?.count || 0
-            cells.push({
-              text: cnt.toLocaleString(),
-              options: { color: '222222', align: 'right', fontSize: 7 },
-            })
-          })
-          return cells
-        }
-
-        // Grand Total row (added only on last page)
-        const issueGrandRow: any[] = [
-          { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7 } },
-        ]
-        issueBrands.forEach((b: string) => {
-          const brandSum = flatRows.reduce((sum, r) => sum + (r.brands.find(br => br.name === b)?.count || 0), 0)
-          issueGrandRow.push({ text: brandSum.toLocaleString(), options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7 } })
-        })
-
-        // ── Chunk and paginate ──
-        const totalPages = Math.max(1, Math.ceil(flatRows.length / MAX_ISSUE_ROWS))
-        // Capture chart image ONCE (before creating slides)
-        const issueImg = await captureElement(`capture-issue-${idx}`)
-
-        for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
-          const isFirstPage = pageIdx === 0
-          const isLastPage = pageIdx === totalPages - 1
-
-          const slide = pptx.addSlide()
-          try { slide.background = slideBg } catch (e) { slide.background = { fill: 'FFFFFF' } }
-
-          // Title — append "(cont.)" on continuation pages
-          const pageTitle = isFirstPage ? cleanedTitle : `${cleanedTitle} (cont.)`
-          slide.addText(pageTitle, {
-            x: 0.5, y: 0.3, w: 9.0, h: 0.5,
-            fontSize: 22, bold: true, color: '333333', fontFace: 'Arial',
-          })
-
-          // Slice data rows for this page
-          const chunkStart = pageIdx * MAX_ISSUE_ROWS
-          const chunkEnd = Math.min(chunkStart + MAX_ISSUE_ROWS, flatRows.length)
-          const chunkRows = flatRows.slice(chunkStart, chunkEnd).map(buildCellRow)
-
-          // Table = header + chunk + (grand total on last page)
-          const pageTableRows: any[][] = [issueHeaderRow, ...chunkRows]
-          if (isLastPage) pageTableRows.push(issueGrandRow)
-
-          slide.addTable(pageTableRows, {
-            x: 0.5, y: 1.0,
-            w: isFirstPage ? 4.3 : 9.0,  // full-width on continuation pages (no chart)
-            h: 3.8,
-            border: { type: 'solid', color: 'E0E0E0', size: 1 },
-            fontSize: 7,
-            fontFace: 'Arial',
-          })
-
-          // Chart only on the first page (right side)
-          if (isFirstPage && issueImg) {
-            slide.addImage({ data: issueImg, x: 5.0, y: 1.0, w: 4.5, h: 3.8 })
-          }
-        }
-
-      }
-
-      // ─── Comparison Slides ───
-      setPptProgress('Generating Comparison slides...')
-      const compSlide = pptx.addSlide()
-      try { compSlide.background = slideBg } catch (e) { compSlide.background = { fill: 'FFFFFF' } }
-
-      compSlide.addText('Brand-wise Comparison: Passive vs Issues', {
-        x: 0.5,
-        y: 0.3,
-        w: 9.0,
-        h: 0.5,
-        fontSize: 22,
-        bold: true,
-        color: '333333',
-        fontFace: 'Arial',
       })
 
-      // Comparison Chart (Full width) - Just image, no title
-      const stackedImg = await captureElement('capture-comparison')
-      if (stackedImg) {
-        compSlide.addImage({
-          data: stackedImg,
-          x: 0.5,
-          y: 1.0,
-          w: 9.0,
-          h: 4.2,
-        })
-      }
-
-
-      // ─── Per-Brand Topic Breakdown ───
-      for (let bIdx = 0; bIdx < topics.length; bIdx++) {
-        const brandTopic = topics[bIdx]
-        setPptProgress(`Generating Topic Breakdown for ${brandTopic.brand}...`)
-        const slide = pptx.addSlide()
-        try { slide.background = slideBg } catch (e) { slide.background = { fill: 'FFFFFF' } }
-
-        slide.addText(`Topic Breakdown: ${brandTopic.brand}`, {
-          x: 0.5,
-          y: 0.3,
-          w: 9.0,
-          h: 0.5,
-          fontSize: 22,
-          bold: true,
-          color: '333333',
-          fontFace: 'Arial',
-        })
-
-        // Topic Chart (Full width) - Just image, no title
-        const topicsImg = await captureElement(`capture-topics-${bIdx}`)
-        if (topicsImg) {
-          slide.addImage({
-            data: topicsImg,
-            x: 0.5,
-            y: 1.0,
-            w: 9.0,
-            h: 4.2,
-          })
+      // Helper to dynamically style vehicle headers according to design guidelines
+      const getBrandHeaderOptions = (brandName: string) => {
+        const name = brandName.toUpperCase()
+        let fill = '475569' // Default slate gray
+        if (name.includes('TVS') || name.includes('NTORQ')) {
+          fill = '00B4D8' // bright cyan/blue
+        } else if (name.includes('HONDA') || name.includes('DIO')) {
+          fill = '7C3AED' // purple
+        } else if (name.includes('YAMAHA') || name.includes('ZR')) {
+          fill = 'F97316' // orange
         }
+        return { bold: true, fill, color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 }
       }
 
-      // ─── Follow-up Questions Slides (paginated at a FIXED 9 rows per slide) ───
-      setPptProgress('Generating Follow-up Questions slides...')
-
-      const FU_TABLE_X = 0.3
-      const FU_TABLE_Y = 1.0
-      const FU_TABLE_W = 9.4
-      const FU_ROWS_PER_PAGE = 9
-
-      // Reorder issueBrands for follow-up questions: place "TVS NTORQ  125 XP FI" right next to the Answer column
-      const orderedFuBrands = [...issueBrands]
-      const targetBrand = orderedFuBrands.find(b => {
-        const normalized = b.replace(/\s+/g, ' ').trim().toLowerCase()
-        return normalized === "tvs ntorq 125 xp fi"
-      })
-      if (targetBrand) {
-        const idx = orderedFuBrands.indexOf(targetBrand)
-        if (idx > -1) {
-          orderedFuBrands.splice(idx, 1)
-          orderedFuBrands.unshift(targetBrand)
-        }
+      // Title Case formatting helper for Main Issue Titles
+      const formatMainIssueTitle = (name: string, count: number): string => {
+        const cleaned = cleanIssueName(name)
+        const formatted = cleaned.split(' ').map(word => {
+          if (!word) return ''
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        }).join(' ')
+        return `${formatted} (${count})`
       }
 
-      // Build the shared header row
+      // Build the header row (6 columns)
       const fuHeaderRow: any[] = [
-        { text: 'Main Issue', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } },
-        { text: 'Sub-Issue', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } },
-        { text: 'Follow-up Question', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } },
-        { text: 'Answer', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } },
+        { text: '(Subtopic)L3', options: { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 } },
+        { text: '(Follow-up)L4', options: { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 } },
+        { text: '(Answers)L5', options: { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 } },
       ]
       orderedFuBrands.forEach((brandName: string) => {
-        fuHeaderRow.push({ text: brandName, options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right' } })
+        fuHeaderRow.push({ text: brandName, options: getBrandHeaderOptions(brandName) })
       })
 
-      // Build all data rows, one pptx cell array per row.
-      const fuRows: any[][] = []
+      interface RawDataRow {
+        subTopicText: string
+        followUpText: string
+        answerText: string
+        isSplit: boolean
+        vehicleCells: { cnt: number; pct: number }[]
+      }
 
-      let lastRenderedIssue = ""
-      let lastRenderedSubIssue = ""
-      let lastRenderedFollowUp = ""
+      let generatedAnySlide = false
 
       issues.forEach((issue: any) => {
-        const issueName = cleanIssueName(issue.issue_name)
-        
+        // Find valid sub-issues that actually contain answers
+        const validSubIssues = (issue.sub_issues || []).filter((sub: any) => {
+          if (!sub.has_follow_ups || !sub.follow_ups) return false
+          return sub.follow_ups.some((fu: any) => fu.answers && fu.answers.length > 0)
+        })
+
+        if (validSubIssues.length === 0) return
+
+        // Sum the TVS count for the Main Issue
         let issueTvsCount = 0
-        issue.sub_issues?.forEach((subObj: any) => {
-          subObj.brands?.forEach((br: any) => {
+        validSubIssues.forEach((sub: any) => {
+          sub.brands?.forEach((br: any) => {
             if (br.name?.toUpperCase().startsWith("TVS")) {
               issueTvsCount += br.count || 0
             }
           })
         })
 
-        issue.sub_issues?.forEach((sub: any) => {
+        // Gather all raw rows for this main issue
+        const rawRows: RawDataRow[] = []
+
+        validSubIssues.forEach((sub: any) => {
           let subTvsCount = 0
           sub.brands?.forEach((br: any) => {
             if (br.name?.toUpperCase().startsWith("TVS")) {
               subTvsCount += br.count || 0
             }
           })
+          const subText = `${sub.sub_issue} (${subTvsCount})`
 
-          if (sub.has_follow_ups && sub.follow_ups) {
-            sub.follow_ups.forEach((fu: any) => {
-              let fuTvsCount = 0
-              fu.answers?.forEach((ans: any) => {
-                ans.brands?.forEach((br: any) => {
-                  if (br.name?.toUpperCase().startsWith("TVS")) {
-                    fuTvsCount += br.count || 0
-                  }
-                })
+          sub.follow_ups.forEach((fu: any) => {
+            if (!fu.answers || fu.answers.length === 0) return
+
+            // Calculate TVS count for this follow-up question
+            let fuTvsCount = 0
+            fu.answers.forEach((ans: any) => {
+              ans.brands?.forEach((br: any) => {
+                if (br.name?.toUpperCase().startsWith("TVS")) {
+                  fuTvsCount += br.count || 0
+                }
+              })
+            })
+            const followUpText = fu.follow_up ? `${fu.follow_up} (${fuTvsCount})` : ''
+
+            fu.answers.forEach((ans: any) => {
+              const displayAnswer = ans.answer.startsWith('"') && ans.answer.endsWith('"')
+                ? ans.answer
+                : `"${ans.answer}"`
+
+              // Calculate TVS count for this specific answer
+              let ansTvsCount = 0
+              ans.brands?.forEach((br: any) => {
+                if (br.name?.toUpperCase().startsWith("TVS")) {
+                  ansTvsCount += br.count || 0
+                }
+              })
+              const ansTextWithCount = `${displayAnswer} (${ansTvsCount})`
+
+              const vehicleCells = orderedFuBrands.map((b: string) => {
+                const cnt = ans.brands?.find((br: any) => br.name === b)?.count || 0
+                const subBrandTotal = sub.brands?.find((br: any) => br.name === b)?.count || 0
+                const pct = subBrandTotal > 0 ? Math.round((cnt / subBrandTotal) * 100) : 0
+                return { cnt, pct }
               })
 
-              if (fu.answers && fu.answers.length > 0) {
-                fu.answers.forEach((ans: any) => {
-                  const displayAnswer = ans.answer.startsWith('"') && ans.answer.endsWith('"')
-                    ? ans.answer
-                    : `"${ans.answer}"`
-
-                  const isIssueNew = issueName !== lastRenderedIssue
-                  const isSubNew = sub.sub_issue !== lastRenderedSubIssue
-                  const isFuNew = fu.follow_up !== lastRenderedFollowUp
-
-                  const displayIssueText = isIssueNew ? `${issueName} (${issueTvsCount})` : ''
-                  const displaySubText = isSubNew ? `${sub.sub_issue} (${subTvsCount})` : ''
-                  const displayFuText = isFuNew ? `↳ ${fu.follow_up} (${fuTvsCount})` : ''
-
-                  if (isIssueNew) lastRenderedIssue = issueName
-                  if (isSubNew) lastRenderedSubIssue = sub.sub_issue
-                  if (isFuNew) lastRenderedFollowUp = fu.follow_up
-
-                  let ansTvsCount = 0
-                  ans.brands?.forEach((br: any) => {
-                    if (br.name?.toUpperCase().startsWith("TVS")) {
-                      ansTvsCount += br.count || 0
-                    }
-                  })
-
-                  const ansText = ans.is_split ? `${displayAnswer} ` : displayAnswer
-                  const ansTextWithCount = `${ansText} (${ansTvsCount})`
-
-                  const ansCellOpts: any = { color: '666666', align: 'left', fontSize: 7 }
-                  if (ans.is_split) {
-                    ansCellOpts.fill = 'FFF59D'
-                  }
-
-                  const dataRow: any[] = [
-                    { text: displayIssueText, options: { color: '222222', align: 'left', fontSize: 7 } },
-                    { text: displaySubText, options: { color: '333333', align: 'left', fontSize: 7 } },
-                    { text: displayFuText, options: { color: '444444', italic: true, align: 'left', fontSize: 7 } },
-                    { text: ansTextWithCount, options: ansCellOpts },
-                  ]
-
-                  orderedFuBrands.forEach((b: string) => {
-                    const cnt = ans.brands?.find((br: any) => br.name === b)?.count || 0
-                    const subBrandTotal = sub.brands?.find((br: any) => br.name === b)?.count || 0
-                    const pct = subBrandTotal > 0 ? Math.round((cnt / subBrandTotal) * 100) : 0
-
-                    const brandCellOpts: any = { align: 'right', fontSize: 7 }
-                    if (ans.is_split) {
-                      brandCellOpts.fill = 'FFF59D'
-                    }
-                    dataRow.push({ text: `${cnt} (${pct}%)`, options: brandCellOpts })
-                  })
-                  fuRows.push(dataRow)
-                })
-              } else {
-                // Follow-up with no answers
-                const isIssueNew = issueName !== lastRenderedIssue
-                const isSubNew = sub.sub_issue !== lastRenderedSubIssue
-                const isFuNew = fu.follow_up !== lastRenderedFollowUp
-
-                const displayIssueText = isIssueNew ? `${issueName} (${issueTvsCount})` : ''
-                const displaySubText = isSubNew ? `${sub.sub_issue} (${subTvsCount})` : ''
-                const displayFuText = isFuNew ? `↳ ${fu.follow_up} (${fuTvsCount})` : ''
-
-                if (isIssueNew) lastRenderedIssue = issueName
-                if (isSubNew) lastRenderedSubIssue = sub.sub_issue
-                if (isFuNew) lastRenderedFollowUp = fu.follow_up
-
-                const dataRow: any[] = [
-                  { text: displayIssueText, options: { color: '222222', align: 'left', fontSize: 7 } },
-                  { text: displaySubText, options: { color: '333333', align: 'left', fontSize: 7 } },
-                  { text: displayFuText, options: { color: '444444', italic: true, align: 'left', fontSize: 7 } },
-                  { text: '\u2014', options: { color: '999999', align: 'left', fontSize: 7 } },
-                ]
-
-                orderedFuBrands.forEach(() => {
-                  dataRow.push({ text: '0 (0%)', options: { align: 'right', fontSize: 7 } })
-                })
-                fuRows.push(dataRow)
-              }
+              rawRows.push({
+                subTopicText: subText,
+                followUpText: followUpText,
+                answerText: ansTextWithCount,
+                isSplit: !!ans.is_split,
+                vehicleCells
+              })
             })
-          }
+          })
         })
-      })
 
-      if (fuRows.length === 0) {
-        // No data — single placeholder slide
-        const fuSlide = pptx.addSlide()
-        try { fuSlide.background = slideBg } catch (e) { fuSlide.background = { fill: 'FFFFFF' } }
-        fuSlide.addText('Follow-up Questions Summary', {
-          x: 0.5, y: 0.3, w: 9.0, h: 0.5,
-          fontSize: 22, bold: true, color: '333333', fontFace: 'Arial',
-        })
-        fuSlide.addText('No follow-up question data available.', {
-          x: 0.5, y: 2.5, w: 9.0, h: 0.5,
-          fontSize: 12, color: '999999', align: 'center',
-        })
-      } else {
-        // ── Paginate at a fixed 9 data rows per slide ──
-        const fuPages: any[][][] = []
-        for (let i = 0; i < fuRows.length; i += FU_ROWS_PER_PAGE) {
-          fuPages.push(fuRows.slice(i, i + FU_ROWS_PER_PAGE))
-        }
+        if (rawRows.length === 0) return
 
-        const fuTotalPages = fuPages.length
+        // Split rawRows into chunks of max 14 rows
+        const maxRowsPerSlide = 13
+        const totalSlidesForIssue = Math.ceil(rawRows.length / maxRowsPerSlide)
 
-        fuPages.forEach((pageRows, fuPageIdx) => {
+        for (let slideIdx = 0; slideIdx < totalSlidesForIssue; slideIdx++) {
+          const chunk = rawRows.slice(slideIdx * maxRowsPerSlide, (slideIdx + 1) * maxRowsPerSlide)
+          const isLastSlideOfIssue = (slideIdx === totalSlidesForIssue - 1)
+
+          // Create the slide
           const fuSlide = pptx.addSlide()
-          try { fuSlide.background = slideBg } catch (e) { fuSlide.background = { fill: 'FFFFFF' } }
+          fuSlide.background = { fill: 'FFFFFF' }
+          generatedAnySlide = true
 
-          // Title with page indicator on continuation pages
-          const fuTitle = fuPageIdx === 0
-            ? 'Follow-up Questions Summary'
-            : `Follow-up Questions Summary (cont. ${fuPageIdx + 1}/${fuTotalPages})`
-          fuSlide.addText(fuTitle, {
-            x: 0.5, y: 0.3, w: 9.0, h: 0.5,
-            fontSize: 22, bold: true, color: '333333', fontFace: 'Arial',
+          // Title formatting
+          const formattedTitle = formatMainIssueTitle(issue.issue_name, issueTvsCount)
+          const displayTitle = totalSlidesForIssue > 1
+            ? `${formattedTitle} `//? `${formattedTitle} - Slide ${slideIdx + 1}/${totalSlidesForIssue}`
+            : formattedTitle
+
+          // Slide Title
+          fuSlide.addText(displayTitle, {
+            x: 0.3, y: 0.3, w: 6.0, h: 0.5,
+            fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
           })
 
-          const pageTableRows: any[][] = [fuHeaderRow, ...pageRows]
-          if (fuPageIdx === fuTotalPages - 1) {
-            // Build the grand total row!
+          // Logo Branding Image
+          fuSlide.addImage({
+            path: '/src/assets/logo.png',
+            x: 8.72,
+            y: 0.25,
+            w: 1.0,
+            h: 0.52
+          })
+
+          // Divider Line
+          fuSlide.addShape(pptx.shapes.LINE, {
+            x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+            line: { color: '3B82F6', width: 2 }
+          })
+
+          // Build table rows for this slide
+          const pageTableRows: any[][] = [fuHeaderRow]
+
+          for (let i = 0; i < chunk.length; i++) {
+            const row = chunk[i]
+            const rowCells: any[] = []
+
+            // Check if Subtopic group starts on this row inside this chunk
+            const isNewSubtopic = (i === 0) || (row.subTopicText !== chunk[i - 1].subTopicText)
+            if (isNewSubtopic) {
+              let span = 1
+              while (i + span < chunk.length && chunk[i + span].subTopicText === row.subTopicText) {
+                span++
+              }
+              rowCells.push({
+                text: row.subTopicText,
+                options: {
+                  rowspan: span,
+                  valign: 'middle',
+                  align: 'center',
+                  bold: true,
+                  fontSize: 7.5,
+                  fill: 'F8F9FA'
+                }
+              })
+            }
+
+            // Check if Follow-up group starts on this row inside this chunk
+            const isNewFollowup = (i === 0) ||
+              (row.subTopicText !== chunk[i - 1].subTopicText) ||
+              (row.followUpText !== chunk[i - 1].followUpText)
+            if (isNewFollowup) {
+              let span = 1
+              while (i + span < chunk.length &&
+                chunk[i + span].subTopicText === row.subTopicText &&
+                chunk[i + span].followUpText === row.followUpText) {
+                span++
+              }
+              rowCells.push({
+                text: row.followUpText,
+                options: {
+                  rowspan: span,
+                  valign: 'middle',
+                  align: 'center',
+                  bold: true,
+                  fontSize: 7.5,
+                  fill: 'F8F9FA'
+                }
+              })
+            }
+
+            // Answer
+            rowCells.push({
+              text: row.answerText,
+              options: {
+                align: 'left',
+                fontSize: 7.5,
+                fill: row.isSplit ? 'FFF59D' : 'FFFFFF'
+              }
+            })
+
+            // Vehicles
+            row.vehicleCells.forEach((vc) => {
+              rowCells.push({
+                text: `${vc.cnt} (${vc.pct}%)`,
+                options: {
+                  align: 'right',
+                  fontSize: 7.5,
+                  fill: row.isSplit ? 'FFF59D' : 'FFFFFF'
+                }
+              })
+            })
+
+            pageTableRows.push(rowCells)
+          }
+
+          // Append Grand Total row on the last slide of the issue
+          if (isLastSlideOfIssue) {
             const fuGrandRow: any[] = [
-              { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7 } },
+              { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7.5 } },
               { text: '', options: { fill: 'ECEFF1' } },
-              { text: '', options: { fill: 'ECEFF1' } },
-              { text: '', options: { fill: 'ECEFF1' } },
+              { text: '', options: { fill: 'ECEFF1' } }
             ]
-            issueBrands.forEach((b: string) => {
+
+            orderedFuBrands.forEach((b: string) => {
               let brandTotalAnswers = 0
-              issues.forEach((issueObj: any) => {
-                issueObj.sub_issues?.forEach((subObj: any) => {
-                  subObj.follow_ups?.forEach((fuObj: any) => {
-                    fuObj.answers?.forEach((ansObj: any) => {
-                      brandTotalAnswers += ansObj.brands?.find((br: any) => br.name === b)?.count || 0
-                    })
+              issue.sub_issues?.forEach((subObj: any) => {
+                subObj.follow_ups?.forEach((fuObj: any) => {
+                  fuObj.answers?.forEach((ansObj: any) => {
+                    brandTotalAnswers += ansObj.brands?.find((br: any) => br.name === b)?.count || 0
                   })
                 })
               })
-              fuGrandRow.push({ text: `${brandTotalAnswers} (100%)`, options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7 } })
+              fuGrandRow.push({ text: `${brandTotalAnswers} (100%)`, options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7.5 } })
             })
+
             pageTableRows.push(fuGrandRow)
           }
 
+          // Add the table to the slide
           fuSlide.addTable(pageTableRows, {
-            x: FU_TABLE_X, y: FU_TABLE_Y, w: FU_TABLE_W,
-            border: { type: 'solid', color: 'E0E0E0', size: 1 },
-            fontSize: 7,
+            x: 0.3,
+            y: 1.1,
+            w: 9.4,
+            border: { type: 'solid', color: '000000', size: 1 },
+            fontSize: 7.5,
             fontFace: 'Arial',
+            rowH: pageTableRows.map(() => 0.30)
           })
+        }
+      })
+
+      if (!generatedAnySlide) {
+        const fuSlide = pptx.addSlide()
+        fuSlide.background = { fill: 'FFFFFF' }
+        fuSlide.addText('Main Issue (Count)', {
+          x: 0.3, y: 0.3, w: 6.0, h: 0.5,
+          fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
+        })
+        fuSlide.addImage({
+          path: '/src/assets/logo.png',
+          x: 8.0,
+          y: 0.25,
+          w: 1.7,
+          h: 0.5
+        })
+        fuSlide.addShape(pptx.shapes.LINE, {
+          x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+          line: { color: '3B82F6', width: 2 }
+        })
+        fuSlide.addText('No follow-up question data available.', {
+          x: 0.5, y: 2.5, w: 9.0, h: 0.5,
+          fontSize: 12, color: '999999', align: 'center'
         })
       }
 
