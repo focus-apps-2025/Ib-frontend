@@ -582,7 +582,7 @@ export default function DashboardPage() {
 
           // Logo Branding Image
           fuSlide.addImage({
-            path: '/src/assets/logo.png',
+            path: '/assets/logo.png',
             x: 8.72,
             y: 0.25,
             w: 1.0,
