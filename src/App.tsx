@@ -6,6 +6,7 @@ import { themes } from './theme'
 import LoginPage from './pages/Login'
 import DashboardLayout from './components/layout/DashboardLayout'
 import DashboardPage from './pages/Dashboard'
+import SummaryPage from './pages/Summary'
 import UploadPage from './pages/Upload'
 import UsersPage from './pages/Users'
 import RegionsPage from './pages/Regions'
@@ -47,6 +48,7 @@ export default function App() {
             }
           >
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="summary" element={<SummaryPage />} />
             <Route path="upload" element={<UploadPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route

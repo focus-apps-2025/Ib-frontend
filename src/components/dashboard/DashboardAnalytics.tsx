@@ -179,8 +179,17 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
         const showCityCol = title.includes('City')
         const accentColor = brandColor || '#1871c9ff'
         const accentLight = alpha(accentColor, 0.08)
+        // Compute all brands present in either matrix.brands or table data
+        const tableBrands = (matrix?.table && matrix.table.length > 0)
+            ? Object.keys(matrix.table[0]).filter(k => {
+                return k !== 'category' && k !== 'total' && !k.endsWith('_pct') && !k.endsWith('_count')
+            })
+            : []
+        const allBrands = Array.from(new Set([...(matrix?.brands || []), ...tableBrands]))
 
         // Special rendering for Age Group by City & Brand
+let sortedAgeGroups: string[] = [];
+let cities: string[] = []
         if (isAgeCity && matrix) {
             const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
             const allAgeGroups = new Set<string>()
@@ -192,14 +201,14 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                     allAgeGroups.add(ageGroup)
                     if (!cityAgeMap[city]) cityAgeMap[city] = {}
                     cityAgeMap[city][ageGroup] = {}
-                    matrix.brands.forEach(brand => {
+                    allBrands.forEach(brand => {
                         cityAgeMap[city][ageGroup][brand] = Number(row[brand]) || 0
                     })
                 }
             })
 
-            const sortedAgeGroups = Array.from(allAgeGroups).sort()
-            const cities = Object.keys(cityAgeMap)
+            sortedAgeGroups = Array.from(allAgeGroups).sort()
+            cities = Object.keys(cityAgeMap)
 
             return (
                 <Card
@@ -256,7 +265,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         >
                                             {matrix.category_header || 'City'}
                                         </TableCell>
-                                        {matrix.brands.map((brand) => (
+                                        {allBrands.map((brand) => (
                                             <TableCell
                                                 key={brand}
                                                 colSpan={sortedAgeGroups.length + 1}
@@ -286,7 +295,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         ))}
                                     </TableRow>
                                     <TableRow>
-                                        {matrix.brands.map((brand) => (
+                                        {allBrands.map((brand) => (
                                             <>
                                                 {sortedAgeGroups.map((ageGroup) => (
                                                     <TableCell
@@ -328,7 +337,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                 <TableBody>
                                     {cities.map((city) => {
                                         const brandTotals: Record<string, number> = {}
-                                        matrix.brands.forEach(brand => {
+                                        allBrands.forEach(brand => {
                                             brandTotals[brand] = 0
                                             sortedAgeGroups.forEach(ageGroup => {
                                                 brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
@@ -350,7 +359,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                 }}>
                                                     {city}
                                                 </TableCell>
-                                                {matrix.brands.map((brand) => (
+                                                {allBrands.map((brand) => (
                                                     <>
                                                         {sortedAgeGroups.map((ageGroup) => {
                                                             const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
@@ -399,7 +408,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         }}>
                                             Grand Total
                                         </TableCell>
-                                        {matrix.brands.map((brand) => {
+                                        {allBrands.map((brand) => {
                                             let grandTotal = 0
                                             cities.forEach(city => {
                                                 sortedAgeGroups.forEach(ageGroup => {
@@ -478,8 +487,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         labelFormatter={(label) => String(label).replace('|', ' / ')}
                                         formatter={(value, name) => {
                                             const key = String(name)
-                                            const brandIdx = matrix.brands.findIndex((b) => key.includes(b))
-                                            const brand = matrix.brands[brandIdx]
+                                            const brandIdx = allBrands.findIndex((b) => key.includes(b))
+                                            const brand = allBrands[brandIdx]
                                             return [`${Number(value).toFixed(1)}%`, brand || key]
                                         }}
                                     />
@@ -492,7 +501,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         iconType="circle"
                                     />
                                     <ReferenceLine y={0} stroke={c.borderMuted} />
-                                    {matrix.brands.map((b) => {
+                                    {allBrands.map((b) => {
                                         const valueKey = `${b}_pct`
                                         const labelKey = `${b}_pct`
                                         const labelFormatter = (val: number) => `${Number(val).toFixed(1)}%`
@@ -555,7 +564,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 <CardContent sx={{ p: 3.5 }}>
                     <CardHeader title={title} icon={icon} subtitle={subtitle} color={accentColor} />
 
-                    {!matrix || matrix.brands.length === 0 || matrix.categories.length === 0 ? (
+                    {!matrix || allBrands.length === 0 || matrix.categories.length === 0 ? (
                         <Alert severity="info" sx={{ borderRadius: 2 }}>
                             No data available.
                         </Alert>
@@ -585,10 +594,10 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             }}>
                                                 {matrix.category_header || 'Category'}
                                             </TableCell>
-                                            {matrix.brands.map((b) => (
+                                            {allBrands.map((brand) => (
                                                 <TableCell
-                                                    key={b}
-                                                    align="right"
+                                                    key={brand}
+                                                    align="center"
                                                     sx={{
                                                         fontWeight: 700,
                                                         background: alpha(accentColor, 0.06),
@@ -600,14 +609,14 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                     }}
                                                 >
                                                     <Chip
-                                                        label={b}
+                                                        label={brand}
                                                         size="small"
                                                         sx={{
-                                                            background: getBrandColorLight(b),
-                                                            color: getBrandColor(b),
+                                                            background: getBrandColorLight(brand),
+                                                            color: getBrandColor(brand),
                                                             fontWeight: 600,
-                                                            fontSize: '0.6rem',
-                                                            height: 22,
+                                                            fontSize: '0.65rem',
+                                                            height: 24,
                                                         }}
                                                     />
                                                 </TableCell>
@@ -650,7 +659,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                     }}>
                                                         {String(row.category)}
                                                     </TableCell>
-                                                    {matrix.brands.map((b) => {
+                                                    {allBrands.map((b) => {
                                                         const cnt = row[b]
                                                         const pct = row[`${b}_pct`]
                                                         let displayValue = ''
@@ -664,7 +673,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                             if (showMode === 'both') {
                                                                 displayValue = `${typeof cnt === 'number' ? cnt.toLocaleString() : (cnt ?? 0)} (${typeof pct === 'number' ? pct.toFixed(1) : (pct ?? 0)}%)`
                                                             } else if (showMode === 'percent') {
-                                                                displayValue = `${typeof cnt === 'number' ? cnt.toFixed(1) : (cnt ?? 0)}%`
+                                                                const valToUse = typeof pct === 'number' ? pct : (typeof cnt === 'number' ? cnt : 0)
+                                                                displayValue = `${typeof valToUse === 'number' ? valToUse.toFixed(1) : valToUse}%`
                                                             } else {
                                                                 displayValue = typeof cnt === 'number' ? cnt.toLocaleString() : String(cnt ?? 0)
                                                             }

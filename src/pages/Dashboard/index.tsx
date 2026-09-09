@@ -31,6 +31,8 @@ import { useThemeColors } from '../../utils/colors'
 import IssuesTab from '../../components/dashboard/IssuesTab'
 import DashboardAnalytics from '../../components/dashboard/DashboardAnalytics'
 import ComparisonTab from '../../components/dashboard/ComparisonTab'
+import NpsTab from '../../components/dashboard/NpsTab'
+import ServiceDashboardTab from '../../components/dashboard/ServiceDashboardTab'
 
 import { getColumnHeader } from '../../utils/columnHeaders'
 
@@ -74,6 +76,7 @@ function StatCard({ title, value, icon, color, subtitle }: {
 
 export default function DashboardPage() {
   const [tab, setTab] = useState(0)
+  const [analysisMode, setAnalysisMode] = useState<'product' | 'service'>('product')
   const filters = useFilterStore()
   const c = useThemeColors()
   const [regions, setRegions] = useState<{ id: string; name: string }[]>([])
@@ -118,6 +121,2815 @@ export default function DashboardPage() {
       return ''
     }
   }
+  const handleDownloadServicePPT = async () => {
+    setPptGenerating(true)
+    setPptProgress('Initializing & fetching Service Dashboard data...')
+
+    try {
+      const filterParams = {
+        file_id: filters.fileId || undefined,
+        region_id: filters.regionId || undefined,
+        country_id: filters.countryId || undefined,
+        ib_version_id: filters.ibVersionId || undefined,
+        brand_model: filters.brandModel || undefined,
+        survey_location: filters.surveyLocation || undefined,
+        date_from: filters.dateFrom || undefined,
+        date_to: filters.dateTo || undefined,
+        search: filters.search || undefined,
+      }
+
+      const [analyticsRes, serviceRes, npsRes, benefitsRes, satisfactionRes] = await Promise.all([
+        dashboardApi.analytics(filterParams),
+        dashboardApi.serviceFrequency(filterParams),
+        dashboardApi.serviceNps(filterParams),
+        dashboardApi.serviceBenefitsBetterments(filterParams),
+        dashboardApi.serviceSatisfaction(filterParams),
+      ])
+      console.log('serviceFrequency raw:', JSON.stringify(serviceRes.data, null, 2))
+
+      const analytics = analyticsRes.data || {}
+      const serviceData = serviceRes.data || {}
+      const serviceNpsData = npsRes.data || {}
+      const serviceBenefitsData = benefitsRes.data || {}
+      const satisfactionData = satisfactionRes.data || {}
+
+      const kmsDataAll = serviceData.kms_frequency || { total_responses: 0, categories: [], brand_breakdown: [] }
+      const timeDataAll = serviceData.time_frequency || { total_responses: 0, categories: [], brand_breakdown: [] }
+
+      if (!analytics) {
+        setToastSeverity('error')
+        setToastMessage('Cannot generate Service PPT: No data available for the active filters.')
+        setToastOpen(true)
+        setPptGenerating(false)
+        return
+      }
+
+      setPptProgress('Preparing Service presentation...')
+
+      const pptx = new PptxGenJS()
+      pptx.layout = 'LAYOUT_16x9'
+
+      let slideCounter = 0
+      const _originalAddSlide = pptx.addSlide.bind(pptx)
+      pptx.addSlide = (...args: any[]) => {
+        slideCounter++
+        return _originalAddSlide(...args)
+      }
+      const dividerTOC: { title: string; slideNumber: number }[] = []
+      const TOC_SLIDE_NUMBER = 2
+
+      const today = new Date().toISOString().split('T')[0]
+      const displayDate = new Date().toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+
+      const BRAND_COLORS_LIST = ['00B4D8', '7C3AED', 'F97316', '10B981', 'EF4444', '3B82F6', '8B5CF6', 'EC4899', 'F59E0B', '06B6D4']
+      const LIGHT_COLORS_LIST = ['B3E5FC', 'D1C4E9', 'FFE0B2', 'D1FAE5', 'FEE2E2', 'DBEAFE', 'EDE9FE', 'FCE7F3', 'FEF3C7', 'CFFAFE']
+
+      const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+        'TVS Raider': '00B4D8',
+        'TVS Apache': '00B4D8',
+        'TVS': '00B4D8',
+        'Bajaj Pulsar': '7C3AED',
+        'Bajaj': '7C3AED',
+        'Yamaha FZ': 'F59E0B',
+        'Yamaha': 'F59E0B',
+        'Honda CB': '7C3AED',
+        'Honda': '7C3AED',
+        'Suzuki Gixxer': '7C3AED',
+        'Suzuki': '7C3AED',
+      }
+
+      const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
+        'TVS Raider': 'B3E5FC',
+        'TVS Apache': 'B3E5FC',
+        'TVS': 'B3E5FC',
+        'Bajaj Pulsar': 'D1C4E9',
+        'Bajaj': 'D1C4E9',
+        'Yamaha FZ': 'FEF3C7',
+        'Yamaha': 'FEF3C7',
+        'Honda CB': 'D1C4E9',
+        'Honda': 'D1C4E9',
+        'Suzuki Gixxer': 'D1C4E9',
+        'Suzuki': 'D1C4E9',
+      }
+
+      const hashBrand = (str: string): number => {
+        let hash = 0
+        for (let i = 0; i < str.length; i++) {
+          hash = str.charCodeAt(i) + ((hash << 5) - hash)
+        }
+        return Math.abs(hash)
+      }
+
+      // Dynamic brand ordering directly from DB response (TVS brands placed first)
+      const getOrderedBrands = (brands: string[]): string[] => {
+        if (!Array.isArray(brands)) return []
+        const unique: string[] = []
+        brands.forEach((b) => {
+          if (b && typeof b === 'string') {
+            const clean = b.trim()
+            if (clean && clean.toLowerCase() !== 'blank' && !unique.includes(clean)) {
+              unique.push(clean)
+            }
+          }
+        })
+        const tvsBrands = unique.filter((b) => {
+          const lower = b.toLowerCase()
+          return lower.includes('tvs') || lower.includes('raider') || lower.includes('apache')
+        })
+        const otherBrands = unique.filter((b) => {
+          const lower = b.toLowerCase()
+          return !lower.includes('tvs') && !lower.includes('raider') && !lower.includes('apache')
+        })
+        return [...tvsBrands, ...otherBrands]
+      }
+
+      // Dynamic brand color palette assignment
+      const getBrandColor = (brandName: string): string => {
+        if (!brandName) return '475569'
+        const clean = String(brandName).trim()
+        if (SPECIFIC_BRAND_COLORS[clean]) {
+          return SPECIFIC_BRAND_COLORS[clean]
+        }
+        const lower = clean.toLowerCase()
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '00B4D8'
+        if (lower.includes('pulsar') || lower.includes('bajaj')) return '7C3AED'
+        if (lower.includes('honda') || lower.includes('cb')) return '7C3AED'
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return '7C3AED'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'F59E0B'
+
+        const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
+        return BRAND_COLORS_LIST[idx]
+      }
+
+      // Dynamic light color palette assignment
+      const getAgeGroupLightColor = (brandName: string): string => {
+        if (!brandName) return 'ECEFF1'
+        const clean = String(brandName).trim()
+        if (SPECIFIC_LIGHT_COLORS[clean]) {
+          return SPECIFIC_LIGHT_COLORS[clean]
+        }
+        const lower = clean.toLowerCase()
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return 'B3E5FC'
+        if (lower.includes('pulsar') || lower.includes('bajaj')) return 'D1C4E9'
+        if (lower.includes('honda') || lower.includes('cb')) return 'D1C4E9'
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1C4E9'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FEF3C7'
+
+        const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
+        return LIGHT_COLORS_LIST[idx]
+      }
+
+      const getBrandHeaderOptions = (brandName: string) => ({
+        bold: true,
+        fill: getBrandColor(brandName),
+        color: 'FFFFFF',
+        align: 'center',
+        fontFace: 'Arial',
+        fontSize: 8
+      })
+
+      const getBrandColorsArray = (brands: string[]): string[] => {
+        return brands.map(b => getBrandColor(b))
+      }
+
+      function matrixToChartData(matrix: any, type: 'count' | 'percent' = 'percent') {
+        if (!matrix || !Array.isArray(matrix.chart) || matrix.chart.length === 0) return []
+        const { brands } = matrix
+        if (!Array.isArray(brands)) return []
+        const orderedBrands = getOrderedBrands(brands)
+        return matrix.chart.map((row: any) => ({
+          name: row.category || 'Unknown',
+          labels: orderedBrands || [],
+          values: orderedBrands.map((b: string) => {
+            const key = type === 'count' ? `${b}_count` : `${b}_pct`
+            return row?.[key] || 0
+          })
+        }))
+      }
+
+      const NEUTRAL_GREY = '607D8B'
+
+      const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number) => {
+        if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
+          slide.addText('No data available', { x, y, w, h, fontSize: 12, color: '999999', align: 'center' })
+          return
+        }
+        const { brands, table, category_header } = matrix
+        if (!Array.isArray(brands)) return
+        const orderedBrands = getOrderedBrands(brands)
+        const rows: any[][] = []
+        const headerRow: any[] = [
+          { text: title || category_header || 'Category', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8 } }
+        ]
+        orderedBrands.forEach((brand: string) => {
+          headerRow.push({ text: brand, options: getBrandHeaderOptions(brand) })
+        })
+        headerRow.push({ text: 'Total', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'right', fontSize: 8 } })
+        rows.push(headerRow)
+
+        table.forEach((row: any) => {
+          const isTotal = row.category === 'Grand Total'
+          const dataRow: any[] = [
+            { text: String(row.category), options: { bold: isTotal, align: 'left', fontSize: 7 } }
+          ]
+          orderedBrands.forEach((brand: string) => {
+            const rawCount = row?.[`${brand}_count`] !== undefined ? row[`${brand}_count`] : row?.[brand]
+            const count = typeof rawCount === 'number' ? rawCount : (parseFloat(rawCount) || 0)
+            const rawPct = row?.[`${brand}_pct`] !== undefined ? row[`${brand}_pct`] : 0
+            const pct = typeof rawPct === 'number' ? rawPct : (parseFloat(rawPct) || 0)
+            let displayText = ''
+            if (isTotal) {
+              displayText = typeof count === 'number' ? count.toLocaleString() : String(count)
+            } else {
+              displayText = `${count} (${Math.round(pct)}%)`
+            }
+            dataRow.push({ text: displayText, options: { bold: isTotal, align: 'right', fontSize: 7 } })
+          })
+          dataRow.push({ text: typeof row.total === 'number' ? row.total.toLocaleString() : String(row.total || 0), options: { bold: true, align: 'right', fontSize: 7 } })
+          rows.push(dataRow)
+        })
+
+        const colCount = 2 + orderedBrands.length
+        const baseWidth = w / colCount
+        slide.addTable(rows, {
+          x, y, w, h,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 7,
+          fontFace: 'Arial',
+          colW: [baseWidth * 1.2, ...orderedBrands.map(() => baseWidth * 0.9), baseWidth * 0.8],
+          rowH: rows.map(() => 0.2),
+        })
+      }
+
+      const addAgeCityTableFullWidth = (slide: any, matrix: any, x: number, y: number, w: number, h: number) => {
+        if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
+          slide.addText('No data available', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+          return
+        }
+
+        if (!Array.isArray(matrix.brands)) return
+
+        const orderedBrands = getOrderedBrands(matrix.brands)
+
+        const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
+        const allAgeGroups = new Set<string>()
+
+        matrix.table.forEach((row: any) => {
+          const parts = String(row.category).split('|')
+          const city = parts[0] || ''
+          const ageGroup = parts[1] || ''
+          if (city && ageGroup) {
+            allAgeGroups.add(ageGroup)
+            if (!cityAgeMap[city]) cityAgeMap[city] = {}
+            if (!cityAgeMap[city][ageGroup]) cityAgeMap[city][ageGroup] = {}
+            orderedBrands.forEach((brand: string) => {
+              cityAgeMap[city][ageGroup][brand] = Number(row?.[brand]) || 0
+            })
+          }
+        })
+
+        const ageGroupOrder = ['20-30', '30-40', '40-50', '50-60', 'Less than 20']
+        const sortedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
+        const cities = Object.keys(cityAgeMap)
+
+        const totalDataCols = orderedBrands.length * (sortedAgeGroups.length + 1)
+        const totalCols = 1 + totalDataCols
+        const isManyCols = totalCols > 15
+        const cityColWidth = isManyCols ? 0.85 : 1.0
+        const dataColWidth = (w - cityColWidth) / totalDataCols
+        const colWidths = [cityColWidth, ...Array(totalDataCols).fill(dataColWidth)]
+        const subColCount = sortedAgeGroups.length + 1
+        const fontSize = isManyCols ? 5 : 6
+        const rowHeight = isManyCols ? 0.22 : 0.25
+
+        const brandHeaderH = 0.28
+
+        // City & Age Group header box — addText with fill
+        slide.addText('City & Age Group', {
+          x, y, w: cityColWidth, h: brandHeaderH,
+          fontSize: 6, bold: true, color: 'FFFFFF',
+          align: 'center', valign: 'middle', fontFace: 'Arial',
+          fill: { color: NEUTRAL_GREY },
+          line: { color: 'FFFFFF', size: 0.5 },
+        })
+
+        orderedBrands.forEach((brand: string, bIdx: number) => {
+          const brandX = x + cityColWidth + bIdx * subColCount * dataColWidth
+          const brandW = subColCount * dataColWidth
+          const fill = getBrandColor(brand)
+
+          // Brand header box — addText with fill spans the full brand group width
+          slide.addText(brand, {
+            x: brandX, y, w: brandW, h: brandHeaderH,
+            fontSize: 6, bold: true, color: 'FFFFFF',
+            align: 'center', valign: 'middle', fontFace: 'Arial',
+            fill: { color: fill },
+            line: { color: 'FFFFFF', size: 0.5 },
+          })
+        })
+
+        const tableY = y + brandHeaderH
+        const tableH = h - brandHeaderH
+
+        const subHeaderRow: any[] = [
+          { text: '', options: { fill: NEUTRAL_GREY } }
+        ]
+        orderedBrands.forEach((brand: string) => {
+          const fill = getAgeGroupLightColor(brand)
+          sortedAgeGroups.forEach((ageGroup: string) => {
+            subHeaderRow.push({
+              text: ageGroup,
+              options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
+            })
+          })
+          subHeaderRow.push({
+            text: 'Total',
+            options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'center', fontSize: 6, italic: true }
+          })
+        })
+
+        const tableRows: any[][] = [subHeaderRow]
+
+        cities.forEach((city) => {
+          const brandTotals: Record<string, number> = {}
+          orderedBrands.forEach((brand: string) => {
+            brandTotals[brand] = 0
+            sortedAgeGroups.forEach((ageGroup: string) => {
+              brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
+            })
+          })
+
+          const dataRow: any[] = [{ text: city, options: { align: 'left', fontSize: 6, bold: true } }]
+          orderedBrands.forEach((brand: string) => {
+            sortedAgeGroups.forEach((ageGroup: string) => {
+              const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
+              const total = brandTotals[brand] || 1
+              const pct = total > 0 ? ((value / total) * 100) : 0
+              dataRow.push({
+                text: pct > 0 ? `${Math.round(pct)}%` : '—',
+                options: { align: 'right', fontSize: 6 }
+              })
+            })
+            dataRow.push({
+              text: '100%',
+              options: { bold: true, align: 'right', fontSize: 6 }
+            })
+          })
+          tableRows.push(dataRow)
+        })
+
+        const grandRow: any[] = [{ text: 'Grand Total', options: { bold: true, align: 'left', fontSize: 6 } }]
+        orderedBrands.forEach((brand: string) => {
+          let grandTotal = 0
+          cities.forEach((city) => {
+            sortedAgeGroups.forEach((ageGroup: string) => {
+              grandTotal += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
+            })
+          })
+          const totalPerBrand = grandTotal || 1
+          sortedAgeGroups.forEach((ageGroup: string) => {
+            let total = 0
+            cities.forEach((city) => { total += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) })
+            const pct = totalPerBrand > 0 ? ((total / totalPerBrand) * 100) : 0
+            grandRow.push({
+              text: pct > 0 ? `${Math.round(pct)}%` : '—',
+              options: { bold: true, align: 'right', fontSize: 6 }
+            })
+          })
+          grandRow.push({
+            text: '100%',
+            options: { bold: true, align: 'right', fontSize: 6 }
+          })
+        })
+        tableRows.push(grandRow)
+
+        slide.addTable(tableRows, {
+          x, y: tableY, w, h: tableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize,
+          fontFace: 'Arial',
+          colW: colWidths,
+          rowH: tableRows.map(() => rowHeight),
+        })
+      }
+
+      const addSlideTitle = (slide: any, title: string, subtitle: string) => {
+        slide.addText(title, { x: 0.3, y: 0.2, w: 8.0, h: 0.4, fontSize: 18, bold: true, color: '1E293B', fontFace: 'Arial' })
+        if (subtitle) {
+          slide.addText(subtitle, { x: 0.3, y: 0.59, w: 8.0, h: 0.25, fontSize: 10, color: '#2B5797', fontFace: 'Arial' })
+        }
+        slide.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
+        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+      }
+
+      const addDividerSlide = (sectionTitle: string) => {
+        const slide = pptx.addSlide()
+        dividerTOC.push({ title: sectionTitle, slideNumber: slideCounter })
+
+        slide.background = { fill: '1E293B' }
+        slide.addText(sectionTitle, { x: 1.0, y: 2.0, w: 8.0, h: 1.2, fontSize: 38, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Arial' })
+        slide.addShape(pptx.shapes.LINE, { x: 3.5, y: 3.4, w: 3.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
+        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+
+        slide.addText('« Back to Contents', {
+          x: 0.3, y: 5.15, w: 2.4, h: 0.3,
+          fontSize: 10, color: '93C5FD', underline: true, fontFace: 'Arial',
+          hyperlink: { slide: TOC_SLIDE_NUMBER, tooltip: 'Back to Contents' },
+        })
+
+        return slide
+      }
+
+      // ─── HELPER: Add chart (vertical bars) ───
+      const addVerticalBarChart = (slide: any, data: any[], x: number, y: number, w: number, h: number, colors?: string[]) => {
+        if (!data || data.length === 0) {
+          slide.addText('No chart data available', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+          return
+        }
+
+        const resolvedColors = colors && colors.length > 0
+          ? colors
+          : (data.length > 0 && Array.isArray(data[0].labels)
+            ? getBrandColorsArray(getOrderedBrands(data[0].labels as string[]))
+            : ['1871C9', '2AE886', 'E8903D', 'A731AB', 'F59F1B', '0097A7', 'ED6433', '5E35B0'])
+
+        try {
+          slide.addChart(pptx.ChartType.bar, data, {
+            x, y, w, h,
+            chartColors: resolvedColors,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 'top',
+            catAxisLabelFontSize: 7,
+            valAxisLabelFontSize: 7,
+            valAxisMinVal: 0,
+            valAxisMaxVal: 100,
+            valAxisMajorUnit: 20,
+            showValue: true,
+            dataLabelFontSize: 6,
+            dataLabelColor: '333333',
+            barGapWidth: 100,
+          })
+        } catch (err) {
+          console.error('Error adding chart:', err)
+          slide.addText('Chart could not be rendered', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+        }
+      }
+
+      // ─── SLIDE 1: Title Page ───
+      setPptProgress('Generating Slide 1: Title...')
+      const slide1 = pptx.addSlide()
+      slide1.background = { fill: 'FFFFFF' }
+
+      slide1.addText('Survey Analysis Report', { x: 1.0, y: 2.0, w: 8.0, h: 0.8, fontSize: 36, bold: true, color: '1E293B', align: 'left', fontFace: 'Arial' })
+      slide1.addText('Brand Performance & Customer Feedback Analysis', { x: 1.0, y: 2.8, w: 8.0, h: 0.6, fontSize: 18, color: '6C63FF', align: 'left', fontFace: 'Arial' })
+      slide1.addShape(pptx.shapes.LINE, { x: 1.0, y: 3.5, w: 4.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
+      slide1.addText(`Report Generated: ${displayDate}`, { x: 1.0, y: 3.8, w: 8.0, h: 0.4, fontSize: 12, color: '64748B', align: 'left', fontFace: 'Arial' })
+      const tocSlide = pptx.addSlide()
+      tocSlide.background = { fill: 'FFFFFF' }
+      // ─── DIVIDER 1: Demography ───
+      addDividerSlide('Demography')
+
+      // ─── SLIDE 2: Age Group Distribution & City Cross-tabulation ──
+      setPptProgress('Generating Slide 2: Age Group Distribution & City Cross-tabulation...')
+      const slide2 = pptx.addSlide()
+      slide2.background = { fill: 'FFFFFF' }
+
+      addSlideTitle(slide2, 'Age Group Distribution & City Cross-tabulation', 'Distribution of respondents by age category and city')
+
+      try {
+        if (analytics.age_group && Array.isArray(analytics.age_group.brands) && analytics.age_group.brands.length > 0) {
+          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8)
+
+          slide2.addText('Age Group Distribution Chart', {
+            x: 5.1, y: 1.2, w: 4.6, h: 0.2,
+            fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const ageRows = (Array.isArray(analytics.age_group.chart) && analytics.age_group.chart.length > 0)
+            ? analytics.age_group.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.age_group.table)
+              ? analytics.age_group.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedBrands = getOrderedBrands(analytics.age_group.brands)
+
+          if (ageRows.length > 0 && Array.isArray(orderedBrands) && orderedBrands.length > 0) {
+
+            const brandColors = getBrandColorsArray(orderedBrands)
+
+            const chartX = 5.1
+            const chartY = 1.42
+            const chartW = 4.6
+            const chartH = 1.5
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            // ─── FIX: maxPercent = 100 (was 60) ───
+            const maxPercent = 100
+            const bottomLabelSpace = 0.1
+            const actualPlotH = plotH - bottomLabelSpace
+
+            // ─── FIX: Grid values 0, 20, 40, 60, 80, 100 ───
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide2.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              // ─── Y-axis labels OUTSIDE chart with small gap ───
+              slide2.addText(`${pct}%`, {
+                x: plotX - 0.28,    // Start far left
+                y: yPos - 0.05,
+                w: 0.36,            // Width large enough to hold "100%"
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',     // Right-aligned - text ends at x + w
+                valign: 'middle'
+              })
+            })
+
+            // Axis lines
+            slide2.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide2.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = ageRows.length
+            const numBrands = orderedBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            ageRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = brandColors[brandIndex % brandColors.length]
+
+                if (displayValue > 0) {
+                  slide2.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                // ─── DATA LABEL - HORIZONTAL ───
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide2.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.08,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              // Category label
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide2.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            // ─── LEGEND ───
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedBrands.forEach((brand: string, index: number) => {
+              const color = brandColors[index % brandColors.length]
+
+              slide2.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide2.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+
+            console.log('Slide 2: Age Group chart added successfully!')
+          } else {
+            const chartData = matrixToChartData(analytics.age_group, 'percent')
+            if (chartData.length > 0) {
+              addVerticalBarChart(slide2, chartData, 5.1, 1.48, 4.6, 1.8)
+            }
+          }
+        }
+
+        if (analytics.age_city && Array.isArray(analytics.age_city.brands) && analytics.age_city.brands.length > 0) {
+          slide2.addText('Age Group by City & Brand (Cross-tabulation)', {
+            x: 0.3, y: 3.25, w: 9.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addAgeCityTableFullWidth(slide2, analytics.age_city, 0.3, 3.5, 9.4, 3.35)
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 2 ERROR:', e);
+        slide2.addText(`Slide 2 error: ${e?.message}`, {
+          x: 0.3, y: 2.0, w: 9.4, h: 0.5,
+          fontSize: 10, color: 'CC0000', align: 'center'
+        })
+      }
+      // ─── SLIDE 3: Mode of Purchase & Ownership ──────────────────
+      setPptProgress('Generating Slide 3: Mode of Purchase & Ownership...')
+      const slide3 = pptx.addSlide()
+      slide3.background = { fill: 'FFFFFF' }
+
+      addSlideTitle(slide3, 'Mode of Purchase & Ownership', 'Purchase channel preferences & ownership distribution')
+
+      try {
+        if (analytics.mode_of_purchase && Array.isArray(analytics.mode_of_purchase.brands) && analytics.mode_of_purchase.brands.length > 0) {
+          slide3.addText('Mode of Purchase', {
+            x: 0.3, y: 1.3, w: 4.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4)
+
+          slide3.addText('Mode of Purchase Chart', {
+            x: 0.3, y: 2.98, w: 4.4, h: 0.18,
+            fontSize: 8, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const modeRows = (Array.isArray(analytics.mode_of_purchase.chart) && analytics.mode_of_purchase.chart.length > 0)
+            ? analytics.mode_of_purchase.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.mode_of_purchase.table)
+              ? analytics.mode_of_purchase.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedModeBrands = getOrderedBrands(analytics.mode_of_purchase.brands)
+
+          if (modeRows.length > 0 && Array.isArray(orderedModeBrands) && orderedModeBrands.length > 0) {
+            const modeColors = getBrandColorsArray(orderedModeBrands)
+
+            const chartX = 0.3
+            const chartY = 3.18
+            const chartW = 4.4
+            const chartH = 2.0
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            const maxPercent = 100
+            const bottomLabelSpace = 0.15
+            const actualPlotH = plotH - bottomLabelSpace
+
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide3.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              slide3.addText(`${pct}%`, {
+                x: plotX - 0.28,
+                y: yPos - 0.05,
+                w: 0.35,
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',
+                valign: 'middle'
+              })
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = modeRows.length
+            const numBrands = orderedModeBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            modeRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedModeBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = modeColors[brandIndex % modeColors.length]
+
+                if (displayValue > 0) {
+                  slide3.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide3.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.10,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide3.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedModeBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedModeBrands.forEach((brand: string, index: number) => {
+              const color = modeColors[index % modeColors.length]
+
+              slide3.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide3.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+          } else {
+            const modeData = matrixToChartData(analytics.mode_of_purchase, 'percent')
+            if (modeData.length > 0) addVerticalBarChart(slide3, modeData, 0.3, 3.18, 4.4, 2.0)
+          }
+        }
+
+        if (analytics.ownership && Array.isArray(analytics.ownership.brands) && analytics.ownership.brands.length > 0) {
+          slide3.addText('Ownership', {
+            x: 5.3, y: 1.3, w: 4.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4)
+
+          slide3.addText('Ownership Chart', {
+            x: 5.3, y: 2.98, w: 4.4, h: 0.18,
+            fontSize: 8, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const ownRows = (Array.isArray(analytics.ownership.chart) && analytics.ownership.chart.length > 0)
+            ? analytics.ownership.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.ownership.table)
+              ? analytics.ownership.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedOwnBrands = getOrderedBrands(analytics.ownership.brands)
+
+          if (ownRows.length > 0 && Array.isArray(orderedOwnBrands) && orderedOwnBrands.length > 0) {
+            const ownColors = getBrandColorsArray(orderedOwnBrands)
+
+            const chartX = 5.3
+            const chartY = 3.18
+            const chartW = 4.4
+            const chartH = 2.0
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            const maxPercent = 100
+            const bottomLabelSpace = 0.15
+            const actualPlotH = plotH - bottomLabelSpace
+
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide3.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              slide3.addText(`${pct}%`, {
+                x: plotX - 0.28,
+                y: yPos - 0.05,
+                w: 0.36,
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',
+                valign: 'middle'
+              })
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = ownRows.length
+            const numBrands = orderedOwnBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            ownRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedOwnBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = ownColors[brandIndex % ownColors.length]
+
+                if (displayValue > 0) {
+                  slide3.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide3.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.10,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide3.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedOwnBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedOwnBrands.forEach((brand: string, index: number) => {
+              const color = ownColors[index % ownColors.length]
+
+              slide3.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide3.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+          } else {
+            const ownershipData = matrixToChartData(analytics.ownership, 'percent')
+            if (ownershipData.length > 0) addVerticalBarChart(slide3, ownershipData, 5.3, 3.18, 4.4, 2.0)
+          }
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 3 ERROR:', e);
+      }
+
+      // ─── SLIDE 4: User Profession Distribution ──────────────────
+      setPptProgress('Generating Slide 4: User Profession Distribution...')
+      const slide4 = pptx.addSlide()
+      slide4.background = { fill: 'FFFFFF' }
+      addSlideTitle(slide4, 'User Profession Distribution', 'Professional background of survey respondents')
+
+      try {
+        let profMatrix = analytics.profession || analytics.professions
+        if (!profMatrix) {
+          const professionKey = Object.keys(analytics).find(key => key.toLowerCase().includes('profession'))
+          if (professionKey) profMatrix = analytics[professionKey]
+        }
+
+        const hasProfData = profMatrix && typeof profMatrix === 'object' && !Array.isArray(profMatrix) && profMatrix.brands && Array.isArray(profMatrix.brands) && profMatrix.brands.length > 0
+
+        if (hasProfData) {
+          slide4.addText('Profession Distribution', {
+            x: 0.3, y: 1.0, w: 4.4, h: 0.25,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+
+          if (Array.isArray(profMatrix.table) && profMatrix.table.length > 0) {
+            addMatrixTable(slide4, profMatrix, 'Profession', 0.3, 1.3, 4.4, 3.8)
+          }
+
+          slide4.addText('Profession Distribution by Brand', {
+            x: 5.3, y: 1.0, w: 4.4, h: 0.25,
+            fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const profRows = (Array.isArray(profMatrix.chart) && profMatrix.chart.length > 0)
+            ? profMatrix.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(profMatrix.table)
+              ? profMatrix.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          if (profRows.length > 0 && Array.isArray(profMatrix.brands)) {
+            const orderedProfBrands = getOrderedBrands(profMatrix.brands)
+            const profColors = getBrandColorsArray(orderedProfBrands)
+
+            const chartX = 5.3
+            const chartY = 1.3
+            const chartW = 4.4
+            const chartH = 3.8
+
+            const plotX = chartX + 0.45
+            const plotY = chartY + 0.15
+            const plotW = chartW - 0.55
+            const plotH = chartH - 0.35
+            const maxPercent = 100
+            const bottomLabelSpace = 0.55
+            const actualPlotH = plotH - bottomLabelSpace
+
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide4.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              slide4.addText(`${pct}%`, {
+                x: plotX - 0.30,
+                y: yPos - 0.07,
+                w: 0.38,
+                h: 0.14,
+                fontSize: 5.5,
+                color: '666666',
+                align: 'right',
+                valign: 'middle'
+              })
+            })
+
+            slide4.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide4.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = profRows.length
+            const numBrands = orderedProfBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.18, categoryWidth * 0.2)
+            const barGap = 0.03
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            profRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedProfBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = profColors[brandIndex % profColors.length]
+
+                if (displayValue > 0) {
+                  slide4.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = barWidth + 0.30
+
+                  slide4.addText(labelText, {
+                    x: xPos - 0.15,
+                    y: yPos - 0.15,
+                    w: labelWidth,
+                    h: 0.14,
+                    fontSize: 5,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              const labelX = categoryCenter - 0.4
+              const labelY = plotY + actualPlotH + 0.05
+
+              slide4.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.80,
+                h: 0.2,
+                fontSize: 5.5,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            const legendY = chartY + chartH - 0.30
+            const legendItemWidths = orderedProfBrands.map(() => 0.9)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedProfBrands.forEach((brand: string, index: number) => {
+              const color = profColors[index % profColors.length]
+
+              slide4.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.06,
+                h: 0.06,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide4.addText(brand, {
+                x: legendX + 0.03,
+                y: legendY,
+                w: legendItemWidths[index] - 0.03,
+                h: 0.08,
+                fontSize: 4,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+          }
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 4 ERROR:', e)
+      }
+
+      // ─── DIVIDER 2: Service Dashboard ───
+      //addDividerSlide('Service Dashboard')
+
+      // ─── SPECIFIC CORPORATE SLIDE RENDERER ONLY FOR SLIDES 6 & 7 (SERVICE SECTIONS) ───
+      const renderCorporateServiceSlide = (
+        sectionTitle: string,
+        questionText: string,
+        freqData: any
+      ) => {
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+
+        // Slide Outer Border
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 0.05, y: 0.05, w: 9.9, h: 5.525,
+          fill: { color: 'FFFFFF', transparency: 100 },
+          line: { color: 'E2E8F0', width: 0.5 }
+        })
+
+        // Header Top Left
+        slide.addText("Respondent Profile Demographic", {
+          x: 0.4, y: 0.16, w: 7.2, h: 0.32,
+          fontSize: 24, bold: true, color: '1E1B4B', fontFace: 'Arial'
+        })
+        slide.addText(questionText, {
+          x: 0.4, y: 0.50, w: 7.2, h: 0.32,
+          fontSize: 18, bold: true, color: '1E1B4B', fontFace: 'Arial'
+        })
+
+        // Header Top Right Logo
+        slide.addImage({
+          path: '/assets/logo.png',
+          x: 8.6, y: 0.16, w: 1.1, h: 0.52
+        })
+
+        // Decorative Rainbow Line
+        const rainbowColors = ['00B4D8', 'F97316', '7C3AED', 'EC4899', '10B981', 'F59E0B', '06B6D4']
+        const totalLineWidth = 9.3
+        const segWidth = totalLineWidth / rainbowColors.length
+        rainbowColors.forEach((color, idx) => {
+          slide.addShape(pptx.ShapeType.rect, {
+            x: 0.35 + idx * segWidth, y: 0.86, w: segWidth, h: 0.025,
+            fill: { color: color },
+            line: { transparency: 100 }
+          })
+        })
+
+        // Chart Container (Rounded Rectangle)
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 0.35, y: 0.95, w: 9.3, h: 4.45,   // 0.95 → 5.40, spans through table bottom
+          fill: { color: 'F4F8FC' },
+          line: { color: 'E2E8F0', width: 0.75 }
+        })
+        // Chart Container Title Box
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 3.95, y: 0.98, w: 2.1, h: 0.24,          // was y: 1.01, h: 0.30
+          fill: { color: 'FFFFFF' },
+          line: { color: 'CBD5E1', width: 0.75 }
+        })
+        slide.addText(sectionTitle, {
+          x: 3.95, y: 0.98, w: 2.1, h: 0.24,          // was y: 1.01, h: 0.30
+          fontSize: 11, bold: true, color: '000000', align: 'center', valign: 'middle', fontFace: 'Arial'   // was fontSize: 15
+        })
+
+        const categories = freqData?.categories || []
+        const brandBreakdown = freqData?.brand_breakdown || []
+        const rawBrands = brandBreakdown.length > 0
+          ? brandBreakdown.map((b: any) => b.brand)
+          : (analytics?.age_group?.brands || ['TVS', 'HONDA', 'YAMAHA'])
+        const orderedBrands = getOrderedBrands(rawBrands)
+
+
+        const brandColors = getBrandColorsArray(orderedBrands)
+        // Native PPT Chart Generation
+        if (categories.length > 0 && orderedBrands.length > 0) {
+          const catLabels = categories.map((c: any) => String(c.category || ''))
+          const chartSeries = orderedBrands.map((bName: string) => {
+            const brandObj = brandBreakdown.find((item: any) => item.brand === bName)
+            const values = categories.map((c: any) => {
+              const match = brandObj?.categories?.find((item: any) => item.category === c.category)
+              return match ? Math.round(match.percentage || 0) : 0
+            })
+            return {
+              name: bName,
+              labels: catLabels,
+              values: values
+            }
+          })
+
+          try {
+            slide.addChart(pptx.ChartType.bar, chartSeries, {
+              x: 0.45,
+              y: 1.24,                    // was y: 1.35 — chart starts higher
+              w: 9.1,
+              h: 2.15,
+              barDir: 'col',          // ← vertical bars, this is what makes it a "column" chart
+              chartColors: brandColors,
+              chartColorsOpacity: 100,
+              showTitle: false,
+              showLegend: true,
+              legendPos: 't',
+              legendFontSize: 6.5,
+              legendFontFace: 'Arial',
+              catAxisLabelFontSize: 8.5,
+              catAxisLabelColor: '475569',
+              catAxisLabelFontFace: 'Arial',
+              catGridLine: { style: 'none' },
+              valGridLine: { style: 'none' },
+              valAxisHidden: true,
+              showValue: true,
+              dataLabelFormatCode: '0"%"',
+              dataLabelFontSize: 8,
+              dataLabelColor: '333333',
+              dataLabelFontFace: 'Arial',
+              dataLabelPosition: 'outEnd',
+              barGapWidth: 50,
+            })
+          } catch (chartErr) {
+            console.error('Error adding native PPT chart:', chartErr)
+            // add a visible fallback so future bugs don't silently disappear
+            slide.addText('Chart could not be rendered', {
+              x: 0.45, y: 1.35, w: 9.1, h: 2.18,
+              fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle',
+            })
+          }
+        } else {
+          slide.addText(`No ${sectionTitle} data available for the active filters.`, {
+            x: 0.5, y: 1.8, w: 9.0, h: 1.0,
+            fontSize: 13, bold: true, color: '94A3B8', align: 'center', valign: 'middle', fontFace: 'Arial'
+          })
+        }
+
+        // Table Below Chart Container (aligned at x: 0.35, w: 9.3 to match chart container)
+        const tableX = 0.35
+        const tableY = 3.55
+        const tableW = 9.3
+        const tableH = 1.85
+
+        const tableRows: any[][] = []
+
+        // Header Row
+        const headerRow: any[] = [
+          {
+            text: sectionTitle === 'KMS Frequency' ? 'Kms frequency' : 'Time frequency',
+            options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'center', valign: 'middle', fontSize: 6.5 }
+            //              was: fill: '1871C9'  ↑
+          }
+        ]
+        orderedBrands.forEach((b: string, i: number) => {
+          headerRow.push({
+            text: b,
+            options: { bold: true, fill: brandColors[i], color: 'FFFFFF', align: 'center', valign: 'middle', fontSize: 8.5 }
+          })
+        })
+        tableRows.push(headerRow)
+
+        if (categories.length > 0) {
+          // Data Rows
+          categories.forEach((catItem: any) => {
+            const rowCells: any[] = [
+              {
+                text: String(catItem.category),
+                options: { bold: false, fill: 'FFFFFF', color: '1E293B', align: 'left', valign: 'middle', fontSize: 8 }
+              }
+            ]
+
+            orderedBrands.forEach((b: string) => {
+              const brandObj = brandBreakdown.find((item: any) => item.brand === b)
+              const match = brandObj?.categories?.find((item: any) => item.category === catItem.category)
+              const count = match ? match.count : 0
+
+              rowCells.push({
+                text: String(count),
+                options: { bold: false, fill: 'FFFFFF', color: '1E293B', align: 'center', valign: 'middle', fontSize: 8 }
+              })
+            })
+
+            tableRows.push(rowCells)
+          })
+
+          // Grand Total Row
+          const grandTotalRow: any[] = [
+            {
+              text: 'Grand Total',
+              options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'center', valign: 'middle', fontSize: 8.5 }
+              //              was: fill: '1871C9'  ↑
+            }
+          ]
+          orderedBrands.forEach((b: string, i: number) => {
+            const brandObj = brandBreakdown.find((item: any) => item.brand === b)
+            const bTotal = brandObj ? brandObj.total : 0
+            grandTotalRow.push({
+              text: String(bTotal),
+              options: { bold: true, fill: brandColors[i], color: 'FFFFFF', align: 'center', valign: 'middle', fontSize: 8.5 }
+            })
+          })
+          tableRows.push(grandTotalRow)
+        } else {
+          const emptyRow: any[] = [
+            {
+              text: 'No data available for current filters',
+              options: { bold: false, fill: 'FFFFFF', color: '94A3B8', align: 'center', valign: 'middle', fontSize: 8 }
+            }
+          ]
+          orderedBrands.forEach(() => {
+            emptyRow.push({
+              text: '-',
+              options: { bold: false, fill: 'FFFFFF', color: '94A3B8', align: 'center', valign: 'middle', fontSize: 8 }
+            })
+          })
+          tableRows.push(emptyRow)
+        }
+
+        const numCols = Math.max(1, tableRows[0]?.length || 1)
+        const catColW = 2.4
+        const brandColW = numCols > 1 ? (tableW - catColW) / (numCols - 1) : tableW
+        const colWidths = numCols > 1 ? [catColW, ...Array(numCols - 1).fill(brandColW)] : [catColW]
+
+        slide.addTable(tableRows, {
+          x: tableX, y: tableY, w: tableW, h: tableH,
+          border: { type: 'solid', color: 'D1D5DB', size: 0.5 },
+          fontSize: 8,
+          fontFace: 'Arial',
+          colW: colWidths,
+          rowH: tableRows.map(() => 0.22)
+        })
+      }
+
+      // ─── SLIDE 6: Service Frequency by KMS ───
+      setPptProgress('Generating Slide 6: Service Frequency by KMS...')
+      renderCorporateServiceSlide(
+        'KMS Frequency',
+        'What KMS frequency do you get your vehicle serviced?',
+        kmsDataAll
+      )
+
+      // ─── SLIDE 7: Service Frequency by Time ───
+      setPptProgress('Generating Slide 7: Service Frequency by Time...')
+      renderCorporateServiceSlide(
+        'Time Frequency',
+        'What time frequency do you get your vehicle serviced?',
+        timeDataAll
+      )
+
+      // ─── DIVIDER: Section A ───
+
+      // ─── DIVIDER: Authorized Workshop NPS ───
+      addDividerSlide('Authorized Workshop NPS')
+
+      // ─── SLIDE: Authorized Workshop Recommendation (Brand-wise) ───
+      setPptProgress('Generating Slide: Authorized Workshop Recommendation...')
+      const slideAuthRec = pptx.addSlide()
+      addSlideTitle(
+        slideAuthRec,
+        'Will you recommend your friends / family members for servicing their vehicle at Authorized service workshop?',
+        ''
+      )
+
+      const authBreakdown = serviceNpsData?.authorized?.brand_breakdown || []
+      const rawAuthBrands = authBreakdown.map((b: any) => b.brand)
+      const orderedAuthBrands = getOrderedBrands(rawAuthBrands)
+
+      // Compact Model Base table — smaller footprint, positioned a bit higher, no Total row
+      const tableStartY = 1.05
+      const tableRowH = 0.22
+      const tableColModelW = 1.5
+      const tableColBaseW = 0.7
+
+      slideAuthRec.addText('Model', {
+        x: 0.3, y: tableStartY, w: tableColModelW, h: tableRowH,
+        fill: 'E0E0E0', color: '333333', bold: true, align: 'left', fontSize: 8,
+        border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+        line: { color: 'CCCCCC', width: 1 }
+      })
+      slideAuthRec.addText('Base', {
+        x: 0.3 + tableColModelW, y: tableStartY, w: tableColBaseW, h: tableRowH,
+        fill: 'E0E0E0', color: '333333', bold: true, align: 'center', fontSize: 8,
+        border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+        line: { color: 'CCCCCC', width: 1 }
+      })
+
+      let currentY = tableStartY + tableRowH
+      orderedAuthBrands.forEach((brand) => {
+        const brandData = authBreakdown.find((d: any) => d.brand === brand)
+        const base = brandData ? brandData.total_responses : 0
+
+        slideAuthRec.addText(brand, {
+          x: 0.3, y: currentY, w: tableColModelW, h: tableRowH,
+          fill: getBrandColor(brand), color: 'FFFFFF', bold: true, align: 'left', fontSize: 8,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+        slideAuthRec.addText(String(base), {
+          x: 0.3 + tableColModelW, y: currentY, w: tableColBaseW, h: tableRowH,
+          color: '333333', align: 'center', fontSize: 8,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+        currentY += tableRowH
+      })
+
+      // Brand-wise Recommendation Pie Charts — placed below the Model Base table
+      const pieCount = orderedAuthBrands.length
+      const pieSize = 2.0
+      const pieGap = 0.3
+      const totalPieWidth = pieCount * pieSize + (pieCount - 1) * pieGap
+      const slideContentWidth = 9.4 // available width between left/right margins
+      let pieX = 0.3 + Math.max(0, (slideContentWidth - totalPieWidth) / 2)
+      const pieStartY = currentY + 0.35
+
+      orderedAuthBrands.forEach((brand) => {
+        const brandData = authBreakdown.find((d: any) => d.brand === brand)
+        if (brandData && (brandData.recommend_yes > 0 || brandData.recommend_no > 0)) {
+          const chartData = [
+            { name: 'Recommendation', labels: ['Yes', 'No'], values: [brandData.recommend_yes, brandData.recommend_no] }
+          ]
+
+          slideAuthRec.addText(brand, {
+            x: pieX, y: pieStartY, w: pieSize, h: 0.35,
+            color: '1E293B', bold: true, align: 'center', fontSize: 9, fontFace: 'Arial'
+          })
+
+          slideAuthRec.addChart(pptx.charts.PIE, chartData, {
+            x: pieX, y: pieStartY + 0.2, w: pieSize, h: pieSize,
+            showLegend: true,
+            legendPos: 'b',
+            legendFontSize: 9,
+            showTitle: false,
+            dataLabelFormatCode: '0%',
+            showValue: false,
+            showPercent: true,
+            dataLabelColor: 'FFFFFF',
+            dataLabelFontSize: 8,
+            dataLabelFontFace: 'Arial',
+            dataLabelPosition: 'ctr',
+            chartColors: ['4CAF50', 'F44336'],
+            chartColorsOpacity: 100,
+          })
+
+          pieX += pieSize + pieGap
+        }
+      })
+
+      // ─── HELPER: Render Service NPS Overall Based on Workshop Slide ───
+      const renderServiceNpsOverallSlide = (
+        workshopKey: 'authorized' | 'pgm',
+        sectionTitle: string = 'Service NPS Overall Based on Workshop'
+      ) => {
+        setPptProgress(`Generating Slide: ${sectionTitle} (${workshopKey.toUpperCase()})...`)
+        const workshopData = serviceNpsData?.[workshopKey] || {}
+        const breakdown = workshopData?.brand_breakdown || []
+        const rawBrands = breakdown.map((b: any) => b.brand)
+        const orderedBrands = getOrderedBrands(rawBrands.length > 0 ? rawBrands : (analytics?.age_group?.brands || ['TVS', 'HONDA', 'YAMAHA']))
+
+        const slideNpsOverall = pptx.addSlide()
+        slideNpsOverall.background = { fill: 'FFFFFF' }
+        addSlideTitle(slideNpsOverall, sectionTitle, '')
+
+        // ─── Model / Base table (top-left) — compact, moved up ───
+        const tableStartYOverall = 1.05
+        const headerHOverall = 0.28
+        const modelColWOverall = 1.3
+        const baseColWOverall = 0.6
+
+        slideNpsOverall.addText('MODEL', {
+          x: 0.3, y: tableStartYOverall, w: modelColWOverall, h: headerHOverall,
+          fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+        slideNpsOverall.addText('BASE', {
+          x: 0.3 + modelColWOverall, y: tableStartYOverall, w: baseColWOverall, h: headerHOverall,
+          fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+
+        const tableRowHOverall = 0.22
+        let modelRowYOverall = tableStartYOverall + headerHOverall
+        orderedBrands.forEach((brand) => {
+          const bd = breakdown.find((d: any) => d.brand === brand)
+          const base = bd ? bd.total_responses : 0
+          slideNpsOverall.addText(brand, {
+            x: 0.3, y: modelRowYOverall, w: modelColWOverall, h: tableRowHOverall,
+            fill: getBrandColor(brand), color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 8,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          slideNpsOverall.addText(String(base), {
+            x: 0.3 + modelColWOverall, y: modelRowYOverall, w: baseColWOverall, h: tableRowHOverall,
+            fill: 'FFFFFF', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          modelRowYOverall += tableRowHOverall
+        })
+        const tableBottomYOverall = modelRowYOverall
+
+        const overallCount = workshopData?.total_responses || 0
+        const labelName = workshopKey === 'authorized' ? 'Overall Authorized Workshop' : 'Overall PGM Workshop'
+        slideNpsOverall.addText(`${labelName} : ${overallCount}`, {
+          x: 0.3,
+          y: tableBottomYOverall + 3.0,
+          w: 2.2,
+          h: 0.32,
+
+          color: '1E293B',
+          bold: true,
+          align: 'center',
+          valign: 'middle',
+          fontSize: 7,
+          fontFace: 'Arial'
+        })
+
+        // ─── Badges (top-center, stacked) ───
+        slideNpsOverall.addText('BEST IN MARKET', {
+          x: 3.7, y: 0.95, w: 2.6, h: 0.28,
+          fill: '4CAF50', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+        })
+        slideNpsOverall.addText('SCOPE OF IMPROVEMENT', {
+          x: 3.7, y: 1.25, w: 2.6, h: 0.28,
+          fill: 'F44336', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+        })
+
+        // ─── Legend ───
+        const NPS_COLORS_OVERALL = ['4CAF50', 'FFC107', 'F44336']
+        const legendItemsOverall = [
+          { label: 'Promoter', color: NPS_COLORS_OVERALL[0] },
+          { label: 'Passive', color: NPS_COLORS_OVERALL[1] },
+          { label: 'Detractor', color: NPS_COLORS_OVERALL[2] },
+        ]
+        const LEGEND_BOX_OVERALL = 0.10
+        const LEGEND_FONT_OVERALL = 8
+        const legendItemWOverall = 0.9
+        const legendTotalWOverall = legendItemsOverall.length * legendItemWOverall
+        let legendXOverall = (10 - legendTotalWOverall) / 2 + 0.15
+        const legendYOverall = 1.65
+
+        legendItemsOverall.forEach((item) => {
+          slideNpsOverall.addShape(pptx.ShapeType.rect, {
+            x: legendXOverall, y: legendYOverall, w: LEGEND_BOX_OVERALL, h: LEGEND_BOX_OVERALL,
+            fill: { color: item.color }, line: { color: item.color, transparency: 100 }
+          })
+          slideNpsOverall.addText(item.label, {
+            x: legendXOverall + 0.16, y: legendYOverall - 0.05, w: 0.75, h: 0.22,
+            color: '333333', fontSize: LEGEND_FONT_OVERALL, align: 'left', valign: 'middle', fontFace: 'Calibri'
+          })
+          legendXOverall += legendItemWOverall
+        })
+
+        // ─── Overall Label ───
+        const overallYPos = 1.97
+        const overallHPos = 0.25
+        slideNpsOverall.addText('Overall', {
+          x: 3.9, y: overallYPos, w: 2.6, h: overallHPos,
+          color: '1E293B', bold: true, align: 'center', fontSize: 10, fontFace: 'Calibri'
+        })
+        const overallBottomYPos = overallYPos + overallHPos
+
+        // ─── Build chart data ───
+        const chartDataOverall: any[] = [
+          { name: 'Promoter', labels: [], values: [] },
+          { name: 'Passive', labels: [], values: [] },
+          { name: 'Detractor', labels: [], values: [] },
+        ]
+        const npsScoresOverall: { brand: string; nps: number }[] = []
+
+        orderedBrands.forEach((brand) => {
+          const bd = breakdown.find((d: any) => d.brand === brand)
+          const promPct = bd ? Math.round(bd.promoters_pct || 0) : 0
+          const passPct = bd ? Math.round(bd.passives_pct || 0) : 0
+          const detrPct = bd ? Math.round(bd.detractors_pct || 0) : 0
+          const npsScore = bd ? Math.round(bd.nps_score || 0) : 0
+
+          chartDataOverall[0].labels.push(brand); chartDataOverall[0].values.push(promPct)
+          chartDataOverall[1].labels.push(brand); chartDataOverall[1].values.push(passPct)
+          chartDataOverall[2].labels.push(brand); chartDataOverall[2].values.push(detrPct)
+
+          npsScoresOverall.push({ brand, nps: npsScore })
+        })
+
+        const bestBrandOverall = npsScoresOverall.length > 0
+          ? npsScoresOverall.reduce((best, cur) => (cur.nps > best.nps ? cur : best), npsScoresOverall[0])
+          : null
+
+        const npsBoxYOverall = Math.max(tableBottomYOverall, overallBottomYPos) + 0.2
+        const npsBoxHOverall = 0.4
+        const chartGapOverall = 0.15
+        const barsTopYOverall = npsBoxYOverall + npsBoxHOverall + chartGapOverall
+
+        const chartWOverall = 7.2
+        const chartXOverall = (10 - chartWOverall) / 2
+        const barsHOverall = 2.2
+        const numBrandsOverall = orderedBrands.length
+
+        const PLOT_LAYOUT_OVERALL = { x: 0.02, y: 0.08, w: 0.96, h: 0.72 }
+
+        slideNpsOverall.addChart(pptx.charts.BAR, chartDataOverall, {
+          x: chartXOverall, y: barsTopYOverall, w: chartWOverall, h: barsHOverall,
+          layout: PLOT_LAYOUT_OVERALL,
+          barDir: 'col',
+          barGrouping: 'clustered',
+          showLegend: false,
+          showTitle: false,
+          chartColors: NPS_COLORS_OVERALL,
+          showValue: true,
+          dataLabelPosition: 'outEnd',
+          dataLabelFontSize: 9,
+          dataLabelFontFace: 'Arial',
+          dataLabelColor: '333333',
+          dataLabelFormatCode: '0"%"',
+          valAxisHidden: false,
+          valAxisLineShow: false,
+          valAxisLineColor: '6a6a6a',
+          valAxisLabelFontSize: 8,
+          valAxisLabelColor: '1E293B',
+          valAxisLabelFormatCode: '0"%"',
+          valAxisLabelPos: 'none',
+          valAxisMajorTickMark: 'none',
+          valAxisMinorTickMark: 'none',
+          valAxisMaxVal: 100,
+          valAxisMinVal: 0,
+          valGridLine: { style: 'none' },
+          catAxisLineShow: true,
+          catAxisLineColor: '6a6a6a',
+          catAxisLabelPos: 'low',
+          catAxisLabelFontSize: 8,
+          barGapWidthPct: 180,
+          barOverlapPct: -35,
+        })
+
+        // ─── NPS score boxes above chart ───
+        const plotXOverall = chartXOverall + PLOT_LAYOUT_OVERALL.x * chartWOverall
+        const plotWOverall = PLOT_LAYOUT_OVERALL.w * chartWOverall
+        const groupWOverall = plotWOverall / Math.max(1, numBrandsOverall)
+
+        npsScoresOverall.forEach((item, idx) => {
+          const boxW = Math.min(1.4, groupWOverall * 0.85)
+          const boxX = plotXOverall + idx * groupWOverall + (groupWOverall - boxW) / 2
+          const isBest = bestBrandOverall ? item.brand === bestBrandOverall.brand : false
+          const isTvsBest = isBest && !!bestBrandOverall && bestBrandOverall.brand.includes('TVS')
+          const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+
+          slideNpsOverall.addText(`NPS ${item.nps}%`, {
+            x: boxX, y: npsBoxYOverall, w: boxW, h: npsBoxHOverall,
+            fill: boxColor, color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+          })
+        })
+      }
+
+      // ─── SLIDE: Authorized Service NPS Overall Based on Workshop ───
+      renderServiceNpsOverallSlide('authorized', 'Service NPS Overall Based on Workshop')
+
+      // ─── DIVIDER: Benefits & Betterments ───
+      addDividerSlide('Benefits & Betterments')
+
+      // Helper function to generate Benefits & Betterments slides matching handleDownloadPPT corporate layout
+      const renderCorporateBenefitsBettermentsSlides = (
+        sectionName: string,
+        sectionKey: 'authorized' | 'pgm'
+      ) => {
+        const rawBenefitsData = serviceBenefitsData?.data || serviceBenefitsData || {}
+        const secData = rawBenefitsData?.[sectionKey] || {
+          sample_size: 0,
+          overall: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
+          promoter: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
+          passive: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
+          detractor: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
+        }
+
+        const sampleSize = secData.sample_size || 0
+        const overall = secData.overall || {}
+        const brandBenefits = overall.brand_benefits || {}
+        const brandIssues = overall.brand_issues || {}
+
+        // Helper to format items for panel chart
+        const formatFeedbackItems = (
+          items: any[],
+          overallItems: any[],
+          isOverallCategory: boolean,
+          base: number
+        ) => {
+          const isJunkTopicName = (name: string) => {
+            if (!name) return true
+            const s = String(name).trim().toLowerCase()
+            if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
+            if (!isNaN(Number(s))) return true
+            const junkWords = [
+              'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
+              'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
+              'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
+              'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
+            ]
+            if (junkWords.includes(s)) return true
+            if (s.startsWith('submitform')) return true
+            return false
+          }
+
+          return (items || [])
+            .filter((it: any) => !isJunkTopicName(it.topic || it.issue || it.name))
+            .map((it: any) => {
+              const itemName = String(it.topic || it.issue || it.name || '')
+              const count = Number(it.count || 0)
+              let percentage = 0
+
+              if (isOverallCategory) {
+                percentage = base > 0 ? Math.round((count / base) * 100) : 0
+              } else {
+                const overallMatch = (overallItems || []).find(
+                  (o: any) => String(o.topic || o.issue || o.name || '').trim().toLowerCase() === itemName.trim().toLowerCase()
+                )
+                const totalCount = overallMatch ? Number(overallMatch.count || 0) : count
+                percentage = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0
+              }
+
+              return {
+                name: itemName,
+                count: count,
+                percentage: percentage,
+              }
+            })
+        }
+
+        // Helper to render horizontal bar chart panel matching handleDownloadPPT
+        const renderPanelChart = (
+          slideObj: any,
+          panelX: number,
+          panelY: number,
+          panelW: number,
+          panelH: number,
+          items: { name: string; count: number; percentage: number }[],
+          isGreen: boolean
+        ) => {
+          if (!items || items.length === 0) {
+            slideObj.addText('No data available', {
+              x: panelX + 0.2, y: panelY + 2.0, w: panelW - 0.4, h: 0.4,
+              fontSize: 10, color: '999999', align: 'center', fontFace: 'Arial',
+            })
+            return
+          }
+
+          const top10 = items.slice(0, 10)
+          const reversed = [...top10].reverse()
+
+          const chartData = [
+            {
+              name: isGreen ? 'Benefits' : 'Betterment',
+              labels: reversed.map((it) => it.name),
+              values: reversed.map((it) => it.percentage),
+            },
+          ]
+
+          const maxVal = Math.max(...chartData[0].values, 10)
+          const valAxisMax = Math.min(100, Math.max(20, Math.ceil(maxVal / 10) * 10))
+
+          try {
+            slideObj.addChart(pptx.ChartType.bar, chartData, {
+              x: panelX + 0.1,
+              y: panelY + 0.40,
+              w: panelW - 0.2,
+              h: panelH - 0.50,
+              barDir: 'bar',
+              barGrouping: 'standard',
+              chartColors: [isGreen ? '28A745' : 'DC3545'],
+              showTitle: false,
+              showLegend: false,
+              showValue: true,
+              dataLabelPosition: 'outEnd',
+              dataLabelFormatCode: '0"%"',
+              dataLabelFontSize: 8,
+              dataLabelColor: '1E293B',
+              dataLabelFontFace: 'Arial',
+              catAxisLabelFontSize: 8,
+              catAxisLabelColor: '333333',
+              catAxisLineShow: false,
+              valAxisLineShow: false,
+              valAxisHidden: false,
+              valAxisMinVal: 0,
+              valAxisMaxVal: valAxisMax,
+              valAxisMajorUnit: Math.max(5, Math.ceil(valAxisMax / 5)),
+              valAxisLabelFormatCode: '0"%"',
+              valAxisLabelFontSize: 5.5,
+              valAxisLabelColor: '666666',
+              valGridLine: { style: 'dash', color: 'E0E0E0' },
+              barGapWidthPct: 40,
+            })
+          } catch (err) {
+            console.error('Error adding panel chart:', err)
+          }
+        }
+
+        // Helper to create a dual-panel slide (Green Benefits on Left, Red Betterment on Right)
+        const createFeedbackPanelSlide = (
+          slideTitle: string,
+          benefitItemsRaw: any[],
+          issueItemsRaw: any[],
+          overallBenefitItemsRaw: any[],
+          overallIssueItemsRaw: any[],
+          isOverallCategory: boolean,
+          baseCount: number
+        ) => {
+          setPptProgress(`Generating Slide: ${slideTitle}...`)
+          const slideFB = pptx.addSlide()
+          slideFB.background = { fill: 'FFFFFF' }
+
+          addSlideTitle(slideFB, slideTitle, '')
+
+          const leftX = 0.3
+          const leftY = 1.0
+          const panelW = 4.55
+          const panelH = 4.25
+
+          // Left Panel (Green): AREAS FOR BENEFITS
+          slideFB.addShape(pptx.ShapeType.rect, {
+            x: leftX, y: leftY, w: panelW, h: panelH,
+            fill: { color: 'F0FDF4' },
+            line: { color: '4ECCA3', width: 1.5 },
+          })
+
+          slideFB.addText('AREAS FOR BENEFITS', {
+            x: leftX, y: leftY, w: panelW, h: 0.35,
+            fill: { color: '28A745' },
+            color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+            fontSize: 10, fontFace: 'Arial',
+          })
+
+          // Right Panel (Red): AREAS FOR BETTERMENT
+          const rightX = 5.15
+          const rightY = 1.0
+
+          slideFB.addShape(pptx.ShapeType.rect, {
+            x: rightX, y: rightY, w: panelW, h: panelH,
+            fill: { color: 'FEF2F2' },
+            line: { color: 'FF6584', width: 1.5 },
+          })
+
+          slideFB.addText('AREAS FOR BETTERMENT', {
+            x: rightX, y: rightY, w: panelW, h: 0.35,
+            fill: { color: 'DC3545' },
+            color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+            fontSize: 10, fontFace: 'Arial',
+          })
+
+          const formattedBenefits = formatFeedbackItems(benefitItemsRaw, overallBenefitItemsRaw, isOverallCategory, baseCount)
+          const formattedIssues = formatFeedbackItems(issueItemsRaw, overallIssueItemsRaw, isOverallCategory, baseCount)
+
+          renderPanelChart(slideFB, leftX, leftY, panelW, panelH, formattedBenefits, true)
+          renderPanelChart(slideFB, rightX, rightY, panelW, panelH, formattedIssues, false)
+
+          slideFB.addText(`Base: ${baseCount || 0} respondents`, {
+            x: 0.3, y: 5.32, w: 4.0, h: 0.25,
+            fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
+          })
+        }
+
+        const overallSeg = secData.overall || {}
+
+        // 1. Overall Location Customer Feedback Slides (Location-wide)
+        const feedbackCategories: { key: 'overall' | 'promoter' | 'passive' | 'detractor'; titleSuffix: string }[] = [
+          { key: 'overall', titleSuffix: 'Overall Customer Feedback' },
+          { key: 'promoter', titleSuffix: 'Promoters (Yes) Customer Feedback' },
+          { key: 'passive', titleSuffix: 'Passives (Maybe) Customer Feedback' },
+          { key: 'detractor', titleSuffix: 'Detractors (No) Customer Feedback' },
+        ]
+
+        feedbackCategories.forEach((catConfig) => {
+          const segObj = secData[catConfig.key] || {}
+          createFeedbackPanelSlide(
+            `${sectionName} | ${catConfig.titleSuffix}`,
+            segObj.top_benefits || [],
+            segObj.top_issues || [],
+            overallSeg.top_benefits || [],
+            overallSeg.top_issues || [],
+            catConfig.key === 'overall',
+            sampleSize
+          )
+        })
+
+        // 2. Per-Brand Customer Feedback Slides (Each Brand gets 4 category slides)
+        const allBrandsSet = new Set<string>()
+        feedbackCategories.forEach((catConfig) => {
+          const segObj = secData[catConfig.key] || {}
+          Object.keys(segObj.brand_benefits || {}).forEach((b) => allBrandsSet.add(b))
+          Object.keys(segObj.brand_issues || {}).forEach((b) => allBrandsSet.add(b))
+        })
+        const orderedSectionBrands = getOrderedBrands(Array.from(allBrandsSet))
+
+        orderedSectionBrands.forEach((brand) => {
+          feedbackCategories.forEach((catConfig) => {
+            const segObj = secData[catConfig.key] || {}
+            const bBen = segObj.brand_benefits?.[brand] || []
+            const bIss = segObj.brand_issues?.[brand] || []
+            const overallBBen = overallSeg.brand_benefits?.[brand] || []
+            const overallBIss = overallSeg.brand_issues?.[brand] || []
+            createFeedbackPanelSlide(
+              `${sectionName} - ${brand} | ${catConfig.titleSuffix}`,
+              bBen,
+              bIss,
+              overallBBen,
+              overallBIss,
+              catConfig.key === 'overall',
+              sampleSize
+            )
+          })
+        })
+      }
+
+      // Render Authorized Workshop Benefits & Betterments slides
+      renderCorporateBenefitsBettermentsSlides('Authorized Service Workshop', 'authorized')
+
+      // ─── DIVIDER: Service Standard Process Quality ───
+      addDividerSlide('Service Satisfication')
+
+      const satisfactionMetrics: any[] = satisfactionData?.metrics || []
+      const satisfactionBrandBases: any[] = satisfactionData?.brand_bases || []
+      const satBrands = satisfactionBrandBases.length > 0
+        ? satisfactionBrandBases.map((b: any) => b.brand)
+        : (analytics?.age_group?.brands || ['TVS', 'HONDA', 'YAMAHA'])
+      const orderedSatBrands = getOrderedBrands(satBrands)
+      const satBrandColors = getBrandColorsArray(orderedSatBrands)
+
+      const renderServiceSatisfactionSlide = (
+        slideTitle: string,
+        subtitle: string,
+        metricKeys: string[]
+      ) => {
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+        addSlideTitle(slide, slideTitle, subtitle)
+
+        const slideMetrics = satisfactionMetrics.filter((m: any) => metricKeys.includes(m.key))
+
+        // 1. Left Top Table: Positive Points Main Table
+        const tableX = 0.3
+        const tableY = 1.05
+        const tableW = 4.6
+        const tableH = 2.4
+
+        const mainTableRows: any[][] = []
+
+        // Main Table Header Row
+        const headerRow: any[] = [
+          { text: 'Positive Points', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 7.5, valign: 'middle' } }
+        ]
+        orderedSatBrands.forEach((b: string) => {
+          headerRow.push({ text: b, options: getBrandHeaderOptions(b) })
+        })
+        mainTableRows.push(headerRow)
+
+        // Main Table Data Rows
+        slideMetrics.forEach((m: any) => {
+          const rowCells: any[] = [
+            { text: String(m.question || m.key), options: { bold: false, color: '1E293B', align: 'left', fontSize: 7, valign: 'middle' } }
+          ]
+          orderedSatBrands.forEach((b: string) => {
+            const bd = (m.brand_data || []).find((item: any) => item.brand === b)
+            const filled = bd?.filled_count ?? bd?.base_count ?? 0
+            const yes = bd?.yes_count ?? 0
+            rowCells.push({
+              text: `${filled} (${yes} Yes)`,
+              options: { bold: false, color: '1E293B', align: 'center', fontSize: 7, valign: 'middle' }
+            })
+          })
+          mainTableRows.push(rowCells)
+        })
+
+        const qColW = 2.0
+        const bColW = (tableW - qColW) / Math.max(1, orderedSatBrands.length)
+        const colWidths = [qColW, ...Array(orderedSatBrands.length).fill(bColW)]
+
+        slide.addTable(mainTableRows, {
+          x: tableX, y: tableY, w: tableW, h: tableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 7,
+          fontFace: 'Arial',
+          colW: colWidths,
+          rowH: mainTableRows.map(() => 0.35)
+        })
+
+        // 2. Left Bottom Table: Authorized Workshop Base Table
+        const baseTableY = 3.65
+        const baseTableH = 0.8
+        const baseTableRows: any[][] = []
+
+        const baseHeaderRow: any[] = [
+          { text: 'Authorized Workshop Only (BN)', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 7.5, valign: 'middle' } }
+        ]
+        orderedSatBrands.forEach((b: string) => {
+          baseHeaderRow.push({ text: b, options: getBrandHeaderOptions(b) })
+        })
+        baseTableRows.push(baseHeaderRow)
+
+        const baseDataRow: any[] = [
+          { text: 'Base Count', options: { bold: true, color: '1E293B', align: 'left', fontSize: 7.5, valign: 'middle' } }
+        ]
+        orderedSatBrands.forEach((b: string) => {
+          const bd = satisfactionBrandBases.find((item: any) => item.brand === b)
+          const baseCount = bd?.base_count ?? 0
+          baseDataRow.push({
+            text: String(baseCount),
+            options: { bold: true, color: '1E293B', align: 'center', fontSize: 7.5, valign: 'middle' }
+          })
+        })
+        baseTableRows.push(baseDataRow)
+
+        slide.addTable(baseTableRows, {
+          x: tableX, y: baseTableY, w: tableW, h: baseTableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 7.5,
+          fontFace: 'Arial',
+          colW: colWidths,
+          rowH: [0.35, 0.35]
+        })
+
+        // ─── DIVIDER: Section A ───
+        //addDividerSlide('Section A')
+
+        // ─── RIGHT SIDE CHART: Horizontal Bar Chart (Yes % Distribution per Brand) ───
+        const chartX = 5.1
+        const chartY = 1.05
+        const chartW = 4.6
+        const chartH = 4.0
+
+        slide.addText('Percentage Distribution (Yes %)', {
+          x: chartX, y: chartY, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        })
+
+        const chartSeries = orderedSatBrands.map((bName: string) => {
+          const values = slideMetrics.map((m: any) => {
+            const bd = (m.brand_data || []).find((item: any) => item.brand === bName)
+            return bd ? Math.round(bd.yes_pct || 0) : 0
+          })
+          return {
+            name: bName,
+            labels: slideMetrics.map((m: any) => m.key),
+            values: values
+          }
+        })
+
+        try {
+          slide.addChart(pptx.ChartType.bar, chartSeries, {
+            x: chartX,
+            y: chartY + 0.3,
+            w: chartW,
+            h: chartH - 0.3,
+            barDir: 'bar',
+            chartColors: satBrandColors,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 't',
+            legendFontSize: 7.5,
+
+            // ─── CLEANED UP AXIS SETTINGS ───
+            catAxisLabelFontSize: 8,
+            catAxisLabelColor: '333333',
+            catAxisLineShow: true,
+            catGridLine: { style: 'none' },
+
+            valAxisHidden: true,
+            valAxisLabelFontSize: 7.5,
+            valAxisLabelFormatCode: '',
+            valAxisLabelPos: 'none',
+
+            // ─── DATA LABELS ───
+            showValue: true,
+            dataLabelFormatCode: '0"%"',
+            dataLabelFontSize: 7.5,
+            dataLabelColor: '333333',
+
+            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
+            barGapWidthPct: 180,         // Increased category gap for cleaner separation
+            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
+
+            // ─── REMOVE VAL GRID LINES ───
+            valGridLine: { style: 'none' },
+          })
+        } catch (chartErr) {
+          console.error('Error adding satisfaction chart:', chartErr)
+          slide.addText('Chart could not be rendered', {
+            x: chartX, y: chartY + 0.5, w: chartW, h: 2.0,
+            fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle'
+          })
+        }
+      }
+
+      // Generate Slide for 5A to 5E
+      setPptProgress('Generating Slide: Service Standard Process Quality (5A - 5E)...')
+      renderServiceSatisfactionSlide(
+        'Service Standard Process Quality (5A - 5E)',
+        'Metrics Section (5A - 5E): Service Experience Positive Points Summary',
+        ['5A', '5B', '5C', '5D', '5E']
+      )
+
+      // Generate Slide for 5F to 5J
+      setPptProgress('Generating Slide: Service Standard Process Quality (5F - 5J)...')
+      renderServiceSatisfactionSlide(
+        'Service Standard Process Quality (5F - 5J)',
+        'Metrics Section (5F - 5J): Service Experience Positive Points Summary',
+        ['5F', '5G', '5H', '5I', '5J']
+      )
+
+      // ─── DIVIDER: Additional Service Metrics Sections ───
+      // addDividerSlide('Additional Service Metrics Sections')
+
+      const sections = satisfactionData?.sections || {}
+
+      // ─── Helper: Add Yes/No Satisfaction Slide with Correct Chart Layout ───
+      const renderIndividualSectionSlide = (sKey: string) => {
+        const secObj = sections[sKey]
+        if (!secObj) return
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+        addSlideTitle(slide, secObj.question, '')
+
+        const secData: any[] = secObj.brand_data || []
+        const secBrands = secData.map((d: any) => d.brand)
+        const orderedSecBrands = getOrderedBrands(secBrands.length > 0 ? secBrands : orderedSatBrands)
+
+        // Left Side Table (Response: Yes, No, Grand Total)
+        const tableX = 0.3
+        const tableY = 1.2
+        const tableW = 4.6
+        const tableH = 3.6
+
+        const tableRows: any[][] = []
+        const headerRow: any[] = [
+          { text: 'Response', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8, valign: 'middle' } }
+        ]
+        orderedSecBrands.forEach((b: string) => {
+          headerRow.push({ text: b, options: getBrandHeaderOptions(b) })
+        })
+        tableRows.push(headerRow)
+
+        // Yes Row
+        const yesRow: any[] = [
+          { text: 'Yes', options: { bold: true, color: '10B981', align: 'left', fontSize: 8, valign: 'middle' } }
+        ]
+        orderedSecBrands.forEach((b: string) => {
+          const bd = secData.find((d: any) => d.brand === b)
+          const yesCount = bd?.yes_count ?? 0
+          const yesPct = bd?.yes_pct ?? 0
+          yesRow.push({
+            text: `${yesCount} (${yesPct}%)`,
+            options: { bold: false, color: '1E293B', align: 'center', fontSize: 8, valign: 'middle' }
+          })
+        })
+        tableRows.push(yesRow)
+
+        // No Row
+        const noRow: any[] = [
+          { text: 'No', options: { bold: true, color: 'EF4444', align: 'left', fontSize: 8, valign: 'middle' } }
+        ]
+        orderedSecBrands.forEach((b: string) => {
+          const bd = secData.find((d: any) => d.brand === b)
+          const noCount = bd?.no_count ?? 0
+          const noPct = bd?.no_pct ?? 0
+          noRow.push({
+            text: `${noCount} (${noPct}%)`,
+            options: { bold: false, color: '1E293B', align: 'center', fontSize: 8, valign: 'middle' }
+          })
+        })
+        tableRows.push(noRow)
+
+        // Grand Total Row
+        const totalRow: any[] = [
+          { text: 'Grand Total', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8, valign: 'middle' } }
+        ]
+        orderedSecBrands.forEach((b: string) => {
+          const bd = secData.find((d: any) => d.brand === b)
+          const totalCount = bd?.total_count ?? 0
+          totalRow.push({
+            text: String(totalCount),
+            options: { bold: true, fill: getBrandColor(b), color: 'FFFFFF', align: 'center', fontSize: 8, valign: 'middle' }
+          })
+        })
+        tableRows.push(totalRow)
+
+        const numCols = 1 + orderedSecBrands.length
+        const colW = tableW / numCols
+        slide.addTable(tableRows, {
+          x: tableX, y: tableY, w: tableW, h: tableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 8,
+          fontFace: 'Arial',
+          colW: Array(numCols).fill(colW),
+          rowH: [0.35, 0.35, 0.35, 0.35]
+        })
+
+        // ─── RIGHT SIDE CHART: Yes/No Categories with Brand Bars ───
+        const chartX = 5.1
+        const chartY = 1.2
+        const chartW = 4.6
+        const chartH = 3.4
+
+        slide.addText('Percentage Distribution (Yes vs No)', {
+          x: chartX, y: chartY, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        })
+
+        // Build chart data: 2 categories (Yes/No) with brand values
+        const chartSeriesData = orderedSecBrands.map((bName: string) => {
+          const bd = secData.find((d: any) => d.brand === bName)
+          const yesPct = bd ? Math.round(bd.yes_pct || 0) : 0
+          const noPct = bd ? Math.round(bd.no_pct || 0) : 0
+          return {
+            name: bName,
+            labels: ['Yes', 'No'],
+            values: [yesPct, noPct]
+          }
+        })
+
+        const secBrandColors = getBrandColorsArray(orderedSecBrands)
+
+        try {
+          slide.addChart(pptx.ChartType.bar, chartSeriesData, {
+            x: chartX,
+            y: chartY + 0.3,
+            w: chartW,
+            h: chartH - 0.3,
+            barDir: 'bar',
+            chartColors: secBrandColors,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 't',
+            legendFontSize: 7.5,
+
+            // ─── CLEANED UP AXIS SETTINGS ───
+            catAxisLabelFontSize: 8,
+            catAxisLabelColor: '333333',
+            catAxisLineShow: true,
+            catGridLine: { style: 'none' },
+
+            valAxisHidden: true,
+            valAxisLabelFontSize: 7.5,
+            valAxisLabelFormatCode: '',
+            valAxisLabelPos: 'none',
+
+            // ─── DATA LABELS ───
+            showValue: true,
+            dataLabelFormatCode: '0"%"',
+            dataLabelFontSize: 7.5,
+            dataLabelColor: '333333',
+
+            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
+            barGapWidthPct: 180,         // Increased category gap for cleaner separation
+            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
+
+            // ─── REMOVE VAL GRID LINES ───
+            valGridLine: { style: 'none' },
+          })
+        } catch (err) {
+          console.error(`Error adding section ${sKey} chart:`, err)
+        }
+      }
+
+      // ─── Helper: Add Merged Section 7 & 8 Slide with Correct Chart Layout ───
+      const renderMergedSection78Slide = () => {
+        const sec7 = sections['7']
+        const sec8 = sections['8']
+        if (!sec7 && !sec8) return
+
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+        addSlideTitle(slide, 'Section 7 & 8: Vehicle Issues & Reporting Summary', '')
+
+        const sec7Brands = sec7?.brand_data?.map((d: any) => d.brand) || []
+        const sec8Brands = sec8?.brand_data?.map((d: any) => d.brand) || []
+        const allSecBrands = Array.from(new Set([...sec7Brands, ...sec8Brands]))
+        const orderedMergedBrands = getOrderedBrands(allSecBrands.length > 0 ? allSecBrands : orderedSatBrands)
+
+        // Left Side Table (Question / Metric x Brands total counts)
+        const tableX = 0.3
+        const tableY = 1.2
+        const tableW = 4.6
+        const tableH = 3.6
+
+        const tableRows: any[][] = []
+        const headerRow: any[] = [
+          { text: 'Question / Metric', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 7.5, valign: 'middle' } }
+        ]
+        orderedMergedBrands.forEach((b: string) => {
+          headerRow.push({ text: b, options: getBrandHeaderOptions(b) })
+        })
+        tableRows.push(headerRow)
+
+        if (sec7) {
+          const row7: any[] = [
+            { text: String(sec7.question || 'Section 7'), options: { bold: false, color: '1E293B', align: 'left', fontSize: 7, valign: 'middle' } }
+          ]
+          orderedMergedBrands.forEach((b: string) => {
+            const bd = (sec7.brand_data || []).find((d: any) => d.brand === b)
+            const count = bd?.total_count ?? 0
+            row7.push({
+              text: String(count),
+              options: { bold: true, color: '1E293B', align: 'center', fontSize: 7.5, valign: 'middle' }
+            })
+          })
+          tableRows.push(row7)
+        }
+
+        if (sec8) {
+          const row8: any[] = [
+            { text: String(sec8.question || 'Section 8'), options: { bold: false, color: '1E293B', align: 'left', fontSize: 7, valign: 'middle' } }
+          ]
+          orderedMergedBrands.forEach((b: string) => {
+            const bd = (sec8.brand_data || []).find((d: any) => d.brand === b)
+            const count = bd?.total_count ?? 0
+            row8.push({
+              text: String(count),
+              options: { bold: true, color: '1E293B', align: 'center', fontSize: 7.5, valign: 'middle' }
+            })
+          })
+          tableRows.push(row8)
+        }
+
+        const qColW = 2.0
+        const bColW = (tableW - qColW) / Math.max(1, orderedMergedBrands.length)
+        const colWidths = [qColW, ...Array(orderedMergedBrands.length).fill(bColW)]
+
+        slide.addTable(tableRows, {
+          x: tableX, y: tableY, w: tableW, h: tableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 7,
+          fontFace: 'Arial',
+          colW: colWidths,
+          rowH: tableRows.map(() => 0.45)
+        })
+
+        // ─── RIGHT SIDE CHART: Total Responses per Brand ───
+        const chartX = 5.1
+        const chartY = 1.2
+        const chartW = 4.6
+        const chartH = 3.4
+
+        slide.addText('Total Responses Comparison (Section 7 vs Section 8)', {
+          x: chartX, y: chartY, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        })
+
+        // Build chart data: 2 categories (Section 7 / Section 8) with brand totals
+        const chartSeries = orderedMergedBrands.map((bName: string) => {
+          const count7 = sec7 ? ((sec7.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
+          const count8 = sec8 ? ((sec8.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
+          return {
+            name: bName,
+            labels: ['Section 7', 'Section 8'],
+            values: [count7, count8]
+          }
+        })
+
+        const mergedBrandColors = getBrandColorsArray(orderedMergedBrands)
+
+        try {
+          slide.addChart(pptx.ChartType.bar, chartSeries, {
+            x: chartX,
+            y: chartY + 0.3,
+            w: chartW,
+            h: chartH - 0.3,
+            barDir: 'bar',
+            chartColors: mergedBrandColors,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 't',
+            legendFontSize: 7.5,
+
+            // ─── CLEANED UP AXIS SETTINGS ───
+            catAxisLabelFontSize: 8,
+            catAxisLabelColor: '333333',
+            catAxisLineShow: true,
+            catGridLine: { style: 'none' },
+
+            valAxisHidden: true,
+            valAxisLabelFontSize: 7.5,
+            valAxisLabelFormatCode: '',
+            valAxisLabelPos: 'none',
+
+            // ─── DATA LABELS ───
+            showValue: true,
+            dataLabelFormatCode: '0',
+            dataLabelFontSize: 7.5,
+            dataLabelColor: '333333',
+
+            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
+            barGapWidthPct: 180,         // Increased category gap for cleaner separation
+            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
+
+            // ─── REMOVE VAL GRID LINES ───
+            valGridLine: { style: 'none' },
+          })
+        } catch (err) {
+          console.error('Error adding merged section 7 & 8 chart:', err)
+        }
+      }
+
+      // Slide: Section 6 (VPS)
+      setPptProgress('Generating Slide: Section 6 (Vehicle Performance Satisfaction)...')
+      renderIndividualSectionSlide('6')
+
+      // Slide: Section 7 & 8 (Merged)
+      setPptProgress('Generating Slide: Section 7 & 8 (Vehicle Issues & Reporting Summary)...')
+      renderMergedSection78Slide()
+
+      // Slide: Section 9 (Fixing problems First Time Right)
+      setPptProgress('Generating Slide: Section 9 (Fixing problems First Time Right)...')
+      renderIndividualSectionSlide('9')
+
+      // Slide: Section 10 (Delivery as per promised time)
+      setPptProgress('Generating Slide: Section 10 (Delivery as per promised time)...')
+      renderIndividualSectionSlide('10')
+
+      // ─── DIVIDER: Section B ───
+      addDividerSlide('Section B')
+
+      // ─── DIVIDER: Why are not approaching Authorized outlets reasons ───
+      addDividerSlide('Why are not approaching Authorized outlets reasons')
+
+      // Render PGM (Private Garage Mechanic) Benefits & Betterments slides
+      renderCorporateBenefitsBettermentsSlides('PGM (Private Garage Mechanic)', 'pgm')
+
+      // ─── DIVIDER: PGM Customer NPS ───
+      addDividerSlide('PGM Customer NPS')
+
+      // Render PGM NPS distribution
+      renderServiceNpsOverallSlide('pgm', 'Service NPS Overall Based on Workshop')
+
+      // ─── DIVIDER: Key Insights ───
+      addDividerSlide('Key Insights')
+
+      // ─── SLIDE: Key Insights (Dynamic based on data) ───
+      setPptProgress('Generating Slide: Key Insights...')
+      const slideKeyInsights = pptx.addSlide()
+      slideKeyInsights.background = { fill: 'FFFFFF' }
+      addSlideTitle(slideKeyInsights, 'Key Insights', '')
+
+      // Card container for insights
+      slideKeyInsights.addShape(pptx.ShapeType.rect, {
+        x: 0.5, y: 1.1, w: 9.0, h: 4.2,
+        fill: { color: 'F8FAFC' },
+        line: { color: 'E2E8F0', width: 1 }
+      })
+
+      // Dynamic Key Insights Generator function
+      const generateDynamicKeyInsights = () => {
+        const bullets: { text: string; options: any }[] = []
+
+        // Bullet 1: Dynamic NPS Comparison (Authorized Workshop vs PGM / Private Garage)
+        const authObj = serviceNpsData?.authorized || {}
+        const pgmObj = serviceNpsData?.pgm || {}
+        const authBrands: any[] = authObj.brand_breakdown || []
+        const pgmBrands: any[] = pgmObj.brand_breakdown || []
+
+        const locationName = filters.countryId || filters.surveyLocation || filters.regionId || 'Overall'
+        const brandModelName = filters.brandModel ? ` (${filters.brandModel})` : ''
+        const titleLocation = `${locationName}${brandModelName}`
+
+        const allBrands = Array.from(new Set([
+          ...authBrands.map((b: any) => b.brand),
+          ...pgmBrands.map((b: any) => b.brand)
+        ]))
+
+        let npsComparisonText = ''
+        if (allBrands.length > 0) {
+          const brandSentences = allBrands.map((brandName) => {
+            const aData = authBrands.find((b: any) => b.brand === brandName)
+            const pData = pgmBrands.find((b: any) => b.brand === brandName)
+            const aNps = aData ? Math.round(aData.nps_score ?? aData.promoters_pct ?? 0) : 0
+            const pNps = pData ? Math.round(pData.nps_score ?? pData.promoters_pct ?? 0) : 0
+            const comp = aNps >= pNps ? 'higher than' : 'lower than'
+            return `${brandName} Authorized workshop is (${aNps}%) is ${comp} that of private garage (${pNps}%)`
+          })
+
+          if (brandSentences.length === 1) {
+            npsComparisonText = `For ${titleLocation}, the NPS of ${brandSentences[0]}.`
+          } else if (brandSentences.length === 2) {
+            npsComparisonText = `For ${titleLocation}, the NPS of ${brandSentences[0]} where ${brandSentences[1]}.`
+          } else {
+            const last = brandSentences.pop()
+            npsComparisonText = `For ${titleLocation}, the NPS of ${brandSentences.join(', where ')} and ${last}.`
+          }
+        } else {
+          const aOverall = Math.round(authObj.nps_score ?? authObj.promoters_pct ?? 0)
+          const pOverall = Math.round(pgmObj.nps_score ?? pgmObj.promoters_pct ?? 0)
+          const comp = aOverall >= pOverall ? 'higher than' : 'lower than'
+          npsComparisonText = `For ${titleLocation}, the overall NPS of Authorized workshop (${aOverall}%) is ${comp} private garage (${pOverall}%).`
+        }
+
+        bullets.push({
+          text: npsComparisonText,
+          options: { bullet: true, breakLine: true, fontSize: 11, color: '1E293B', spaceAfter: 14 }
+        })
+
+        // Bullet 2: Betterment & Workshop Improvements based on Benefits/Betterment Data
+        const rawBenefits = serviceBenefitsData?.data || serviceBenefitsData || {}
+        const authBenefits = rawBenefits?.authorized || {}
+        const topIssues: any[] = authBenefits?.overall?.top_issues || []
+        const issueTopics = topIssues.slice(0, 4).map((i: any) => i.topic || i.issue || i.name).filter(Boolean)
+
+        let bettermentText = ''
+        if (issueTopics.length > 0) {
+          bettermentText = `Authorized workshops should focus on key betterment areas identified by users, including ${issueTopics.join(', ')}. Addressing user complaints promptly and improving workshop facilities will maintain high customer satisfaction.`
+        } else {
+          bettermentText = `Authorized workshops should improve customer lounge amenities to provide a better service experience. They should also extend operating hours to offer greater convenience for users. In addition, users complaints must be addressed and resolved promptly to maintain satisfaction. They need better workshop facilities like pickup and drop service and express service.`
+        }
+
+        bullets.push({
+          text: bettermentText,
+          options: { bullet: true, breakLine: true, fontSize: 11, color: '1E293B', spaceAfter: 14 }
+        })
+
+        // Bullet 3: Service Cost Explanation & Trust Building based on Satisfaction Data
+        const metrics: any[] = satisfactionData?.metrics || []
+        const topPositiveMetrics = metrics
+          .filter((m: any) => m.question || m.key)
+          .slice(0, 2)
+          .map((m: any) => m.question || m.key)
+
+        let trustText = ''
+        if (topPositiveMetrics.length > 0) {
+          trustText = `Providing clear explanations of service costs and repairs for key service aspects (such as ${topPositiveMetrics.join(' and ')}) will help build user trust and improve overall satisfaction.`
+        } else {
+          trustText = `Providing clear explanations of service costs and repairs will help build user trust and improve overall satisfaction.`
+        }
+
+        bullets.push({
+          text: trustText,
+          options: { bullet: true, fontSize: 11, color: '1E293B', spaceAfter: 14 }
+        })
+
+        return bullets
+      }
+
+      const keyInsightBullets = generateDynamicKeyInsights()
+
+      slideKeyInsights.addText(
+        keyInsightBullets,
+        {
+          x: 0.8,
+          y: 1.3,
+          w: 8.4,
+          h: 3.8,
+          fontFace: 'Arial',
+          valign: 'top',
+          lineSpacing: 22,
+          align: 'justify'
+        }
+      )
+
+
+
+      setPptProgress('Building table of contents...')
+
+      tocSlide.addText('Table of Contents', {
+        x: 0.5, y: 0.4, w: 9.0, h: 0.6,
+        fontSize: 26, bold: true, color: '1E293B', fontFace: 'Arial',
+      })
+      tocSlide.addShape(pptx.shapes.LINE, {
+        x: 0.5, y: 1.05, w: 9.0, h: 0.0, line: { color: '3B82F6', width: 2 },
+      })
+      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+
+      const tocColW = 4.6
+      const tocColGap = 0.2
+      const tocStartY = 1.4
+      const tocRowH = 0.42
+      const rowsPerCol = 9
+
+      dividerTOC.forEach((item, idx) => {
+        const col = Math.floor(idx / rowsPerCol)
+        const rowInCol = idx % rowsPerCol
+        const colX = 0.5 + col * (tocColW + tocColGap)
+        const rowY = tocStartY + rowInCol * tocRowH
+
+        tocSlide.addText(String(idx + 1).padStart(2, '0'), {
+          x: colX, y: rowY, w: 0.5, h: 0.35,
+          fontSize: 12, bold: true, color: '3B82F6', fontFace: 'Arial',
+        })
+        tocSlide.addText(item.title, {
+          x: colX + 0.5, y: rowY, w: tocColW - 0.5, h: 0.35,
+          fontSize: 12, color: '1E293B', fontFace: 'Arial',
+          underline: true,
+          hyperlink: { slide: item.slideNumber, tooltip: `Go to ${item.title}` },
+        })
+      })
+      setPptProgress('Saving PowerPoint file...')
+      await pptx.writeFile({ fileName: `Service_Dashboard_Report_${today}.pptx` })
+
+      setToastSeverity('success')
+      setToastMessage('Service PPT downloaded successfully!')
+      setToastOpen(true)
+    } catch (err: any) {
+      console.error('Service PPT Generation Error:', err)
+      setToastSeverity('error')
+      setToastMessage(`Failed to generate Service PPT: ${err.message || err}`)
+      setToastOpen(true)
+    } finally {
+      setPptGenerating(false)
+    }
+  }
 
   const handleDownloadPPT = async () => {
     setPptGenerating(true)
@@ -136,19 +2948,48 @@ export default function DashboardPage() {
       }
 
       // Fetch all required data in parallel
-      const [analyticsRes, issuesRes, comparisonRes, topicsRes] = await Promise.all([
+      const [analyticsRes, issuesRes, comparisonRes, topicsRes, npsRes, brandFeedbackRes] = await Promise.all([
         dashboardApi.analytics(filterParams),
         issuesApi.analysis(filterParams),
         comparisonApi.brandPassiveIssues(filterParams),
         comparisonApi.brandTopics(filterParams),
+        dashboardApi.npsData(filterParams),
+        dashboardApi.brandNpsFeedback(filterParams),
       ])
+      // Dynamic brand ordering directly from DB response (TVS brands placed first)
+      const getOrderedBrands = (brands: string[]): string[] => {
+        if (!Array.isArray(brands)) return []
+        const unique: string[] = []
+        brands.forEach((b) => {
+          if (b && typeof b === 'string') {
+            const clean = b.trim()
+            if (clean && clean.toLowerCase() !== 'blank' && !unique.includes(clean)) {
+              unique.push(clean)
+            }
+          }
+        })
+        const tvsBrands = unique.filter((b) => {
+          const lower = b.toLowerCase()
+          return lower.includes('tvs') || lower.includes('raider') || lower.includes('apache')
+        })
+        const otherBrands = unique.filter((b) => {
+          const lower = b.toLowerCase()
+          return !lower.includes('tvs') && !lower.includes('raider') && !lower.includes('apache')
+        })
+        return [...tvsBrands, ...otherBrands]
+      }
 
-      const analytics = analyticsRes.data
-      const issues = issuesRes.data.data || []
-      const issueBrands: string[] = issuesRes.data.brands || []
-      const comparison = comparisonRes.data.data || []
-      const topics = topicsRes.data.data || []
+      // SAFETY: Ensure these are always arrays or objects, never undefined
+      const analytics = analyticsRes.data || {}
+      const issues = (issuesRes.data && issuesRes.data.data) || []
+      const issueBrands = (issuesRes.data && issuesRes.data.brands) || []
+      const comparison = (comparisonRes.data && comparisonRes.data.data) || []
+      const topics = (topicsRes.data && topicsRes.data.data) || []
+      const nps = npsRes.data || {}
+      const brandFeedback = (brandFeedbackRes.data && brandFeedbackRes.data.brands) || []
+      const orderedNpsBrands = (nps && nps.brands) ? getOrderedBrands(nps.brands) : []
 
+      // SAFE CHECK: Using .length is fine now because they are guaranteed to be arrays
       if (!analytics || (issues.length === 0 && comparison.length === 0 && topics.length === 0)) {
         setToastSeverity('error')
         setToastMessage('Cannot generate PPT: No data available for the active filters.')
@@ -157,18 +2998,48 @@ export default function DashboardPage() {
         return
       }
 
-      setPptProgress('Preparing charts off-screen...')
-      setPptData({ analytics, issues, comparison, topics })
+      // ─── PRE-FLIGHT CHECK (Uncomment to find exact crash) ───
+      // console.log('Issues Data:', issues);
+      // issues.forEach((issue, i) => {
+      //   issue.sub_issues?.forEach((sub, j) => {
+      //     if (!Array.isArray(sub.follow_ups)) {
+      //       console.error(`CRASH FOUND: Sub-issue ${j} of issue ${i} has invalid follow_ups!`, sub);
+      //     }
+      //   });
+      // });
 
-      // Wait for React to render and SVG elements to paint fully
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      setPptProgress('Preparing data for presentation...')
 
-      setPptProgress('Compiling PowerPoint presentation...')
       const pptx = new PptxGenJS()
       pptx.layout = 'LAYOUT_16x9'
 
-      const slide1Bg = { path: '/src/assets/slide1.png' }
-      const slideBg = { path: '/src/assets/slides.png' }
+      const BRAND_COLORS_LIST = ['00B4D8', '7C3AED', 'F97316', '10B981', 'EF4444', '3B82F6', '8B5CF6', 'EC4899', 'F59E0B', '06B6D4']
+      const LIGHT_COLORS_LIST = ['B3E5FC', 'D1C4E9', 'FFE0B2', 'D1FAE5', 'FEE2E2', 'DBEAFE', 'EDE9FE', 'FCE7F3', 'FEF3C7', 'CFFAFE']
+
+      const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+        'TVS Raider': '00B4D8', 'TVS Apache': '00B4D8', 'TVS': '00B4D8',
+        'Bajaj Pulsar': '7C3AED', 'Bajaj': '7C3AED',
+        'Yamaha FZ': 'F59E0B', 'Yamaha': 'F59E0B',
+        'Honda CB': '7C3AED', 'Honda': '7C3AED',
+        'Suzuki Gixxer': '7C3AED', 'Suzuki': '7C3AED',
+      }
+
+      const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
+        'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
+        'Bajaj Pulsar': 'D1C4E9', 'Bajaj': 'D1C4E9',
+        'Yamaha FZ': 'FEF3C7', 'Yamaha': 'FEF3C7',
+        'Honda CB': 'D1C4E9', 'Honda': 'D1C4E9',
+        'Suzuki Gixxer': 'D1C4E9', 'Suzuki': 'D1C4E9',
+      }
+      // ─── Slide counter + TOC tracking (for internal hyperlinks) ───
+      let slideCounter = 0
+      const _originalAddSlide = pptx.addSlide.bind(pptx)
+      pptx.addSlide = (...args: any[]) => {
+        slideCounter++
+        return _originalAddSlide(...args)
+      }
+      const dividerTOC: { title: string; slideNumber: number }[] = []
+      const TOC_SLIDE_NUMBER = 2
 
       const today = new Date().toISOString().split('T')[0]
       const displayDate = new Date().toLocaleDateString(undefined, {
@@ -177,13 +3048,95 @@ export default function DashboardPage() {
         day: 'numeric',
       })
 
-      const totalSlides = 1 + 4 + issues.length + 1 + topics.length
+      const hashBrand = (str: string): number => {
+        let hash = 0
+        for (let i = 0; i < str.length; i++) {
+          hash = str.charCodeAt(i) + ((hash << 5) - hash)
+        }
+        return Math.abs(hash)
+      }
+
+      // ─── HELPER: Get brand color based on brand name ───
+      const getBrandColor = (brandName: string): string => {
+        if (!brandName) return '475569'
+        const clean = String(brandName).trim()
+        if (SPECIFIC_BRAND_COLORS[clean]) {
+          return SPECIFIC_BRAND_COLORS[clean]
+        }
+        const lower = clean.toLowerCase()
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '00B4D8'
+        if (lower.includes('pulsar') || lower.includes('bajaj')) return '7C3AED'
+        if (lower.includes('honda') || lower.includes('cb')) return '7C3AED'
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return '7C3AED'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'F59E0B'
+
+        const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
+        return BRAND_COLORS_LIST[idx]
+      }
+
+      // ─── HELPER: Get light version for age groups ───
+      const getAgeGroupLightColor = (brandName: string): string => {
+        if (!brandName) return 'ECEFF1'
+        const clean = String(brandName).trim()
+        if (SPECIFIC_LIGHT_COLORS[clean]) {
+          return SPECIFIC_LIGHT_COLORS[clean]
+        }
+        const lower = clean.toLowerCase()
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return 'B3E5FC'
+        if (lower.includes('pulsar') || lower.includes('bajaj')) return 'D1C4E9'
+        if (lower.includes('honda') || lower.includes('cb')) return 'D1C4E9'
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1C4E9'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FEF3C7'
+
+        const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
+        return LIGHT_COLORS_LIST[idx]
+      }
+
+      // ─── HELPER: Get brand header options ───
+      const getBrandHeaderOptions = (brandName: string) => {
+        return {
+          bold: true,
+          fill: getBrandColor(brandName),
+          color: 'FFFFFF',
+          align: 'center',
+          fontFace: 'Arial',
+          fontSize: 8
+        }
+      }
+
+
+      // ─── HELPER: Get brand colors array for charts ───
+      const getBrandColorsArray = (brands: string[]): string[] => {
+        return brands.map(b => getBrandColor(b))
+      }
 
 
 
-      // ─── Helper: Create table from matrix data ───
+      // ─── HELPER: Transform matrix data to pptxgenjs chart data ───
+      function matrixToChartData(matrix: any, type: 'count' | 'percent' = 'percent') {
+        if (!matrix || !Array.isArray(matrix.chart) || matrix.chart.length === 0) return []
+
+        const { brands } = matrix
+        if (!Array.isArray(brands)) return []
+
+        const orderedBrands = getOrderedBrands(brands)
+
+        return matrix.chart.map((row: any) => ({
+          name: row.category || 'Unknown',
+          labels: orderedBrands || [],
+          values: orderedBrands.map((b: string) => {
+            const key = type === 'count' ? `${b}_count` : `${b}_pct`
+            return row?.[key] || 0
+          })
+        }))
+      }
+
+      // Neutral grey used ONLY for the header cell of the Category and Total columns
+      const NEUTRAL_GREY = '607D8B'
+
+      // ─── HELPER: Add matrix table to slide ───
       const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number) => {
-        if (!matrix || !matrix.table || matrix.table.length === 0) {
+        if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
           slide.addText('No data available', {
             x, y, w, h,
             fontSize: 12,
@@ -193,49 +3146,89 @@ export default function DashboardPage() {
           return
         }
 
-        const tableRows: any[] = []
+        const { brands, table, category_header } = matrix
+        if (!Array.isArray(brands)) return
 
-        // Header row
+        const orderedBrands = getOrderedBrands(brands)
+
+        const rows: any[][] = []
+
         const headerRow: any[] = [
-          { text: title, options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left' } }
+          { text: title || category_header || 'Category', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8 } }
         ]
-        matrix.brands.forEach((brand: string) => {
-          headerRow.push({ text: brand, options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right' } })
+        orderedBrands.forEach((brand: string) => {
+          headerRow.push({
+            text: brand,
+            options: getBrandHeaderOptions(brand)
+          })
         })
-        headerRow.push({ text: 'Total', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right' } })
-        tableRows.push(headerRow)
+        headerRow.push({
+          text: 'Total',
+          options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'right', fontSize: 8 }
+        })
+        rows.push(headerRow)
 
-        // Data rows
-        matrix.table.forEach((row: any) => {
+        table.forEach((row: any) => {
           const isTotal = row.category === 'Grand Total'
           const dataRow: any[] = [
-            { text: String(row.category), options: { bold: isTotal, fill: isTotal ? 'ECEFF1' : undefined, align: 'left' } }
+            {
+              text: String(row.category),
+              options: {
+                bold: isTotal,
+                align: 'left',
+                fontSize: 7
+              }
+            }
           ]
-          matrix.brands.forEach((brand: string) => {
-            const value = row[brand] || 0
+          orderedBrands.forEach((brand: string) => {
+            const rawCount = row?.[`${brand}_count`] !== undefined ? row[`${brand}_count`] : row?.[brand]
+            const count = typeof rawCount === 'number' ? rawCount : (parseFloat(rawCount) || 0)
+            const rawPct = row?.[`${brand}_pct`] !== undefined ? row[`${brand}_pct`] : 0
+            const pct = typeof rawPct === 'number' ? rawPct : (parseFloat(rawPct) || 0)
+            let displayText = ''
+
+            if (isTotal) {
+              displayText = typeof count === 'number' ? count.toLocaleString() : String(count)
+            } else {
+              displayText = `${count} (${Math.round(pct)}%)`
+            }
+
             dataRow.push({
-              text: typeof value === 'number' ? value.toLocaleString() : String(value),
-              options: { bold: isTotal, fill: isTotal ? 'ECEFF1' : undefined, align: 'right' }
+              text: displayText,
+              options: {
+                bold: isTotal,
+                align: 'right',
+                fontSize: 7
+              }
             })
           })
           dataRow.push({
             text: typeof row.total === 'number' ? row.total.toLocaleString() : String(row.total || 0),
-            options: { bold: true, fill: isTotal ? 'ECEFF1' : undefined, align: 'right' }
+            options: {
+              bold: true,
+              align: 'right',
+              fontSize: 7
+            }
           })
-          tableRows.push(dataRow)
+          rows.push(dataRow)
         })
 
-        slide.addTable(tableRows, {
+        const colCount = 2 + orderedBrands.length
+        const baseWidth = w / colCount
+
+        slide.addTable(rows, {
           x, y, w, h,
-          border: { type: 'solid', color: 'E0E0E0', size: 1 },
-          fontSize: 8,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize: 7,
           fontFace: 'Arial',
+          colW: [baseWidth * 1.2, ...orderedBrands.map(() => baseWidth * 0.9), baseWidth * 0.8],
+          rowH: rows.map(() => 0.2),
         })
       }
 
-      // ─── Helper: Create age city table ───
-      const addAgeCityTable = (slide: any, matrix: any, x: number, y: number, w: number, h: number) => {
-        if (!matrix || !matrix.table || matrix.table.length === 0) {
+      // ─── HELPER: Add Age Group by City & Brand Table ───
+      const addAgeCityTableFullWidth = (slide: any, matrix: any, x: number, y: number, w: number, h: number) => {
+        if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
           slide.addText('No data available', {
             x, y, w, h,
             fontSize: 12,
@@ -244,6 +3237,10 @@ export default function DashboardPage() {
           })
           return
         }
+
+        if (!Array.isArray(matrix.brands)) return
+
+        const orderedBrands = getOrderedBrands(matrix.brands)
 
         const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
         const allAgeGroups = new Set<string>()
@@ -256,76 +3253,104 @@ export default function DashboardPage() {
             allAgeGroups.add(ageGroup)
             if (!cityAgeMap[city]) cityAgeMap[city] = {}
             if (!cityAgeMap[city][ageGroup]) cityAgeMap[city][ageGroup] = {}
-            matrix.brands.forEach((brand: string) => {
-              cityAgeMap[city][ageGroup][brand] = Number(row[brand]) || 0
+            orderedBrands.forEach((brand: string) => {
+              cityAgeMap[city][ageGroup][brand] = Number(row?.[brand]) || 0
             })
           }
         })
 
-        const sortedAgeGroups = Array.from(allAgeGroups).sort()
+        const ageGroupOrder = ['20-30', '30-40', '40-50', '50-60', 'Less than 20']
+        const sortedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
         const cities = Object.keys(cityAgeMap)
 
-        const tableRows: any[] = []
+        const totalDataCols = orderedBrands.length * (sortedAgeGroups.length + 1)
+        const totalCols = 1 + totalDataCols
+        const isManyCols = totalCols > 15
+        const cityColWidth = isManyCols ? 0.85 : 1.0
+        const dataColWidth = (w - cityColWidth) / totalDataCols
+        const colWidths = [cityColWidth, ...Array(totalDataCols).fill(dataColWidth)]
+        const subColCount = sortedAgeGroups.length + 1
+        const fontSize = isManyCols ? 5 : 6
+        const rowHeight = isManyCols ? 0.22 : 0.25
 
-        // Complex header
-        const headerRow1: any[] = [
-          { text: 'City', options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'left', rowSpan: 2 } }
-        ]
-        matrix.brands.forEach((brand: string) => {
-          headerRow1.push({
-            text: brand,
-            options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'center', colSpan: sortedAgeGroups.length + 1 }
+        const brandHeaderH = 0.28
+
+        // City & Age Group header box — addText with fill (avoids addShape 'rect' which crashes PptxGenJS)
+        slide.addText('City & Age Group', {
+          x, y, w: cityColWidth, h: brandHeaderH,
+          fontSize: 6, bold: true, color: 'FFFFFF',
+          align: 'center', valign: 'middle', fontFace: 'Arial',
+          fill: { color: NEUTRAL_GREY },
+          line: { color: 'FFFFFF', size: 0.5 },
+        })
+
+        orderedBrands.forEach((brand: string, bIdx: number) => {
+          const brandX = x + cityColWidth + bIdx * subColCount * dataColWidth
+          const brandW = subColCount * dataColWidth
+          const fill = getBrandColor(brand)
+
+          // Brand header box — addText with fill spans the full brand group width
+          slide.addText(brand, {
+            x: brandX, y, w: brandW, h: brandHeaderH,
+            fontSize: 6, bold: true, color: 'FFFFFF',
+            align: 'center', valign: 'middle', fontFace: 'Arial',
+            fill: { color: fill },
+            line: { color: 'FFFFFF', size: 0.5 },
           })
         })
-        tableRows.push(headerRow1)
 
-        const headerRow2: any[] = [{ text: '', options: { fill: '4FC3F7' } }]
-        matrix.brands.forEach(() => {
+        const tableY = y + brandHeaderH
+        const tableH = h - brandHeaderH
+
+        const subHeaderRow: any[] = [
+          { text: '', options: { fill: NEUTRAL_GREY } }
+        ]
+        orderedBrands.forEach((brand: string) => {
+          const fill = getAgeGroupLightColor(brand)
           sortedAgeGroups.forEach((ageGroup: string) => {
-            headerRow2.push({
+            subHeaderRow.push({
               text: ageGroup,
-              options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right', fontSize: 7 }
+              options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
             })
           })
-          headerRow2.push({
+          subHeaderRow.push({
             text: 'Total',
-            options: { bold: true, fill: '4FC3F7', color: 'FFFFFF', align: 'right', fontSize: 7 }
+            options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'center', fontSize: 6, italic: true }
           })
         })
-        tableRows.push(headerRow2)
 
-        // Data rows
+        const tableRows: any[][] = [subHeaderRow]
+
         cities.forEach((city) => {
           const brandTotals: Record<string, number> = {}
-          matrix.brands.forEach((brand: string) => {
+          orderedBrands.forEach((brand: string) => {
             brandTotals[brand] = 0
             sortedAgeGroups.forEach((ageGroup: string) => {
               brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
             })
           })
 
-          const dataRow: any[] = [{ text: city, options: { align: 'left' } }]
-          matrix.brands.forEach((brand: string) => {
+          const dataRow: any[] = [{ text: city, options: { align: 'left', fontSize: 6, bold: true } }]
+          orderedBrands.forEach((brand: string) => {
             sortedAgeGroups.forEach((ageGroup: string) => {
               const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
               const total = brandTotals[brand] || 1
-              const percentage = total > 0 ? ((value / total) * 100) : 0
+              const pct = total > 0 ? ((value / total) * 100) : 0
               dataRow.push({
-                text: percentage.toFixed(1) + '%',
-                options: { align: 'right', fontSize: 7 }
+                text: pct > 0 ? `${Math.round(pct)}%` : '—',
+                options: { align: 'right', fontSize: 6 }
               })
             })
             dataRow.push({
               text: '100%',
-              options: { bold: true, align: 'right', fontSize: 7 }
+              options: { bold: true, align: 'right', fontSize: 6 }
             })
           })
           tableRows.push(dataRow)
         })
 
-        // Grand Total row
-        const grandRow: any[] = [{ text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', align: 'left' } }]
-        matrix.brands.forEach((brand: string) => {
+        const grandRow: any[] = [{ text: 'Grand Total', options: { bold: true, align: 'left', fontSize: 6 } }]
+        orderedBrands.forEach((brand: string) => {
           let grandTotal = 0
           cities.forEach((city) => {
             sortedAgeGroups.forEach((ageGroup: string) => {
@@ -333,81 +3358,2294 @@ export default function DashboardPage() {
             })
           })
           const totalPerBrand = grandTotal || 1
-
           sortedAgeGroups.forEach((ageGroup: string) => {
             let total = 0
-            cities.forEach((city) => {
-              total += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
-            })
-            const percentage = totalPerBrand > 0 ? ((total / totalPerBrand) * 100) : 0
+            cities.forEach((city) => { total += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) })
+            const pct = totalPerBrand > 0 ? ((total / totalPerBrand) * 100) : 0
             grandRow.push({
-              text: percentage.toFixed(1) + '%',
-              options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7 }
+              text: pct > 0 ? `${Math.round(pct)}%` : '—',
+              options: { bold: true, align: 'right', fontSize: 6 }
             })
           })
           grandRow.push({
             text: '100%',
-            options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7 }
+            options: { bold: true, align: 'right', fontSize: 6 }
           })
         })
         tableRows.push(grandRow)
 
         slide.addTable(tableRows, {
-          x, y, w, h,
-          border: { type: 'solid', color: 'E0E0E0', size: 1 },
-          fontSize: 7,
+          x, y: tableY, w, h: tableH,
+          border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
+          fontSize,
           fontFace: 'Arial',
+          colW: colWidths,
+          rowH: tableRows.map(() => rowHeight),
         })
       }
 
-      // ─── Slide 1: Title Page (Redesigned with Solid White Background) ───
+      // ─── HELPER: Add branded title ───
+      const addSlideTitle = (slide: any, title: string, subtitle: string) => {
+        slide.addText(title, {
+          x: 0.3, y: 0.2, w: 8.0, h: 0.4,
+          fontSize: 18,
+          bold: true,
+          color: '1E293B',
+          fontFace: 'Arial'
+        })
+
+        slide.addText(subtitle, {
+          x: 0.3, y: 0.59, w: 8.0, h: 0.25,
+          fontSize: 10,
+          color: '#2B5797',
+          fontFace: 'Arial'
+        })
+
+        slide.addShape(pptx.shapes.LINE, {
+          x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+          line: { color: '3B82F6', width: 2 }
+        })
+
+        slide.addImage({
+          path: '/assets/logo.png',
+          x: 8.72,
+          y: 0.25,
+          w: 1.0,
+          h: 0.52
+        })
+      }
+
+      // ─── HELPER: Add Divider / Section Header slide ───
+      const addDividerSlide = (sectionTitle: string) => {
+        const slide = pptx.addSlide()
+        dividerTOC.push({ title: sectionTitle, slideNumber: slideCounter })
+
+        slide.background = { fill: '1E293B' }
+        slide.addText(sectionTitle, { x: 1.0, y: 2.0, w: 8.0, h: 1.2, fontSize: 38, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Arial' })
+        slide.addShape(pptx.shapes.LINE, { x: 3.5, y: 3.4, w: 3.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
+        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+
+        slide.addText('« Back to Contents', {
+          x: 0.3, y: 5.15, w: 2.4, h: 0.3,
+          fontSize: 10, color: '93C5FD', underline: true, fontFace: 'Arial',
+          hyperlink: { slide: TOC_SLIDE_NUMBER, tooltip: 'Back to Contents' },
+        })
+
+        return slide
+      }
+
+      // ─── HELPER: Add chart (vertical bars) ───
+      const addVerticalBarChart = (slide: any, data: any[], x: number, y: number, w: number, h: number, colors?: string[]) => {
+        if (!data || data.length === 0) {
+          slide.addText('No chart data available', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+          return
+        }
+
+        const resolvedColors = colors && colors.length > 0
+          ? colors
+          : (data.length > 0 && Array.isArray(data[0].labels)
+            ? getBrandColorsArray(getOrderedBrands(data[0].labels as string[]))
+            : ['1871C9', '2AE886', 'E8903D', 'A731AB', 'F59F1B', '0097A7', 'ED6433', '5E35B0'])
+
+        try {
+          slide.addChart(pptx.ChartType.bar, data, {
+            x, y, w, h,
+            chartColors: resolvedColors,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 'top',
+            catAxisLabelFontSize: 7,
+            valAxisLabelFontSize: 7,
+            valAxisMinVal: 0,
+            valAxisMaxVal: 100,
+            valAxisMajorUnit: 20,
+            showValue: true,
+            dataLabelFontSize: 6,
+            dataLabelColor: '333333',
+            barGapWidth: 100,
+          })
+        } catch (err) {
+          console.error('Error adding chart:', err)
+          slide.addText('Chart could not be rendered', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+        }
+      }
+
+      // ─── SLIDE 1: Title Page ──────────────────────────────────────
       setPptProgress('Generating Slide 1: Title...')
       const slide1 = pptx.addSlide()
       slide1.background = { fill: 'FFFFFF' }
 
       slide1.addText('Survey Analysis Report', {
-        x: 1.0,
-        y: 2.0,
-        w: 8.0,
-        h: 0.8,
-        fontSize: 36,
-        bold: true,
-        color: '1E293B',
-        align: 'left',
-        fontFace: 'Arial',
+        x: 1.0, y: 2.0, w: 8.0, h: 0.8,
+        fontSize: 36, bold: true, color: '1E293B', align: 'left', fontFace: 'Arial',
       })
 
       slide1.addText('Brand Performance & Customer Feedback Analysis', {
-        x: 1.0,
-        y: 2.8,
-        w: 8.0,
-        h: 0.6,
-        fontSize: 18,
-        color: '6C63FF',
-        align: 'left',
-        fontFace: 'Arial',
+        x: 1.0, y: 2.8, w: 8.0, h: 0.6,
+        fontSize: 18, color: '6C63FF', align: 'left', fontFace: 'Arial',
       })
 
       slide1.addShape(pptx.shapes.LINE, {
-        x: 1.0,
-        y: 3.5,
-        w: 4.0,
-        h: 0.0,
+        x: 1.0, y: 3.5, w: 4.0, h: 0.0,
         line: { color: '3B82F6', width: 3 }
       })
 
       slide1.addText(`Report Generated: ${displayDate}`, {
-        x: 1.0,
-        y: 3.8,
-        w: 8.0,
-        h: 0.4,
-        fontSize: 12,
-        color: '64748B',
-        align: 'left',
-        fontFace: 'Arial',
+        x: 1.0, y: 3.8, w: 8.0, h: 0.4,
+        fontSize: 12, color: '64748B', align: 'left', fontFace: 'Arial',
       })
+      const tocSlide = pptx.addSlide()
+      tocSlide.background = { fill: 'FFFFFF' }
+      // ─── DIVIDER 1: Demography ───
+      addDividerSlide('Demography')
 
-      // ─── Follow-up Questions Slide (Redesigned with Solid White Background & Merged Cell Grid) ───
+      // ─── SLIDE 2: Age Group Distribution & City Cross-tabulation ──
+      setPptProgress('Generating Slide 2: Age Group Distribution & City Cross-tabulation...')
+      const slide2 = pptx.addSlide()
+      slide2.background = { fill: 'FFFFFF' }
+
+      addSlideTitle(slide2, 'Age Group Distribution & City Cross-tabulation', 'Distribution of respondents by age category and city')
+
+      try {
+        if (analytics.age_group && Array.isArray(analytics.age_group.brands) && analytics.age_group.brands.length > 0) {
+          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8)
+
+          slide2.addText('Age Group Distribution Chart', {
+            x: 5.1, y: 1.2, w: 4.6, h: 0.2,
+            fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const ageRows = (Array.isArray(analytics.age_group.chart) && analytics.age_group.chart.length > 0)
+            ? analytics.age_group.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.age_group.table)
+              ? analytics.age_group.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedBrands = getOrderedBrands(analytics.age_group.brands)
+
+          if (ageRows.length > 0 && Array.isArray(orderedBrands) && orderedBrands.length > 0) {
+
+            const brandColors = getBrandColorsArray(orderedBrands)
+
+            const chartX = 5.1
+            const chartY = 1.42
+            const chartW = 4.6
+            const chartH = 1.5
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            // ─── FIX: maxPercent = 100 (was 60) ───
+            const maxPercent = 100
+            const bottomLabelSpace = 0.1
+            const actualPlotH = plotH - bottomLabelSpace
+
+            // ─── FIX: Grid values 0, 20, 40, 60, 80, 100 ───
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide2.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              // ─── Y-axis labels OUTSIDE chart with small gap ───
+              slide2.addText(`${pct}%`, {
+                x: plotX - 0.28,    // Start far left
+                y: yPos - 0.05,
+                w: 0.36,            // Width large enough to hold "100%"
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',     // Right-aligned - text ends at x + w
+                valign: 'middle'
+              })
+            })
+
+            // Axis lines
+            slide2.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide2.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = ageRows.length
+            const numBrands = orderedBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            ageRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = brandColors[brandIndex % brandColors.length]
+
+                if (displayValue > 0) {
+                  slide2.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                // ─── DATA LABEL - HORIZONTAL ───
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide2.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.08,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              // Category label
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide2.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            // ─── LEGEND ───
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedBrands.forEach((brand: string, index: number) => {
+              const color = brandColors[index % brandColors.length]
+
+              slide2.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide2.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+
+            console.log('Slide 2: Age Group chart added successfully!')
+          } else {
+            const chartData = matrixToChartData(analytics.age_group, 'percent')
+            if (chartData.length > 0) {
+              addVerticalBarChart(slide2, chartData, 5.1, 1.48, 4.6, 1.8)
+            }
+          }
+        }
+
+        if (analytics.age_city && Array.isArray(analytics.age_city.brands) && analytics.age_city.brands.length > 0) {
+          slide2.addText('Age Group by City & Brand (Cross-tabulation)', {
+            x: 0.3, y: 3.25, w: 9.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addAgeCityTableFullWidth(slide2, analytics.age_city, 0.3, 3.5, 9.4, 3.35)
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 2 ERROR:', e);
+        slide2.addText(`Slide 2 error: ${e?.message}`, {
+          x: 0.3, y: 2.0, w: 9.4, h: 0.5,
+          fontSize: 10, color: 'CC0000', align: 'center'
+        })
+      }
+      // ─── SLIDE 3: Mode of Purchase & Ownership ──────────────────
+      setPptProgress('Generating Slide 3: Mode of Purchase & Ownership...')
+      const slide3 = pptx.addSlide()
+      slide3.background = { fill: 'FFFFFF' }
+
+      addSlideTitle(slide3, 'Mode of Purchase & Ownership', 'Purchase channel preferences & ownership distribution')
+
+      // ─── SLIDE 3 ──────────────────────────────────────────────────
+      try {
+        // ─── LEFT: Mode of Purchase ──────────────────────────────────
+        if (analytics.mode_of_purchase && Array.isArray(analytics.mode_of_purchase.brands) && analytics.mode_of_purchase.brands.length > 0) {
+          slide3.addText('Mode of Purchase', {
+            x: 0.3, y: 1.3, w: 4.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4)
+
+          slide3.addText('Mode of Purchase Chart', {
+            x: 0.3, y: 2.98, w: 4.4, h: 0.18,
+            fontSize: 8, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const modeRows = (Array.isArray(analytics.mode_of_purchase.chart) && analytics.mode_of_purchase.chart.length > 0)
+            ? analytics.mode_of_purchase.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.mode_of_purchase.table)
+              ? analytics.mode_of_purchase.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedModeBrands = getOrderedBrands(analytics.mode_of_purchase.brands)
+
+          if (modeRows.length > 0 && Array.isArray(orderedModeBrands) && orderedModeBrands.length > 0) {
+            const modeColors = getBrandColorsArray(orderedModeBrands)
+
+            const chartX = 0.3
+            const chartY = 3.18
+            const chartW = 4.4
+            const chartH = 2.0
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            // ─── FIX: maxPercent = 100 (was 60) ───
+            const maxPercent = 100
+            const bottomLabelSpace = 0.15
+            const actualPlotH = plotH - bottomLabelSpace
+
+            // ─── FIX: Grid values 0, 20, 40, 60, 80, 100 ───
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide3.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              slide3.addText(`${pct}%`, {
+                x: plotX - 0.28,
+                y: yPos - 0.05,
+                w: 0.35,
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',
+                valign: 'middle'
+              })
+            })
+
+            // Axis lines
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = modeRows.length
+            const numBrands = orderedModeBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            modeRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedModeBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = modeColors[brandIndex % modeColors.length]
+
+                if (displayValue > 0) {
+                  slide3.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                // ─── DATA LABEL - FIXED FOR 3-DIGIT NUMBERS ───
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide3.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.10,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              // Category label
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide3.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            // Legend
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedModeBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedModeBrands.forEach((brand: string, index: number) => {
+              const color = modeColors[index % modeColors.length]
+
+              slide3.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide3.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+
+            console.log('Slide 3: Mode of Purchase chart added successfully!')
+          } else {
+            const modeData = matrixToChartData(analytics.mode_of_purchase, 'percent')
+            if (modeData.length > 0) addVerticalBarChart(slide3, modeData, 0.3, 3.18, 4.4, 2.0)
+          }
+        }
+
+        // ─── RIGHT: Ownership ──────────────────────────────────────────
+        if (analytics.ownership && Array.isArray(analytics.ownership.brands) && analytics.ownership.brands.length > 0) {
+          slide3.addText('Ownership', {
+            x: 5.3, y: 1.3, w: 4.4, h: 0.2,
+            fontSize: 10, bold: true, color: '1E293B', align: 'center'
+          })
+          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4)
+
+          slide3.addText('Ownership Chart', {
+            x: 5.3, y: 2.98, w: 4.4, h: 0.18,
+            fontSize: 8, bold: true, color: '6C63FF', align: 'center'
+          })
+
+          const ownRows = (Array.isArray(analytics.ownership.chart) && analytics.ownership.chart.length > 0)
+            ? analytics.ownership.chart.filter((r: any) => r.category !== 'Grand Total')
+            : (Array.isArray(analytics.ownership.table)
+              ? analytics.ownership.table.filter((r: any) => r.category !== 'Grand Total')
+              : [])
+
+          const orderedOwnBrands = getOrderedBrands(analytics.ownership.brands)
+
+          if (ownRows.length > 0 && Array.isArray(orderedOwnBrands) && orderedOwnBrands.length > 0) {
+            const ownColors = getBrandColorsArray(orderedOwnBrands)
+
+            const chartX = 5.3
+            const chartY = 3.18
+            const chartW = 4.4
+            const chartH = 2.0
+
+            const plotX = chartX + 0.35
+            const plotY = chartY + 0.08
+            const plotW = chartW - 0.45
+            const plotH = chartH - 0.25
+            // ─── FIX: maxPercent = 100 (was 60) ───
+            const maxPercent = 100
+            const bottomLabelSpace = 0.15
+            const actualPlotH = plotH - bottomLabelSpace
+
+            // ─── FIX: Grid values 0, 20, 40, 60, 80, 100 ───
+            const gridValues = [0, 20, 40, 60, 80, 100]
+
+            gridValues.forEach((pct) => {
+              const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+              slide3.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: yPos,
+                w: plotW,
+                h: 0,
+                line: { color: 'E0E0E0', width: 0.5 }
+              })
+
+              slide3.addText(`${pct}%`, {
+                x: plotX - 0.28,
+                y: yPos - 0.05,
+                w: 0.36,
+                h: 0.1,
+                fontSize: 4.5,
+                color: '666666',
+                align: 'right',
+                valign: 'middle'
+              })
+            })
+
+            // Axis lines
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY,
+              w: 0,
+              h: actualPlotH,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            slide3.addShape(pptx.ShapeType.line, {
+              x: plotX,
+              y: plotY + actualPlotH,
+              w: plotW,
+              h: 0,
+              line: { color: '999999', width: 0.8 }
+            })
+
+            const numCategories = ownRows.length
+            const numBrands = orderedOwnBrands.length
+            const categoryWidth = plotW / numCategories
+            const barWidth = Math.min(0.12, categoryWidth * 0.18)
+            const barGap = 0.02
+            const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+            ownRows.forEach((row: any, rowIndex: number) => {
+              const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+              const groupStartX = categoryCenter - (groupWidth / 2)
+
+              orderedOwnBrands.forEach((brand: string, brandIndex: number) => {
+                let value = 0
+                const pctKey = `${brand}_pct`
+
+                if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                  const parsed = parseFloat(row[pctKey])
+                  if (!isNaN(parsed)) {
+                    value = parsed
+                  }
+                }
+
+                const displayValue = Math.max(0, Math.min(value, maxPercent))
+                const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                const yPos = plotY + actualPlotH - barHeight
+
+                const color = ownColors[brandIndex % ownColors.length]
+
+                if (displayValue > 0) {
+                  slide3.addShape(pptx.ShapeType.rect, {
+                    x: xPos,
+                    y: yPos,
+                    w: barWidth,
+                    h: barHeight,
+                    fill: { color: color },
+                    line: { color: color, transparency: 100 }
+                  })
+                }
+
+                // ─── DATA LABEL - FIXED FOR 3-DIGIT NUMBERS ───
+                if (value > 0) {
+                  const labelText = `${Math.round(value)}`
+                  const labelWidth = labelText.length >= 3 ? barWidth + 0.30 : barWidth + 0.16
+
+                  slide3.addText(labelText, {
+                    x: xPos - (labelWidth - barWidth) / 2,
+                    y: yPos - 0.10,
+                    w: labelWidth,
+                    h: 0.10,
+                    fontSize: 4,
+                    color: '333333',
+                    bold: true,
+                    align: 'center',
+                    valign: 'middle',
+                    fontFace: 'Arial',
+                    fit: 'shrink'
+                  })
+                }
+              })
+
+              // Category label
+              const labelX = categoryCenter - 0.35
+              const labelY = plotY + actualPlotH + 0.01
+
+              slide3.addText(String(row.category || ''), {
+                x: labelX,
+                y: labelY,
+                w: 0.70,
+                h: 0.12,
+                fontSize: 4,
+                color: '333333',
+                align: 'center',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+            })
+
+            // Legend
+            const legendY = chartY + chartH - 0.02
+            const legendItemWidths = orderedOwnBrands.map(() => 0.7)
+            const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+            let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+            orderedOwnBrands.forEach((brand: string, index: number) => {
+              const color = ownColors[index % ownColors.length]
+
+              slide3.addShape(pptx.ShapeType.ellipse, {
+                x: legendX,
+                y: legendY + 0.005,
+                w: 0.04,
+                h: 0.04,
+                fill: { color: color },
+                line: { color: color, transparency: 100 }
+              })
+
+              slide3.addText(brand, {
+                x: legendX + 0.01,
+                y: legendY,
+                w: legendItemWidths[index] - 0.01,
+                h: 0.07,
+                fontSize: 3.5,
+                color: '333333',
+                align: 'left',
+                valign: 'middle',
+                fontFace: 'Arial'
+              })
+
+              legendX += legendItemWidths[index]
+            })
+
+            console.log('Slide 3: Ownership chart added successfully!')
+          } else {
+            const ownershipData = matrixToChartData(analytics.ownership, 'percent')
+            if (ownershipData.length > 0) addVerticalBarChart(slide3, ownershipData, 5.3, 3.18, 4.4, 2.0)
+          }
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 3 ERROR:', e);
+        slide3.addText(`Slide 3 error: ${e?.message}`, {
+          x: 0.3, y: 2.0, w: 9.4, h: 0.5,
+          fontSize: 10, color: 'CC0000', align: 'center'
+        })
+      }
+
+      // ─── SLIDE 4 (User Profession Distribution) ────────────────────────────────
+      setPptProgress('Generating Slide 4: User Profession Distribution...')
+      const slide4 = pptx.addSlide()
+      slide4.background = { fill: 'FFFFFF' }
+      addSlideTitle(slide4, 'User Profession Distribution', 'Professional background of survey respondents')
+
+      try {
+        console.log('=== ALL ANALYTICS KEYS ===')
+        console.log('Keys:', Object.keys(analytics))
+
+        let profMatrix = null
+
+        if (analytics.profession) {
+          profMatrix = analytics.profession
+          console.log('Found profession data directly')
+        } else if (analytics.professions) {
+          profMatrix = analytics.professions
+          console.log('Found professions data')
+        } else {
+          const professionKey = Object.keys(analytics).find(key =>
+            key.toLowerCase().includes('profession')
+          )
+          if (professionKey) {
+            profMatrix = analytics[professionKey]
+            console.log(`Found profession data under key: ${professionKey}`)
+          }
+        }
+
+        console.log('Profession Matrix:', profMatrix)
+
+        const hasProfData = profMatrix &&
+          typeof profMatrix === 'object' &&
+          !Array.isArray(profMatrix) &&
+          profMatrix.brands &&
+          Array.isArray(profMatrix.brands) &&
+          profMatrix.brands.length > 0
+
+        if (hasProfData) {
+          console.log('Profession data is valid with brands:', profMatrix.brands)
+
+          try {
+            // ─── LEFT: Profession Distribution Table ───
+            slide4.addText('Profession Distribution', {
+              x: 0.3, y: 1.0, w: 4.4, h: 0.25,
+              fontSize: 10, bold: true, color: '1E293B', align: 'center'
+            })
+
+            if (Array.isArray(profMatrix.table) && profMatrix.table.length > 0) {
+              addMatrixTable(slide4, profMatrix, 'Profession', 0.3, 1.3, 4.4, 3.8)
+            } else {
+              slide4.addText('No table data available', {
+                x: 0.3, y: 1.6, w: 4.4, h: 0.5,
+                fontSize: 10, color: '999999', align: 'center'
+              })
+            }
+
+            // ─── RIGHT: Simple Grouped Bar Chart ───
+            slide4.addText('Profession Distribution by Brand', {
+              x: 5.3, y: 1.0, w: 4.4, h: 0.25,
+              fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+            })
+
+            const profRows = (Array.isArray(profMatrix.chart) && profMatrix.chart.length > 0)
+              ? profMatrix.chart.filter((r: any) => r.category !== 'Grand Total')
+              : (Array.isArray(profMatrix.table)
+                ? profMatrix.table.filter((r: any) => r.category !== 'Grand Total')
+                : [])
+
+            console.log('Profession rows for chart:', profRows)
+
+            if (profRows.length > 0 && Array.isArray(profMatrix.brands)) {
+
+              const orderedProfBrands = getOrderedBrands(profMatrix.brands)
+              const profColors = getBrandColorsArray(orderedProfBrands)
+
+              // ─── CHART POSITION ───
+              const chartX = 5.3
+              const chartY = 1.3
+              const chartW = 4.4
+              const chartH = 3.8
+
+              // ─── CHART AREA ───
+              const plotX = chartX + 0.45
+              const plotY = chartY + 0.15
+              const plotW = chartW - 0.55
+              const plotH = chartH - 0.35
+              // ─── FIX: maxPercent = 100 (was 60) ───
+              const maxPercent = 100
+              const bottomLabelSpace = 0.55
+              const actualPlotH = plotH - bottomLabelSpace
+
+              // ─── FIX: Grid values 0, 20, 40, 60, 80, 100 ───
+              const gridValues = [0, 20, 40, 60, 80, 100]
+
+              gridValues.forEach((pct) => {
+                const yPos = plotY + actualPlotH - (pct / maxPercent) * actualPlotH
+
+                // Horizontal grid line
+                slide4.addShape(pptx.ShapeType.line, {
+                  x: plotX,
+                  y: yPos,
+                  w: plotW,
+                  h: 0,
+                  line: { color: 'E0E0E0', width: 0.5 }
+                })
+
+                // ─── FIX: Y-axis labels with proper gap (same as Slides 2 & 3) ───
+                slide4.addText(`${pct}%`, {
+                  x: plotX - 0.30,    // Start far enough left
+                  y: yPos - 0.07,
+                  w: 0.38,            // Width to fit "100%"
+                  h: 0.14,
+                  fontSize: 5.5,
+                  color: '666666',
+                  align: 'right',     // Right-aligned - text ends at x + w
+                  valign: 'middle'
+                })
+              })
+
+              // ─── AXIS LINES ───
+              // Y axis
+              slide4.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: plotY,
+                w: 0,
+                h: actualPlotH,
+                line: { color: '999999', width: 0.8 }
+              })
+
+              // X axis
+              slide4.addShape(pptx.ShapeType.line, {
+                x: plotX,
+                y: plotY + actualPlotH,
+                w: plotW,
+                h: 0,
+                line: { color: '999999', width: 0.8 }
+              })
+
+              // ─── BAR CALCULATIONS ───
+              const numCategories = profRows.length
+              const numBrands = orderedProfBrands.length
+              const categoryWidth = plotW / numCategories
+              const barWidth = Math.min(0.18, categoryWidth * 0.2)
+              const barGap = 0.03
+              const groupWidth = (barWidth * numBrands) + (barGap * (numBrands - 1))
+
+              // ─── DRAW BARS ───
+              profRows.forEach((row: any, rowIndex: number) => {
+                const categoryCenter = plotX + (rowIndex * categoryWidth) + (categoryWidth / 2)
+                const groupStartX = categoryCenter - (groupWidth / 2)
+
+                orderedProfBrands.forEach((brand: string, brandIndex: number) => {
+                  let value = 0
+                  const pctKey = `${brand}_pct`
+
+                  if (row[pctKey] !== undefined && row[pctKey] !== null) {
+                    const parsed = parseFloat(row[pctKey])
+                    if (!isNaN(parsed)) {
+                      value = parsed
+                    }
+                  }
+
+                  const displayValue = Math.max(0, Math.min(value, maxPercent))
+                  const barHeight = (displayValue / maxPercent) * actualPlotH
+
+                  const xPos = groupStartX + brandIndex * (barWidth + barGap)
+                  const yPos = plotY + actualPlotH - barHeight
+
+                  const color = profColors[brandIndex % profColors.length]
+
+                  // Draw bar
+                  if (displayValue > 0) {
+                    slide4.addShape(pptx.ShapeType.rect, {
+                      x: xPos,
+                      y: yPos,
+                      w: barWidth,
+                      h: barHeight,
+                      fill: { color: color },
+                      line: { color: color, transparency: 100 }
+                    })
+                  }
+
+                  // ─── DATA LABEL - ALTERNATIVE ───
+                  if (value > 0) {
+                    const labelText = `${Math.round(value)}`
+                    const labelWidth = barWidth + 0.30  // Even wider
+
+                    slide4.addText(labelText, {
+                      x: xPos - 0.15,          // Center wider box
+                      y: yPos - 0.15,
+                      w: labelWidth,
+                      h: 0.14,
+                      fontSize: 5,             // Smaller font
+                      color: '333333',
+                      bold: true,
+                      align: 'center',
+                      valign: 'middle',
+                      fontFace: 'Arial',
+                      fit: 'shrink'
+                    })
+                  }
+                })
+
+                // ─── CATEGORY LABEL ───
+                const labelX = categoryCenter - 0.4
+                const labelY = plotY + actualPlotH + 0.05
+
+                slide4.addText(String(row.category || ''), {
+                  x: labelX,
+                  y: labelY,
+                  w: 0.80,
+                  h: 0.2,
+                  fontSize: 5.5,
+                  color: '333333',
+                  align: 'center',
+                  valign: 'middle',
+                  fontFace: 'Arial'
+                })
+              })
+
+              // ─── LEGEND - TIGHTENED ───
+              const legendY = chartY + chartH - 0.30  // TIGHTENED (moved up, was +0.05)
+              const legendItemWidths = orderedProfBrands.map(() => 0.9)
+              const totalLegendWidth = legendItemWidths.reduce((sum, width) => sum + width, 0)
+              let legendX = chartX + (chartW - totalLegendWidth) / 2
+
+              orderedProfBrands.forEach((brand: string, index: number) => {
+                const color = profColors[index % profColors.length]
+
+                // Legend marker (circle) - smaller
+                slide4.addShape(pptx.ShapeType.ellipse, {
+                  x: legendX,
+                  y: legendY + 0.005,
+                  w: 0.06,          // TIGHTENED (was 0.09)
+                  h: 0.06,          // TIGHTENED (was 0.09)
+                  fill: { color: color },
+                  line: { color: color, transparency: 100 }
+                })
+
+                // Brand name - smaller font
+                slide4.addText(brand, {
+                  x: legendX + 0.03,
+                  y: legendY,
+                  w: legendItemWidths[index] - 0.03,
+                  h: 0.08,
+                  fontSize: 4,       // TIGHTENED (was 4.5)
+                  color: '333333',
+                  align: 'left',
+                  valign: 'middle',
+                  fontFace: 'Arial'
+                })
+
+                legendX += legendItemWidths[index]
+              })
+
+              console.log('Profession chart added successfully!')
+
+            } else {
+              slide4.addText('No data rows available', {
+                x: 5.3, y: 1.6, w: 4.4, h: 3.5,
+                fontSize: 10, color: '999999', align: 'center', valign: 'middle'
+              })
+            }
+          } catch (err: any) {
+            console.error('[PPT] SLIDE 4 ERROR:', err)
+            slide4.addText(`Error: ${err?.message || 'Unknown error'}`, {
+              x: 0.3, y: 2.5, w: 9.4, h: 0.5,
+              fontSize: 10, color: 'CC0000', align: 'center'
+            })
+          }
+        } else {
+          // ─── FALLBACK: No profession data ───
+          console.warn('[PPT Slide 4] No profession data found')
+
+          if (analytics.age_group && Array.isArray(analytics.age_group.brands) && analytics.age_group.brands.length > 0) {
+            console.log('Using age_group data as fallback')
+            slide4.addText('Profession data not available - showing Age Group Distribution', {
+              x: 0.3, y: 1.3, w: 9.4, h: 0.4,
+              fontSize: 10, color: 'FF6B6B', align: 'center'
+            })
+
+            addMatrixTable(slide4, analytics.age_group, 'Age Group', 0.3, 1.8, 4.4, 3.8)
+
+            // Simple fallback chart
+            const ageRows = analytics.age_group.chart?.filter((r: any) => r.category !== 'Grand Total') || []
+            if (ageRows.length > 0 && Array.isArray(analytics.age_group.brands)) {
+              slide4.addText('Age Group Distribution by Brand', {
+                x: 5.3, y: 1.3, w: 4.4, h: 0.25,
+                fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+              })
+
+              const orderedAgeBrands = getOrderedBrands(analytics.age_group.brands)
+              const colors = getBrandColorsArray(orderedAgeBrands)
+              const chartX = 5.3
+              const chartY = 1.6
+              const chartW = 4.4
+              const chartH = 3.3
+
+              const numCategories = ageRows.length
+              const numBrands = orderedAgeBrands.length
+              const categoryHeight = chartH / numCategories
+              const barHeight = categoryHeight * 0.55
+              const barGap = categoryHeight * 0.05
+              const totalBarWidth = chartW - 0.8
+              const barWidth = totalBarWidth / numBrands
+
+              // Y-axis
+              slide4.addShape(pptx.ShapeType.line, {
+                x: chartX + 0.7,
+                y: chartY,
+                w: 0,
+                h: chartH,
+                line: { color: '999999', width: 1 }
+              })
+
+              // X-axis
+              slide4.addShape(pptx.ShapeType.line, {
+                x: chartX + 0.7,
+                y: chartY + chartH,
+                w: chartW - 0.7,
+                h: 0,
+                line: { color: '999999', width: 1 }
+              })
+
+              ageRows.forEach((row: any, rowIndex: number) => {
+                const yPos = chartY + (rowIndex * categoryHeight) + (categoryHeight - barHeight) / 2
+
+                slide4.addText(String(row.category || ''), {
+                  x: chartX + 0.05,
+                  y: yPos + (barHeight / 2) - 0.08,
+                  w: 0.6,
+                  h: 0.16,
+                  fontSize: 6,
+                  color: '333333',
+                  align: 'right',
+                  valign: 'middle',
+                })
+
+                orderedAgeBrands.forEach((brand: string, brandIndex: number) => {
+                  const value = parseFloat(row[`${brand}_pct`]) || 0
+                  const maxBarWidth = chartW - 0.8
+                  const barLength = (value / 100) * maxBarWidth
+                  const color = colors[brandIndex % colors.length]
+                  const xPos = chartX + 0.7 + (brandIndex * barWidth) + barGap
+
+                  if (value > 0) {
+                    slide4.addShape(pptx.ShapeType.rect, {
+                      x: xPos,
+                      y: yPos,
+                      w: barLength,
+                      h: barHeight,
+                      fill: { color: color },
+                      line: { color: color, width: 0.5 },
+                    })
+                  }
+                })
+              })
+
+                // Y-axis labels - FIXED to 0, 20, 40, 60, 80, 100
+                ;[0, 20, 40, 60, 80, 100].forEach((pct) => {
+                  const yPos = chartY + chartH - (pct / 100) * chartH
+                  slide4.addText(`${pct}%`, {
+                    x: chartX + 0.05,
+                    y: yPos - 0.08,
+                    w: 0.55,
+                    h: 0.16,
+                    fontSize: 5,
+                    color: '666666',
+                    align: 'right',
+                    valign: 'middle',
+                  })
+                })
+            }
+          } else {
+            slide4.addText('Profession data not available for current filters.', {
+              x: 0.3, y: 2.5, w: 9.4, h: 0.8,
+              fontSize: 14, bold: true, color: '999999', align: 'center', valign: 'middle'
+            })
+          }
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE 4 ERROR:', e)
+        slide4.addText(`Slide 4 error: ${e?.message || 'Unknown error'}`, {
+          x: 0.3, y: 2.0, w: 9.4, h: 0.5,
+          fontSize: 10, color: 'CC0000', align: 'center'
+        })
+      }
+
+
+
+
+      // ─── DIVIDER 2: NPS ───
+      addDividerSlide('NPS')
+
+      // ============================================================================
+      // NPS SLIDES (Inserted after Profession slide)
+      // ============================================================================
+      if (nps && nps.brands) {
+
+
+        // ─── SLIDE 5: Will you recommend your vehicle? (Brand-wise) ───
+        setPptProgress('Generating Slide: Will you recommend your vehicle?')
+        const slide5 = pptx.addSlide()
+        addSlideTitle(slide5, 'Will you recommend your vehicle to your friends / relatives / family members?', '')
+
+        // Left side: Model Base table
+        slide5.addText('Model', {
+          x: 0.3, y: 1.3, w: 2.0, h: 0.3,
+          fill: 'E0E0E0', color: '333333', bold: true, align: 'left', fontSize: 10,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+        slide5.addText('Base', {
+          x: 2.3, y: 1.3, w: 1.0, h: 0.3,
+          fill: 'E0E0E0', color: '333333', bold: true, align: 'center', fontSize: 10,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+
+        let currentY = 1.6
+        orderedNpsBrands.forEach((brand) => {
+          const brandData = nps.recommend_vehicle_pie?.find((d: any) => d.brand === brand)
+          const base = brandData ? (brandData.yes + brandData.no) : 0
+
+          slide5.addText(brand, {
+            x: 0.3, y: currentY, w: 2.0, h: 0.3,
+            fill: getBrandColor(brand), color: 'FFFFFF', bold: true, align: 'left', fontSize: 9,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          slide5.addText(String(base), {
+            x: 2.3, y: currentY, w: 1.0, h: 0.3,
+            color: '333333', align: 'center', fontSize: 9,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          currentY += 0.3
+        })
+
+        // Right side: Pie Charts
+        // Right side: Pie Charts (styled to match reference image)
+        const pieCount = orderedNpsBrands.length
+        const pieSize = 2.0                    // bigger pie, like the image
+        const pieGap = 0.3
+        const totalPieWidth = pieCount * pieSize + (pieCount - 1) * pieGap
+        let pieX = 3.3 + Math.max(0, (6.4 - totalPieWidth) / 2)  // center in remaining space
+
+        orderedNpsBrands.forEach((brand) => {
+          const brandData = nps.recommend_vehicle_pie?.find((d: any) => d.brand === brand)
+          if (brandData && (brandData.yes > 0 || brandData.no > 0)) {
+            const chartData = [
+              { name: 'Recommendation', labels: ['Yes', 'No'], values: [brandData.yes, brandData.no] }
+            ]
+
+            // Title above pie — bold, dark, matches image style
+            slide5.addText(brand, {
+              x: pieX, y: 1.4, w: pieSize, h: 0.35,
+              color: '1E293B', bold: true, align: 'center', fontSize: 8, fontFace: 'Arial'
+            })
+
+            slide5.addChart(pptx.charts.PIE, chartData, {
+              x: pieX, y: 1.6, w: pieSize, h: pieSize,
+              showLegend: true,
+              legendPos: 'b',
+              legendFontSize: 9,
+              showTitle: false,
+              dataLabelFormatCode: '0%',
+              showValue: false,
+              showPercent: true,
+              dataLabelColor: 'FFFFFF',
+              dataLabelFontSize: 8,
+              dataLabelFontFace: 'Arial',
+              dataLabelPosition: 'ctr',
+              chartColors: ['4CAF50', 'F44336'],  // green / red, matches image
+              chartColorsOpacity: 100,
+            })
+
+            pieX += pieSize + pieGap
+          }
+        })
+
+
+        // ─── SLIDE 6: Likelihood to Recommend (Overall Product) ───
+        setPptProgress('Generating Slide: Overall Product Likelihood...')
+        const slide6 = pptx.addSlide()
+        slide6.background = { fill: 'FFFFFF' }
+        addSlideTitle(slide6, 'Overall Product', '')
+
+        // ─── Model / Base table (top-left) ───
+        slide6.addText('MODEL', {
+          x: 0.3, y: 1.0, w: 1.4, h: 0.35,
+          fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 10,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+        slide6.addText('BASE', {
+          x: 1.7, y: 1.0, w: 1.0, h: 0.35,
+          fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 10,
+          border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+          line: { color: 'CCCCCC', width: 1 }
+        })
+
+        const tableRowH = 0.4
+        let modelRowY = 1.35
+        orderedNpsBrands.forEach((brand) => {
+          const bd = nps.recommend_category_bar?.find((d: any) => d.brand === brand)
+          const base = bd ? (bd.yes + bd.maybe + bd.no) : 0
+          slide6.addText(brand, {
+            x: 0.3, y: modelRowY, w: 1.4, h: tableRowH,
+            fill: getBrandColor(brand), color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 8.5,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          slide6.addText(String(base), {
+            x: 1.7, y: modelRowY, w: 1.0, h: tableRowH,
+            fill: 'FFFFFF', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 9,
+            border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+            line: { color: 'CCCCCC', width: 1 }
+          })
+          modelRowY += tableRowH
+        })
+        const tableBottomY = modelRowY
+
+        // ─── Badges (top-center, stacked) - MATCH SLIDE N+ ───
+        slide6.addText('BEST IN MARKET', {
+          x: 3.7, y: 0.95, w: 2.6, h: 0.28,
+          fill: '4CAF50', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+        })
+        slide6.addText('SCOPE OF IMPROVEMENT', {
+          x: 3.7, y: 1.25, w: 2.6, h: 0.28,
+          fill: 'F44336', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+        })
+
+        // ─── Legend - MATCH SLIDE N+ (smaller) ───
+        const NPS_COLORS = ['4CAF50', 'FFC107', 'F44336']
+        const legendItems6 = [
+          { label: 'Promoter', color: NPS_COLORS[0] },
+          { label: 'Passive', color: NPS_COLORS[1] },
+          { label: 'Detractor', color: NPS_COLORS[2] },
+        ]
+        const LEGEND_BOX = 0.10
+        const LEGEND_FONT = 8
+        const legendItemW = 0.9
+        const legendTotalW = legendItems6.length * legendItemW
+        let legendX6 = (10 - legendTotalW) / 2 + 0.15
+        const legendY = 1.65
+
+        legendItems6.forEach((item) => {
+          slide6.addShape(pptx.ShapeType.rect, {
+            x: legendX6, y: legendY, w: LEGEND_BOX, h: LEGEND_BOX,
+            fill: { color: item.color }, line: { color: item.color, transparency: 100 }
+          })
+          slide6.addText(item.label, {
+            x: legendX6 + 0.16, y: legendY - 0.05, w: 0.75, h: 0.22,
+            color: '333333', fontSize: LEGEND_FONT, align: 'left', valign: 'middle', fontFace: 'Calibri'
+          })
+          legendX6 += legendItemW
+        })
+
+        // ─── Overall Label - ADJUSTED POSITION ───
+        const overallY = 1.97
+        const overallH = 0.25
+        slide6.addText('Overall', {
+          x: 3.9, y: overallY, w: 2.6, h: overallH,
+          color: '1E293B', bold: true, align: 'center', fontSize: 10, fontFace: 'Calibri'
+        })
+        const overallBottomY = overallY + overallH
+
+        // ─── Build chart data ───
+        const chartData6: any[] = [
+          { name: 'Promoter', labels: [], values: [] },
+          { name: 'Passive', labels: [], values: [] },
+          { name: 'Detractor', labels: [], values: [] },
+        ]
+        const npsScores6: { brand: string; nps: number }[] = []
+
+        orderedNpsBrands.forEach((brand) => {
+          const bd = nps.recommend_category_bar?.find((d: any) => d.brand === brand)
+          const base = bd ? (bd.yes + bd.maybe + bd.no) : 0
+
+          const yesPct = base > 0 && bd ? Math.round((bd.yes / base) * 100) : 0
+          const maybePct = base > 0 && bd ? Math.round((bd.maybe / base) * 100) : 0
+          const noPct = base > 0 && bd ? Math.round((bd.no / base) * 100) : 0
+
+          chartData6[0].labels.push(brand); chartData6[0].values.push(yesPct)
+          chartData6[1].labels.push(brand); chartData6[1].values.push(maybePct)
+          chartData6[2].labels.push(brand); chartData6[2].values.push(noPct)
+
+          npsScores6.push({ brand, nps: yesPct - noPct })
+        })
+
+        const bestBrand6 = npsScores6.reduce((best, cur) => (cur.nps > best.nps ? cur : best), npsScores6[0])
+
+        // ─── DYNAMIC POSITIONING (like city-wise slides) ───
+        const npsBoxY = Math.max(tableBottomY, overallBottomY) + 0.2  // DYNAMIC, not fixed
+        const npsBoxH = 0.4
+        const chartGap = 0.15
+        const barsTopY = npsBoxY + npsBoxH + chartGap
+
+        const chartW6 = 7.2
+        const chartX6 = (10 - chartW6) / 2
+        const barsH = 2.2
+        const numBrands6 = orderedNpsBrands.length
+
+        const PLOT_LAYOUT = { x: 0.02, y: 0.08, w: 0.96, h: 0.72 }
+
+        slide6.addChart(pptx.charts.BAR, chartData6, {
+          x: chartX6, y: barsTopY, w: chartW6, h: barsH,
+          layout: PLOT_LAYOUT,
+          barDir: 'col',
+          barGrouping: 'clustered',
+          showLegend: false,
+          showTitle: false,
+          chartColors: NPS_COLORS,
+          showValue: true,
+          dataLabelPosition: 'outEnd',
+          dataLabelFontSize: 9,
+          dataLabelFontFace: 'Arial',
+          dataLabelColor: '333333',
+          dataLabelFormatCode: '0"%"',
+          valAxisHidden: false,
+          valAxisLineShow: false,
+          valAxisLineColor: '6a6a6a',
+          valAxisLabelFontSize: 8,
+          valAxisLabelColor: '1E293B',
+          valAxisLabelFormatCode: '0"%"',
+          valAxisLabelPos: 'none',
+          valAxisMajorTickMark: 'none',
+          valAxisMinorTickMark: 'none',
+          valAxisMaxVal: 100,
+          valAxisMinVal: 0,
+          valGridLine: { style: 'none' },
+          catAxisLineShow: true,
+          catAxisLineColor: '6a6a6a',
+          catAxisLabelPos: 'low',
+          catAxisLabelFontSize: 8,
+          barGapWidthPct: 180,
+          barOverlapPct: -35,
+        })
+
+        // ─── NPS score boxes ───
+        const plotX6 = chartX6 + PLOT_LAYOUT.x * chartW6
+        const plotW6 = PLOT_LAYOUT.w * chartW6
+        const plotH6 = PLOT_LAYOUT.h * barsH
+        const groupW6 = plotW6 / numBrands6
+
+        npsScores6.forEach((item, idx) => {
+          const boxW = Math.min(1.4, groupW6 * 0.85)
+          const boxX = plotX6 + idx * groupW6 + (groupW6 - boxW) / 2
+          const isBest = bestBrand6 ? item.brand === bestBrand6.brand : false
+          const isTvsBest = isBest && !!bestBrand6 && bestBrand6.brand.includes('TVS')
+          const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+
+          slide6.addText(`NPS ${item.nps}%`, {
+            x: boxX, y: npsBoxY, w: boxW, h: npsBoxH,
+            fill: { color: 'FFFFFF' },
+            color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 9,
+            line: { color: boxColor, width: 2 },
+          })
+        })
+        // ─── SLIDE 7+: City-Wise ───
+        if (nps.city_grid && nps.city_grid.length > 0) {
+          setPptProgress('Generating Slides: City-wise Likelihood...')
+
+          nps.city_grid.forEach((cityRow: any) => {
+            const cityName = cityRow.city || 'Unknown City'
+            const slideC = pptx.addSlide()
+            slideC.background = { fill: 'FFFFFF' }
+            addSlideTitle(slideC, `${cityName} - City-wise Likelihood to Recommend`, '')
+
+            // ─── Model / Base table (top-left) ───
+            slideC.addText('MODEL', {
+              x: 0.3, y: 1.0, w: 1.4, h: 0.35,
+              fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 10,
+              border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+              line: { color: 'CCCCCC', width: 1 }
+            })
+            slideC.addText('BASE', {
+              x: 1.7, y: 1.0, w: 1.0, h: 0.35,
+              fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 10,
+              border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+              line: { color: 'CCCCCC', width: 1 }
+            })
+
+            const tableRowHC = 0.4
+            let modelRowYC = 1.35
+
+            // ─── Build chart data as PERCENTAGES of each brand's base (yes+maybe+no), not raw counts ───
+            const chartDataC: any[] = [
+              { name: 'Promoter', labels: [], values: [] },
+              { name: 'Passive', labels: [], values: [] },
+              { name: 'Detractor', labels: [], values: [] },
+            ]
+            const npsScoresC: { brand: string; nps: number }[] = []
+
+            orderedNpsBrands.forEach((brand) => {
+              const yes = cityRow[`${brand}_Yes`] || 0
+              const maybe = cityRow[`${brand}_Maybe`] || 0
+              const no = cityRow[`${brand}_No`] || 0
+              const base = yes + maybe + no
+
+              // Table row
+              slideC.addText(brand, {
+                x: 0.3, y: modelRowYC, w: 1.4, h: tableRowHC,
+                fill: getBrandColor(brand), color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 8.5,
+                border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                line: { color: 'CCCCCC', width: 1 }
+              })
+              slideC.addText(String(base), {
+                x: 1.7, y: modelRowYC, w: 1.0, h: tableRowHC,
+                fill: 'FFFFFF', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 9,
+                border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                line: { color: 'CCCCCC', width: 1 }
+              })
+              modelRowYC += tableRowHC
+
+              // Percentages, not counts
+              const yesPct = base > 0 ? Math.round((yes / base) * 100) : 0
+              const maybePct = base > 0 ? Math.round((maybe / base) * 100) : 0
+              const noPct = base > 0 ? Math.round((no / base) * 100) : 0
+
+              chartDataC[0].labels.push(brand); chartDataC[0].values.push(yesPct)
+              chartDataC[1].labels.push(brand); chartDataC[1].values.push(maybePct)
+              chartDataC[2].labels.push(brand); chartDataC[2].values.push(noPct)
+
+              npsScoresC.push({ brand, nps: yesPct - noPct })
+            })
+            const tableBottomYC = modelRowYC
+
+            // ─── Badges (top-center, stacked) ───
+            slideC.addText('BEST IN MARKET', {
+              x: 3.7, y: 0.95, w: 2.6, h: 0.28,    // Changed x to 3.7, y to 0.95, h to 0.28
+              fill: '4CAF50', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+            })
+            slideC.addText('SCOPE OF IMPROVEMENT', {
+              x: 3.7, y: 1.25, w: 2.6, h: 0.28,    // Changed x to 3.7, y to 1.25, h to 0.28
+              fill: 'F44336', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+            })
+
+            // ─── Legend — green (Yes) / yellow (Maybe) / red (No) ───
+            const NPS_COLORS_C = ['4CAF50', 'FFC107', 'F44336']
+            const legendItemsC = [
+              { label: 'Promoter', color: NPS_COLORS_C[0] },
+              { label: 'Passive', color: NPS_COLORS_C[1] },
+              { label: 'Detractor', color: NPS_COLORS_C[2] },
+            ]
+            const LEGEND_BOX = 0.10        // Changed from 0.14
+            const LEGEND_FONT = 8          // Changed from 9
+            const legendItemW = 0.9        // Changed from 1.15 spacing
+            const legendTotalW = legendItemsC.length * legendItemW
+            let legendXC = (10 - legendTotalW) / 2 + 0.15    // Centered like Slide N+
+            const legendY = 1.65           // Changed from 1.80
+
+            legendItemsC.forEach((item) => {
+              slideC.addShape(pptx.ShapeType.rect, {
+                x: legendXC, y: legendY, w: LEGEND_BOX, h: LEGEND_BOX,
+                fill: { color: item.color }, line: { color: item.color, transparency: 100 }
+              })
+              slideC.addText(item.label, {
+                x: legendXC + 0.16, y: legendY - 0.05, w: 0.75, h: 0.22,    // Adjusted positioning
+                color: '333333', fontSize: LEGEND_FONT, align: 'left', valign: 'middle', fontFace: 'Calibri'
+              })
+              legendXC += legendItemW    // Changed from 1.15
+            })
+            const overallYC = 1.97        // Changed from 2.08
+            const overallHC = 0.25
+            slideC.addText('Overall', {
+              x: 3.9, y: overallYC, w: 2.6, h: overallHC,
+              color: '1E293B', bold: true, align: 'center', fontSize: 10, fontFace: 'Calibri'
+            })
+            const overallBottomYC = overallYC + overallHC
+
+            const bestBrandC = npsScoresC.reduce((best, cur) => (cur.nps > best.nps ? cur : best), npsScoresC[0])
+
+            // ─── Vertical layout (dynamic — never overlaps table or "Overall" label) ───
+            const npsBoxYC = Math.max(tableBottomYC, overallBottomYC) + 0.2
+            const npsBoxHC = 0.4
+            const chartGapC = 0.15
+            const barsTopYC = npsBoxYC + npsBoxHC + chartGapC
+
+            // ─── Smaller, centered chart with gaps between bars ───
+            const chartWC = 7.2
+            const chartXC = (10 - chartWC) / 2
+            const barsHC = 2.2
+            const numBrandsC = orderedNpsBrands.length
+
+            const PLOT_LAYOUT_C = { x: 0.02, y: 0.08, w: 0.96, h: 0.72 }
+
+            slideC.addChart(pptx.charts.BAR, chartDataC, {
+              x: chartXC, y: barsTopYC, w: chartWC, h: barsHC,
+              layout: PLOT_LAYOUT_C,
+              barDir: 'col',
+              barGrouping: 'clustered',
+              showLegend: false,
+              showTitle: false,
+              chartColors: NPS_COLORS_C,
+              showValue: true,
+              dataLabelPosition: 'outEnd',
+              dataLabelFontSize: 9,
+              dataLabelFontFace: 'Arial',
+              dataLabelColor: '333333',
+              dataLabelFormatCode: '0"%"',
+              valAxisHidden: false,
+              valAxisLineShow: false,
+              valAxisLineColor: '6a6a6a',
+              valAxisLabelFontSize: 8,
+              valAxisLabelColor: '1E293B',
+              valAxisLabelFormatCode: '0"%"',
+              valAxisLabelPos: 'none',
+              valAxisMajorTickMark: 'none',
+              valAxisMinorTickMark: 'none',
+              valAxisMaxVal: 100,
+              valAxisMinVal: 0,
+              valGridLine: { style: 'none' },
+              catAxisLineShow: true,
+              catAxisLineColor: '6a6a6a',
+              catAxisLabelPos: 'low',
+              catAxisLabelFontSize: 8,
+              barGapWidthPct: 180,   // gap between brand groups
+              barOverlapPct: -35,    // gap between Yes/Maybe/No bars within a group
+            })
+
+            // ─── NPS score boxes, aligned to the locked plot area ───
+            const plotXC = chartXC + PLOT_LAYOUT_C.x * chartWC
+            const plotWC = PLOT_LAYOUT_C.w * chartWC
+            const plotHC = PLOT_LAYOUT_C.h * barsHC
+            const groupWC = plotWC / numBrandsC
+
+            npsScoresC.forEach((item, idx) => {
+              const boxW = Math.min(1.4, groupWC * 0.85)
+              const boxX = plotXC + idx * groupWC + (groupWC - boxW) / 2
+              const isBest = bestBrandC ? item.brand === bestBrandC.brand : false
+              const isTvsBest = isBest && !!bestBrandC && bestBrandC.brand.includes('TVS')
+              const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+
+              slideC.addText(`NPS ${item.nps}%`, {
+                x: boxX, y: npsBoxYC, w: boxW, h: npsBoxHC,
+                fill: { color: 'FFFFFF' },
+                color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 9,
+                line: { color: boxColor, width: 2 },
+              })
+            })
+          })
+        }
+
+        // ─── SLIDE N+: City-wise Duration Segmentation (Combined Slide) ───
+        if (nps.city_duration_segmentation && nps.city_duration_segmentation.length > 0) {
+          setPptProgress('Generating Slide: City-wise Duration Segmentation...')
+
+          const SLIDE_W = 10
+
+          nps.city_duration_segmentation.forEach((cityObj: any) => {
+            const cityName = cityObj.city || 'Unknown City'
+            const slideD = pptx.addSlide()
+            slideD.background = { fill: 'FFFFFF' }
+            addSlideTitle(slideD, `${cityName} - City-wise Duration of Usage Segmentation`, 'Likelihood to Recommend by usage duration')
+
+            const durations = cityObj.durations || []
+            const numBlocks = durations.length
+
+            // ─── Shared badges ───
+            const badgeW = 2.6
+            const badgeX = (SLIDE_W - badgeW) / 2
+            slideD.addText('BEST IN MARKET', {
+              x: badgeX, y: 0.95, w: badgeW, h: 0.28,
+              fill: '4CAF50', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+            })
+            slideD.addText('SCOPE OF IMPROVEMENT', {
+              x: badgeX, y: 1.25, w: badgeW, h: 0.28,
+              fill: 'F44336', color: 'FFFFFF', bold: true, align: 'center', valign: 'middle', fontSize: 10
+            })
+
+            // ─── Shared legend ───
+            const NPS_COLORS_D = ['4CAF50', 'FFC107', 'F44336']
+            const legendItemsD = [
+              { label: 'Promoter', color: NPS_COLORS_D[0] },
+              { label: 'Passive', color: NPS_COLORS_D[1] },
+              { label: 'Detractor', color: NPS_COLORS_D[2] },
+            ]
+            const LEGEND_BOX = 0.10
+            const LEGEND_FONT = 8
+            const legendItemW = 0.9
+            const legendTotalW = legendItemsD.length * legendItemW
+            let legendXD = (SLIDE_W - legendTotalW) / 2 + 0.15
+            const legendY = 1.65
+            legendItemsD.forEach((item) => {
+              slideD.addShape(pptx.ShapeType.rect, {
+                x: legendXD, y: legendY, w: LEGEND_BOX, h: LEGEND_BOX,
+                fill: { color: item.color }, line: { color: item.color, transparency: 100 }
+              })
+              slideD.addText(item.label, {
+                x: legendXD + 0.16, y: legendY - 0.05, w: 0.75, h: 0.22,
+                color: '333333', fontSize: LEGEND_FONT, align: 'left', valign: 'middle', fontFace: 'Calibri'
+              })
+              legendXD += legendItemW
+            })
+
+            // ─── Tables pinned to outer edges ───
+            const tableW = 1.9
+            const tableX_left = 0.3
+            const tableX_right = SLIDE_W - 0.3 - tableW
+            const tableTopY = 0.95
+            const HEADER_H = 0.24
+            const ROW_H = 0.22
+            const ROW_H_LONG = 0.3
+
+            const innerLeftBound = tableX_left + tableW + 0.3
+            const innerRightBound = tableX_right - 0.3
+            const innerWidth = innerRightBound - innerLeftBound
+
+            // ─── Chart sizing - FIXED WIDTH like previous code ───
+            const chartWC = 7.2  // Fixed width like previous code
+            const chartXC = (SLIDE_W - chartWC) / 2  // Center aligned
+
+            // Calculate block width based on fixed total chart width
+            const blockGap = 0.5
+            const numBrandsD = orderedNpsBrands.length
+            const totalChartWidth = chartWC  // Use fixed width instead of innerWidth
+            const blockW = (totalChartWidth - blockGap * (numBlocks - 1)) / numBlocks
+
+            const totalGroupW = blockW * numBlocks + blockGap * (numBlocks - 1)
+            const groupStartX = chartXC + (totalChartWidth - totalGroupW) / 2  // Center within chart area
+
+            const blockTopY = 2.05
+            const npsBoxY = blockTopY + 0.3
+            const npsBoxH = 0.4
+            const barsTopY = npsBoxY + npsBoxH + 0.15
+            const barsH = 2.2
+
+            const brandTrend: Record<string, { duration: string; nps: number }[]> = {}
+
+            durations.forEach((seg: any, blockIdx: number) => {
+              const blockX = groupStartX + blockIdx * (blockW + blockGap)
+              const isFirst = blockIdx === 0
+              const tableX = numBlocks === 2 ? (isFirst ? tableX_left : tableX_right) : blockX
+
+              const shortLabel = String(seg.duration).split('(')[0].trim()
+              slideD.addText(shortLabel, {
+                x: blockX - 0.2, y: blockTopY, w: blockW + 0.4, h: 0.22,
+                color: '1E293B', bold: true, align: 'center', fontSize: 9, fontFace: 'Arial'
+              })
+
+              slideD.addText('MODEL', {
+                x: tableX, y: tableTopY, w: 1.2, h: HEADER_H,
+                fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8.5,
+                border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                line: { color: 'CCCCCC', width: 1 }
+              })
+              slideD.addText('BASE', {
+                x: tableX + 1.2, y: tableTopY, w: 0.7, h: HEADER_H,
+                fill: 'BEBEBE', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8.5,
+                border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                line: { color: 'CCCCCC', width: 1 }
+              })
+              let tableRowY = tableTopY + HEADER_H
+              const chartDataD: any[] = [
+                { name: 'Promoter', labels: [], values: [] },
+                { name: 'Passive', labels: [], values: [] },
+                { name: 'Detractor', labels: [], values: [] },
+              ]
+              const npsScoresD: { brand: string; nps: number }[] = []
+
+              orderedNpsBrands.forEach((brand: string) => {
+                const bd = seg.data?.find((d: any) => d.brand === brand)
+                const yes = bd?.yes || 0
+                const maybe = bd?.maybe || 0
+                const no = bd?.no || 0
+                const base = yes + maybe + no
+
+                const isLongName = brand.length > 14
+                const rowH = isLongName ? ROW_H_LONG : ROW_H
+
+                slideD.addText(brand, {
+                  x: tableX, y: tableRowY, w: 1.2, h: rowH,
+                  fill: getBrandColor(brand), color: 'FFFFFF', bold: true,
+                  align: 'center', valign: 'middle', fontSize: isLongName ? 6.5 : 7.5,
+                  wrap: true,
+                  border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                  line: { color: 'CCCCCC', width: 1 }
+                })
+                slideD.addText(String(base), {
+                  x: tableX + 1.2, y: tableRowY, w: 0.7, h: rowH,
+                  fill: 'FFFFFF', color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 8,
+                  border: { type: 'solid', color: 'CCCCCC', pt: 1 },
+                  line: { color: 'CCCCCC', width: 1 }
+                })
+                tableRowY += rowH
+
+                const yesPct = base > 0 ? Math.round((yes / base) * 100) : 0
+                const maybePct = base > 0 ? Math.round((maybe / base) * 100) : 0
+                const noPct = base > 0 ? Math.round((no / base) * 100) : 0
+
+                chartDataD[0].labels.push(brand); chartDataD[0].values.push(yesPct)
+                chartDataD[1].labels.push(brand); chartDataD[1].values.push(maybePct)
+                chartDataD[2].labels.push(brand); chartDataD[2].values.push(noPct)
+
+                const npsVal = yesPct - noPct
+                npsScoresD.push({ brand, nps: npsVal })
+                if (!brandTrend[brand]) brandTrend[brand] = []
+                brandTrend[brand].push({ duration: seg.duration, nps: npsVal })
+              })
+
+              const bestBrandD = npsScoresD.length
+                ? npsScoresD.reduce((best, cur) => (cur.nps > best.nps ? cur : best), npsScoresD[0])
+                : null
+
+              const PLOT_LAYOUT_D = { x: 0.02, y: 0.08, w: 0.96, h: 0.72 }
+
+              slideD.addChart(pptx.charts.BAR, chartDataD, {
+                x: blockX, y: barsTopY, w: blockW, h: barsH,
+                layout: PLOT_LAYOUT_D,
+                barDir: 'col',
+                barGrouping: 'clustered',
+                showLegend: false,
+                showTitle: false,
+                chartColors: NPS_COLORS_D,
+                showValue: true,
+                dataLabelPosition: 'outEnd',
+                dataLabelFontSize: 9,
+                dataLabelFontFace: 'Arial',
+                dataLabelColor: '333333',
+                dataLabelFormatCode: '0"%"',
+                valAxisHidden: false,
+                valAxisLineShow: false,
+                valAxisLineColor: '6a6a6a',
+                valAxisLabelFontSize: 8,
+                valAxisLabelColor: '1E293B',
+                valAxisLabelFormatCode: '0"%"',
+                valAxisLabelPos: 'none',
+                valAxisMajorTickMark: 'none',
+                valAxisMinorTickMark: 'none',
+                valAxisMaxVal: 100,
+                valAxisMinVal: 0,
+                valGridLine: { style: 'none' },
+                catAxisLineShow: true,
+                catAxisLineColor: '6a6a6a',
+                catAxisLabelPos: 'low',
+                catAxisLabelFontSize: 8,
+                barGapWidthPct: 180,
+                barOverlapPct: -35,
+              })
+
+              const plotX = blockX + PLOT_LAYOUT_D.x * blockW
+              const plotW = PLOT_LAYOUT_D.w * blockW
+              const plotH = PLOT_LAYOUT_D.h * barsH
+              const groupW = plotW / numBrandsD
+
+              npsScoresD.forEach((item, idx) => {
+                const boxW = Math.min(1.4, groupW * 0.85)
+                const boxX = plotX + idx * groupW + (groupW - boxW) / 2
+                const isBest = bestBrandD ? item.brand === bestBrandD.brand : false
+                const isTvsBest = isBest && !!bestBrandD && bestBrandD.brand.includes('TVS')
+                const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+
+                slideD.addText(`NPS ${item.nps}%`, {
+                  x: boxX, y: npsBoxY, w: boxW, h: npsBoxH,
+                  fill: { color: 'FFFFFF' },
+                  color: '333333', bold: true, align: 'center', valign: 'middle', fontSize: 9,
+                  line: { color: boxColor, width: 2 },
+                })
+              })
+            })
+
+            // ─── Divider line(s) — drawn once per gap between adjacent blocks ───
+            for (let i = 0; i < numBlocks - 1; i++) {
+              const dividerX = groupStartX + (i + 1) * blockW + i * blockGap + blockGap / 2
+              slideD.addShape(pptx.ShapeType.line, {
+                x: dividerX, y: blockTopY, w: 0, h: (barsTopY + barsH) - blockTopY,
+                line: { color: 'D9D9D9', width: 1 }
+              })
+            }
+
+            // ─── Bottom summary box ───
+            // ─── Bottom summary box ───
+            const brandNames = Object.keys(brandTrend)
+            if (brandNames.length >= 2 && numBlocks >= 2) {
+              const avgNps = (b: string) =>
+                brandTrend[b].reduce((sum, d) => sum + d.nps, 0) / brandTrend[b].length
+              const ranked = [...brandNames].sort((a, b) => avgNps(b) - avgNps(a))
+              const leader = ranked[0]
+              const rest = ranked.slice(1)
+
+              const summaryText =
+                `${leader} performs better across ${brandTrend[leader].map((d) => d.duration).join(' and ')} ` +
+                `(${brandTrend[leader].map((d) => `${d.nps}%`).join(' and ')}) compared to ${rest.join(', ')} ` +
+                `at (${rest.map((b) => brandTrend[b].map((d) => `${d.nps}%`).join(' and ')).join('; ')}), ` +
+                `showing that user satisfaction improves more strongly for ${leader}.`
+
+              // ─── FIXED: Moved summary text higher to fit within slide ───
+              const summaryY = barsTopY + barsH - 0.1  // Changed from +0.2 to -0.1
+
+              slideD.addText(summaryText, {
+                x: 0.2, y: summaryY, w: SLIDE_W - 0.4, h: 0.6,
+                fill: { color: 'E8F4FD', transparency: 0 },
+                color: '1E293B', fontSize: 9, align: 'center', valign: 'middle',
+                fontFace: 'Arial',
+                lineSpacingMultiple: 1.3,
+                border: { type: 'solid', color: '90CAF9', pt: 1 },
+              })
+            }
+          })
+        }
+      }
+
+      // ─── DIVIDER 3: Benefits & Betterments ───
+      addDividerSlide('Benefits & Betterments')
+
+      // ─── SLIDE N+1 to N+4 (per brand): NPS-Segmented Customer Feedback Slides ───
+      if (brandFeedback && brandFeedback.length > 0) {
+        setPptProgress('Generating Per-Brand NPS Customer Feedback slides...')
+
+        const feedbackCategories: { key: 'overall' | 'promoters' | 'passives' | 'detractors'; titleSuffix: string }[] = [
+          { key: 'overall', titleSuffix: 'Overall Customer Feedback' },
+          { key: 'promoters', titleSuffix: 'Promoters (Yes) Customer Feedback' },
+          { key: 'passives', titleSuffix: 'Passives (Maybe) Customer Feedback' },
+          { key: 'detractors', titleSuffix: 'Detractors (No) Customer Feedback' },
+        ]
+
+        const allFeedbackBrands: string[] = []
+        orderedNpsBrands.forEach((b: string) => {
+          if (!allFeedbackBrands.includes(b)) allFeedbackBrands.push(b)
+        })
+        brandFeedback.forEach((bf: any) => {
+          if (bf.brand && !allFeedbackBrands.includes(bf.brand)) {
+            allFeedbackBrands.push(bf.brand)
+          }
+        })
+
+        allFeedbackBrands.forEach((brandName: string) => {
+          const brandFb = brandFeedback.find((bf: any) =>
+            String(bf.brand || '').trim().toUpperCase() === String(brandName || '').trim().toUpperCase()
+          )
+
+          feedbackCategories.forEach((catConfig) => {
+            const catData = brandFb?.categories?.[catConfig.key] || { base: 0, topics: [], issues: [] }
+            const slideFB = pptx.addSlide()
+            slideFB.background = { fill: 'FFFFFF' }
+
+            addSlideTitle(slideFB, `${brandName} | ${catConfig.titleSuffix}`, '')
+
+            const leftX = 0.3
+            const leftY = 1.0
+            const panelW = 4.55
+            const panelH = 4.25
+
+            // Left Panel (Green): AREAS FOR BENEFITS
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: leftX, y: leftY, w: panelW, h: panelH,
+              fill: { color: 'F0FDF4' },
+              line: { color: '4ECCA3', width: 1.5 },
+            })
+
+            slideFB.addText('AREAS FOR BENEFITS', {
+              x: leftX, y: leftY, w: panelW, h: 0.35,
+              fill: { color: '28A745' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
+
+            // Right Panel (Red): AREAS FOR BETTERMENT
+            const rightX = 5.15
+            const rightY = 1.0
+
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: rightX, y: rightY, w: panelW, h: panelH,
+              fill: { color: 'FEF2F2' },
+              line: { color: 'FF6584', width: 1.5 },
+            })
+
+            slideFB.addText('AREAS FOR BETTERMENT', {
+              x: rightX, y: rightY, w: panelW, h: 0.35,
+              fill: { color: 'DC3545' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
+
+            const renderPanelChart = (
+              panelX: number,
+              items: { name: string; count: number; percentage: number }[],
+              isGreen: boolean
+            ) => {
+              if (!items || items.length === 0) {
+                slideFB.addText('No data available', {
+                  x: panelX + 0.2, y: 2.6, w: panelW - 0.4, h: 0.4,
+                  fontSize: 10, color: '999999', align: 'center', fontFace: 'Arial',
+                })
+                return
+              }
+
+              const top10 = items.slice(0, 10)
+              const reversed = [...top10].reverse()
+
+              const chartData = [
+                {
+                  name: isGreen ? 'Benefits' : 'Betterment',
+                  labels: reversed.map((it) => it.name),
+                  values: reversed.map((it) => it.percentage),
+                },
+              ]
+
+              try {
+                slideFB.addChart(pptx.ChartType.bar, chartData, {
+                  x: panelX + 0.1,
+                  y: leftY + 0.40,
+                  w: panelW - 0.2,
+                  h: panelH - 0.50,
+                  barDir: 'bar',
+                  barGrouping: 'standard',
+                  chartColors: [isGreen ? '28A745' : 'DC3545'],
+                  showTitle: false,
+                  showLegend: false,
+                  showValue: true,
+                  dataLabelPosition: 'outEnd',
+                  dataLabelFormatCode: '0"%"',
+                  dataLabelFontSize: 8,
+                  dataLabelColor: '1E293B',
+                  dataLabelFontFace: 'Arial',
+                  catAxisLabelFontSize: 8,
+                  catAxisLabelColor: '333333',
+                  catAxisLineShow: false,
+                  valAxisLineShow: false,
+                  valAxisHidden: false,
+                  valAxisMinVal: 0,
+                  valAxisMaxVal: 100,
+                  valAxisMajorUnit: 20,
+                  valAxisLabelFormatCode: '0"%"',
+                  valAxisLabelFontSize: 5.5,
+                  valAxisLabelColor: '666666',
+                  valGridLine: { style: 'dash', color: 'E0E0E0' },
+                  barGapWidthPct: 40,
+                })
+              } catch (err) {
+                console.error('Error adding panel chart:', err)
+              }
+            }
+
+            const isJunkTopicName = (name: string) => {
+              if (!name) return true
+              const s = String(name).trim().toLowerCase()
+              if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
+              if (!isNaN(Number(s))) return true
+              const junkWords = [
+                'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
+                'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
+                'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
+                'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
+              ]
+              if (junkWords.includes(s)) return true
+              if (s.startsWith('submitform')) return true
+              return false
+            }
+
+            const overallCat = brandFb?.categories?.overall || { base: 0, topics: [], issues: [] }
+
+            const topicItems = (catData.topics || [])
+              .filter((t: any) => !isJunkTopicName(t.topic))
+              .map((t: any) => {
+                let pct = Number(t.percentage || 0)
+                if (catConfig.key !== 'overall') {
+                  const overallMatch = (overallCat.topics || []).find(
+                    (ot: any) => String(ot.topic || '').trim().toLowerCase() === String(t.topic || '').trim().toLowerCase()
+                  )
+                  const totalCount = overallMatch ? Number(overallMatch.count || 0) : Number(t.count || 0)
+                  pct = totalCount > 0 ? Math.round((Number(t.count || 0) / totalCount) * 100) : 0
+                } else {
+                  pct = Math.round(pct)
+                }
+                return {
+                  name: t.topic,
+                  count: t.count,
+                  percentage: pct,
+                }
+              })
+            renderPanelChart(leftX, topicItems, true)
+
+            const issueItems = (catData.issues || [])
+              .filter((i: any) => !isJunkTopicName(i.issue))
+              .map((i: any) => {
+                let pct = Number(i.percentage || 0)
+                if (catConfig.key !== 'overall') {
+                  const overallMatch = (overallCat.issues || []).find(
+                    (oi: any) => String(oi.issue || '').trim().toLowerCase() === String(i.issue || '').trim().toLowerCase()
+                  )
+                  const totalCount = overallMatch ? Number(overallMatch.count || 0) : Number(i.count || 0)
+                  pct = totalCount > 0 ? Math.round((Number(i.count || 0) / totalCount) * 100) : 0
+                } else {
+                  pct = Math.round(pct)
+                }
+                return {
+                  name: i.issue,
+                  count: i.count,
+                  percentage: pct,
+                }
+              })
+            renderPanelChart(rightX, issueItems, false)
+
+            slideFB.addText(`Base: ${catData.base || 0} respondents`, {
+              x: 0.3, y: 5.32, w: 4.0, h: 0.25,
+              fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
+            })
+          })
+        })
+      }
+
+      // ─── DIVIDER: Betterments Next Level ───
+      addDividerSlide('Betterments Next Level')
+
+      // ─── SLIDES: Sub-issues / Betterments Next Level by Brand ───
+      if (issues && issues.length > 0) {
+        setPptProgress('Generating Betterments Next Level slides...')
+
+        const cleanBrandStr = (name: string): string => String(name || '').trim().toUpperCase()
+
+        const formatIssueTitleByBrand = (issueName: string): string => {
+          const cleaned = cleanIssueName(issueName)
+          const formatted = cleaned.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
+          return `${formatted} by Brand`
+        }
+
+        const SUB_ISSUES_PER_SLIDE = 5
+
+        issues.forEach((issueItem: any) => {
+          const subIssues = (issueItem.sub_issues || []).filter(
+            (s: any) => s.sub_issue && s.sub_issue !== 'Blank'
+          )
+          if (subIssues.length === 0) return
+
+          // Collect unique brands for this main issue
+          const brandSet = new Set<string>()
+          subIssues.forEach((s: any) => {
+            if (Array.isArray(s.brands)) {
+              s.brands.forEach((b: any) => {
+                if (b.name && b.name !== 'Blank') brandSet.add(b.name)
+              })
+            }
+          })
+
+          let currentBrands = getOrderedBrands(Array.from(brandSet))
+          if (currentBrands.length === 0) {
+            currentBrands = orderedNpsBrands
+          }
+          if (currentBrands.length === 0) return
+
+          // Calculate brand totals across sub-issues for this main issue
+          const brandGrandTotals: Record<string, number> = {}
+          currentBrands.forEach((b) => { brandGrandTotals[b] = 0 })
+
+          subIssues.forEach((s: any) => {
+            currentBrands.forEach((b) => {
+              const match = s.brands?.find(
+                (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
+              )
+              brandGrandTotals[b] += match?.count || 0
+            })
+          })
+
+          const mainTitle = formatIssueTitleByBrand(issueItem.issue_name)
+
+          // Chunk sub-issues into groups of max 5 per slide
+          for (let i = 0; i < subIssues.length; i += SUB_ISSUES_PER_SLIDE) {
+            const chunkSubIssues = subIssues.slice(i, i + SUB_ISSUES_PER_SLIDE)
+
+            // Create Slide
+            const slideBNL = pptx.addSlide()
+            slideBNL.background = { fill: 'FFFFFF' }
+
+            addSlideTitle(slideBNL, mainTitle, '')
+
+            // ─── LEFT SIDE: TABLE ───
+            const tableX = 0.3
+            const tableY = 1.1
+            const tableW = 4.4
+
+            const tableRows: any[][] = []
+
+            // Header row
+            const headerRow: any[] = [
+              { text: 'Sub Complaint', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8, fontFace: 'Arial' } }
+            ]
+            currentBrands.forEach((b) => {
+              headerRow.push({
+                text: b,
+                options: getBrandHeaderOptions(b)
+              })
+            })
+            tableRows.push(headerRow)
+
+            // Data rows for chunk sub-issues
+            chunkSubIssues.forEach((s: any) => {
+              const dataRow: any[] = [
+                { text: cleanIssueName(s.sub_issue), options: { bold: false, align: 'left', fontSize: 7.5, fontFace: 'Arial' } }
+              ]
+              currentBrands.forEach((b) => {
+                const match = s.brands?.find(
+                  (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
+                )
+                const count = match?.count || 0
+                dataRow.push({
+                  text: String(count),
+                  options: { bold: false, align: 'center', fontSize: 7.5, fontFace: 'Arial' }
+                })
+              })
+              tableRows.push(dataRow)
+            })
+
+            // Grand Total row
+            const grandRow: any[] = [
+              { text: 'Grand Total', options: { bold: true, align: 'left', fontSize: 8, fontFace: 'Arial' } }
+            ]
+            currentBrands.forEach((b) => {
+              grandRow.push({
+                text: String(brandGrandTotals[b] || 0),
+                options: { bold: true, align: 'center', fontSize: 8, fontFace: 'Arial' }
+              })
+            })
+            tableRows.push(grandRow)
+
+            const subColW = (tableW - 1.8) / currentBrands.length
+            const colWidths = [1.8, ...currentBrands.map(() => Math.max(0.6, subColW))]
+
+            slideBNL.addTable(tableRows, {
+              x: tableX, y: tableY, w: tableW, h: Math.min(4.2, tableRows.length * 0.3),
+              border: { type: 'solid', color: 'CCCCCC', size: 0.5 },
+              fontSize: 7.5,
+              fontFace: 'Arial',
+              colW: colWidths,
+              rowH: tableRows.map(() => 0.26),
+            })
+
+            // ─── RIGHT SIDE: HORIZONTAL GROUPED BAR CHART ───
+            const chartX = 4.9
+            const chartY = 1.0
+            const chartW = 4.8
+            const chartH = 4.3
+
+            // Reverse sub-issues so top sub-issue appears at top of Y-axis
+            const reversedChunkSubIssues = [...chunkSubIssues].reverse()
+
+            const chartDataBNL = currentBrands.map((b) => {
+              const brandTotal = brandGrandTotals[b] || 0
+              return {
+                name: b,
+                labels: reversedChunkSubIssues.map((s: any) => cleanIssueName(s.sub_issue)),
+                values: reversedChunkSubIssues.map((s: any) => {
+                  const match = s.brands?.find(
+                    (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
+                  )
+                  const count = match?.count || 0
+                  return brandTotal > 0 ? Math.round((count / brandTotal) * 100) : 0
+                })
+              }
+            })
+
+            const brandColorsBNL = getBrandColorsArray(currentBrands)
+
+            try {
+              slideBNL.addChart(pptx.ChartType.bar, chartDataBNL, {
+                x: chartX,
+                y: chartY,
+                w: chartW,
+                h: chartH,
+                barDir: 'bar',
+                barGrouping: 'clustered',
+                chartColors: brandColorsBNL,
+                showTitle: false,
+                showLegend: true,
+                legendPos: 'top',
+                legendFontSize: 8,
+                legendFontFace: 'Arial',
+                showValue: true,
+                dataLabelPosition: 'outEnd',
+                dataLabelFormatCode: '0"%"',
+                dataLabelFontSize: 7.5,
+                dataLabelColor: '1E293B',
+                dataLabelFontFace: 'Arial',
+                catAxisLabelFontSize: 8,
+                catAxisLabelColor: '333333',
+                catAxisLineShow: false,
+                valAxisLineShow: false,
+                valAxisHidden: false,
+                valAxisMinVal: 0,
+                valAxisMaxVal: 100,
+                valAxisMajorUnit: 20,
+                valAxisLabelFormatCode: '0"%"',
+                valAxisLabelFontSize: 7,
+                valAxisLabelColor: '666666',
+                valGridLine: { style: 'dash', color: 'E0E0E0' },
+                barGapWidthPct: 100,
+              })
+            } catch (err) {
+              console.error(`[PPT] Error adding chart for issue ${issueItem.issue_name}:`, err)
+            }
+          }
+        })
+      }
+
+      // ─── DIVIDER 4: Issue with L4,L5 ───
+      addDividerSlide('Issue with L4,L5')
+
+      // ─── Follow-up Questions Slides ──────────────────────────────
       setPptProgress('Generating Follow-up Questions summary slide...')
 
       // Reorder and normalize brand names
@@ -431,20 +5669,6 @@ export default function DashboardPage() {
           orderedFuBrands.push(b)
         }
       })
-
-      // Helper to dynamically style vehicle headers according to design guidelines
-      const getBrandHeaderOptions = (brandName: string) => {
-        const name = brandName.toUpperCase()
-        let fill = '475569' // Default slate gray
-        if (name.includes('TVS') || name.includes('NTORQ')) {
-          fill = '00B4D8' // bright cyan/blue
-        } else if (name.includes('HONDA') || name.includes('DIO')) {
-          fill = '7C3AED' // purple
-        } else if (name.includes('YAMAHA') || name.includes('ZR')) {
-          fill = 'F97316' // orange
-        }
-        return { bold: true, fill, color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 }
-      }
 
       // Title Case formatting helper for Main Issue Titles
       const formatMainIssueTitle = (name: string, count: number): string => {
@@ -730,7 +5954,40 @@ export default function DashboardPage() {
           fontSize: 12, color: '999999', align: 'center'
         })
       }
+      setPptProgress('Building table of contents...')
 
+      tocSlide.addText('Table of Contents', {
+        x: 0.5, y: 0.4, w: 9.0, h: 0.6,
+        fontSize: 26, bold: true, color: '1E293B', fontFace: 'Arial',
+      })
+      tocSlide.addShape(pptx.shapes.LINE, {
+        x: 0.5, y: 1.05, w: 9.0, h: 0.0, line: { color: '3B82F6', width: 2 },
+      })
+      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+
+      const tocColW = 4.6
+      const tocColGap = 0.2
+      const tocStartY = 1.4
+      const tocRowH = 0.42
+      const rowsPerCol = 9
+
+      dividerTOC.forEach((item, idx) => {
+        const col = Math.floor(idx / rowsPerCol)
+        const rowInCol = idx % rowsPerCol
+        const colX = 0.5 + col * (tocColW + tocColGap)
+        const rowY = tocStartY + rowInCol * tocRowH
+
+        tocSlide.addText(String(idx + 1).padStart(2, '0'), {
+          x: colX, y: rowY, w: 0.5, h: 0.35,
+          fontSize: 12, bold: true, color: '3B82F6', fontFace: 'Arial',
+        })
+        tocSlide.addText(item.title, {
+          x: colX + 0.5, y: rowY, w: tocColW - 0.5, h: 0.35,
+          fontSize: 12, color: '1E293B', fontFace: 'Arial',
+          underline: true,
+          hyperlink: { slide: item.slideNumber, tooltip: `Go to ${item.title}` },
+        })
+      })
       setPptProgress('Saving PowerPoint file...')
       await pptx.writeFile({ fileName: `Survey_Analysis_Report_${today}.pptx` })
 
@@ -929,6 +6186,23 @@ export default function DashboardPage() {
           </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
             <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Analysis Mode</InputLabel>
+              <Select
+                id="filter-analysis-mode"
+                value={analysisMode}
+                onChange={(e) => {
+                  const mode = e.target.value as 'product' | 'service'
+                  setAnalysisMode(mode)
+                  setTab(0)
+                }}
+                label="Analysis Mode"
+              >
+                <MenuItem value="product">Product</MenuItem>
+                <MenuItem value="service">Service</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 140 }}>
               <InputLabel>Region</InputLabel>
               <Select
                 id="filter-region"
@@ -1051,7 +6325,7 @@ export default function DashboardPage() {
                   variant="outlined"
                   size="small"
                   disabled={pptGenerating}
-                  onClick={handleDownloadPPT}
+                  onClick={analysisMode === 'service' ? handleDownloadServicePPT : handleDownloadPPT}
                   startIcon={pptGenerating ? <CircularProgress size={16} /> : <DownloadForOffline />}
                   sx={{
                     borderColor: '#6C63FF',
@@ -1063,7 +6337,7 @@ export default function DashboardPage() {
                     ml: 1
                   }}
                 >
-                  {pptGenerating ? 'Generating...' : 'Download PPT'}
+                  {pptGenerating ? 'Generating...' : analysisMode === 'service' ? 'Download Service PPT' : 'Download PPT'}
                 </Button>
               </span>
             </Tooltip>
@@ -1098,76 +6372,91 @@ export default function DashboardPage() {
             '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #6C63FF, #FF6584)' },
           }}
         >
-          <Tab id="tab-data-table" label={`📋 Data Table (${totalRows.toLocaleString()} rows)`} />
-          <Tab id="tab-issues-view" label="📊 Issues Analysis" />
-          <Tab id="tab-dashboard" label="📈 Dashboard" />
-          <Tab id="tab-comparison" label="🔀 Comparison" />
+          {analysisMode === 'product' ? [
+            <Tab key="t0" id="tab-data-table" label={`Data Table (${totalRows.toLocaleString()} rows)`} />,
+            <Tab key="t1" id="tab-issues-view" label="Issues Analysis" />,
+            <Tab key="t2" id="tab-dashboard" label="Dashboard" />,
+            <Tab key="t3" id="tab-comparison" label="Comparison" />,
+            <Tab key="t4" id="tab-nps" label="NPS" />,
+          ] : [
+            <Tab key="ts0" id="tab-service-dashboard" label="Service Dashboard" />,
+          ]}
         </Tabs>
       </Box>
 
-      {/* Tab 1: Data Table */}
-      {tab === 0 && (
-        <Card>
-          <CardContent sx={{ p: 0 }}>
-            <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${c.borderMuted}` }}>
-              <Typography variant="body2" sx={{ color: c.textSecondary, flex: 1 }}>
-                Showing all 422 columns • Horizontally scrollable • Server-side pagination
-              </Typography>
-              <Tooltip title="Export CSV">
-                <IconButton id="export-csv-btn" size="small" onClick={handleExportCSV} sx={{ color: c.success }}>
-                  <FileDownload />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Refresh">
-                <IconButton id="refresh-table-btn" size="small" onClick={() => (gridApi as { refreshInfiniteCache: () => void } | null)?.refreshInfiniteCache()} sx={{ color: c.textSecondary }}>
-                  <Refresh />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Box
-              className={c.isDarkTheme ? 'ag-theme-alpine-dark' : 'ag-theme-alpine'}
-              sx={{
-                height: 600,
-                width: '100%',
-                '--ag-background-color': c.agGridBg,
-                '--ag-odd-row-background-color': c.agGridOddRow,
-                '--ag-header-background-color': c.agGridHeader,
-                '--ag-border-color': c.agBorder,
-                '--ag-row-hover-color': c.agRowHover,
-                '--ag-selected-row-background-color': c.agSelectedRow,
-                '--ag-font-size': '12px',
-                '--ag-foreground-color': c.textPrimary,
-                '--ag-header-foreground-color': c.textSecondary,
-                '--ag-secondary-foreground-color': c.textSecondary,
-              } as React.CSSProperties}
-            >
-              <AgGridReact
-                datasource={datasource}
-                columnDefs={columnDefs}
-                defaultColDef={defaultColDef}
-                rowModelType="infinite"
-                cacheBlockSize={25}
-                maxBlocksInCache={10}
-                onGridReady={onGridReady}
-                animateRows={true}
-                rowSelection="multiple"
-                suppressRowClickSelection={true}
-                enableCellTextSelection={true}
-                tooltipShowDelay={500}
-              />
-            </Box>
-          </CardContent>
-        </Card>
+      {/* Conditional Tab Content */}
+      {analysisMode === 'service' ? (
+        <ServiceDashboardTab onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} />
+      ) : (
+        <>
+          {/* Tab 1: Data Table */}
+          {tab === 0 && (
+            <Card>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${c.borderMuted}` }}>
+                  <Typography variant="body2" sx={{ color: c.textSecondary, flex: 1 }}>
+                    Showing all 422 columns • Horizontally scrollable • Server-side pagination
+                  </Typography>
+                  <Tooltip title="Export CSV">
+                    <IconButton id="export-csv-btn" size="small" onClick={handleExportCSV} sx={{ color: c.success }}>
+                      <FileDownload />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Refresh">
+                    <IconButton id="refresh-table-btn" size="small" onClick={() => (gridApi as { refreshInfiniteCache: () => void } | null)?.refreshInfiniteCache()} sx={{ color: c.textSecondary }}>
+                      <Refresh />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+                <Box
+                  className={c.isDarkTheme ? 'ag-theme-alpine-dark' : 'ag-theme-alpine'}
+                  sx={{
+                    height: 600,
+                    width: '100%',
+                    '--ag-background-color': c.agGridBg,
+                    '--ag-odd-row-background-color': c.agGridOddRow,
+                    '--ag-header-background-color': c.agGridHeader,
+                    '--ag-border-color': c.agBorder,
+                    '--ag-row-hover-color': c.agRowHover,
+                    '--ag-selected-row-background-color': c.agSelectedRow,
+                    '--ag-font-size': '12px',
+                    '--ag-foreground-color': c.textPrimary,
+                    '--ag-header-foreground-color': c.textSecondary,
+                    '--ag-secondary-foreground-color': c.textSecondary,
+                  } as React.CSSProperties}
+                >
+                  <AgGridReact
+                    datasource={datasource}
+                    columnDefs={columnDefs}
+                    defaultColDef={defaultColDef}
+                    rowModelType="infinite"
+                    cacheBlockSize={25}
+                    maxBlocksInCache={10}
+                    onGridReady={onGridReady}
+                    animateRows={true}
+                    rowSelection="multiple"
+                    suppressRowClickSelection={true}
+                    enableCellTextSelection={true}
+                    tooltipShowDelay={500}
+                  />
+                </Box>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Tab 2: Issues Analysis */}
+          {tab === 1 && <IssuesTab filters={filters} />}
+
+          {/* Tab 3: Dashboard Analytics */}
+          {tab === 2 && <DashboardAnalytics filters={filters} />}
+
+          {/* Tab 4: Comparison */}
+          {tab === 3 && <ComparisonTab filters={filters} />}
+
+          {/* Tab 5: NPS */}
+          {tab === 4 && <NpsTab />}
+        </>
       )}
-
-      {/* Tab 2: Issues Analysis */}
-      {tab === 1 && <IssuesTab filters={filters} />}
-
-      {/* Tab 3: Dashboard Analytics */}
-      {tab === 2 && <DashboardAnalytics filters={filters} />}
-
-      {/* Tab 4: Comparison */}
-      {tab === 3 && <ComparisonTab filters={filters} />}
 
       {/* PPT progress alert */}
       {pptGenerating && (

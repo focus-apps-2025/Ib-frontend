@@ -97,10 +97,10 @@ export default function LoginPage() {
             <DirectionsCar sx={{ fontSize: 36, color: '#fff' }} />
           </Box>
           <Typography variant="h4" sx={{ fontWeight: 800, color: c.textPrimary, letterSpacing: '-0.02em' }}>
-            VehicleIQ
+            VQS
           </Typography>
           <Typography variant="body2" sx={{ color: c.textMuted, mt: 0.5 }}>
-            Complaint Analysis & Dashboard Platform
+            Vehicle Quality Survey Platform
           </Typography>
 
           {/* Theme toggle on login */}

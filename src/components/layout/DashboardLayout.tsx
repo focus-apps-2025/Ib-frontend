@@ -9,7 +9,7 @@ import {
   Dashboard, CloudUpload, People, Public, Language, Layers,
   History, Settings, Person, ExitToApp, Menu as MenuIcon,
   ChevronLeft, Notifications, DirectionsCar, Analytics,
-  Brightness4, Brightness7,
+  Brightness4, Brightness7, Assessment,
 } from '@mui/icons-material'
 import { useThemeStore } from '../../store/themeStore'
 import { useThemeColors } from '../../utils/colors'
@@ -28,6 +28,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+  { label: 'Summary', icon: <Assessment />, path: '/summary' },
   { label: 'Upload Data', icon: <CloudUpload />, path: '/upload' },
   { label: 'User Management', icon: <People />, path: '/users', roles: ['super_admin'] },
   { label: 'Regions', icon: <Public />, path: '/regions', roles: ['super_admin'] },
@@ -84,10 +85,10 @@ export default function DashboardLayout() {
         </Box>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, color: c.textPrimary, lineHeight: 0.6 }}>
-            VehicleIQ
+            VQS
           </Typography>
           <Typography variant="caption" sx={{ color: c.textMuted, fontSize: '0.65rem' }}>
-            Analytics Platform
+            Vehicle Quality Survey
           </Typography>
         </Box>
         {!isMobile && (

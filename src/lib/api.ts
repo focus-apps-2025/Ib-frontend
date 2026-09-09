@@ -142,6 +142,15 @@ export const dashboardApi = {
   ageCityBrand: (params?: object) => api.get('/dashboard/age-city-brand', { params }),
   purchaseOwnership: (params?: object) => api.get('/dashboard/purchase-ownership', { params }),
   professionDistribution: (params?: object) => api.get('/dashboard/profession-distribution', { params }),
+  npsData: (params?: object) => api.get('/dashboard/nps', { params }),
+  topIssuesByNps: (params?: object) => api.get('/dashboard/top-issues-by-nps', { params }),
+  topPassiveTopicsByNps: (params?: object) => api.get('/dashboard/top-passive-topics-by-nps', { params }),
+  brandNpsFeedback: (params?: object) => api.get('/dashboard/brand-nps-feedback', { params }),
+  serviceFrequency: (params?: object) => api.get('/dashboard/service-frequency', { params }),
+  serviceNps: (params?: object) => api.get('/dashboard/service-nps', { params }),
+  serviceBenefitsBetterments: (params?: object) => api.get('/dashboard/service-benefits-betterments', { params }),
+  serviceSatisfaction: (params?: object) => api.get('/dashboard/service-satisfaction', { params }),
+  ibSummaryTable: (params?: object) => api.get('/dashboard/ib-summary-table', { params }),
 }
 
 // ─── Comparison ──────────────────────────────────────────────────────────────
