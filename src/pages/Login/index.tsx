@@ -212,15 +212,6 @@ export default function LoginPage() {
                 {loading ? <CircularProgress size={22} color="inherit" /> : 'Sign In'}
               </Button>
             </form>
-
-            <Box sx={{ mt: 3, textAlign: 'center' }}>
-              <Chip
-                size="small"
-                label="Default: superadmin / SuperAdmin@123"
-                sx={{ fontSize: '0.7rem', color: c.textMuted, borderColor: c.borderStrong }}
-                variant="outlined"
-              />
-            </Box>
           </CardContent>
         </Card>
       </Box>

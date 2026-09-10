@@ -11,7 +11,7 @@ import {
 import { dashboardApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
 import {
-    TrendingUp, People, LocationCity, ShoppingBag, Home, Work,
+    TrendingUp, People, LocationCity, ShoppingBag, Home, Work, DirectionsBike,
     BarChart as BarChartIcon, PieChart as PieChartIcon,
 } from '@mui/icons-material'
 
@@ -32,6 +32,13 @@ interface AnalyticsData {
     mode_of_purchase: MatrixData
     ownership: MatrixData
     profession: MatrixData
+    location_model_sample_size?: {
+        cities: string[]
+        brands: string[]
+        tenures: string[]
+        table: Record<string, any>[]
+    }
+    vehicle_usage?: MatrixData
 }
 
 interface MatrixData {
@@ -801,6 +808,318 @@ let cities: string[] = []
         )
     }
 
+    // ── Location & Model wise Sample Sizes Component ───────────────────
+    const LocationModelSampleSizeCard = ({ sampleData }: { sampleData?: any }) => {
+        const c = useThemeColors()
+        const accentColor = '#1871c9ff'
+        const borderStyle = '1px solid #000000'
+        const lightBlueBg = 'rgba(24, 113, 201, 0.15)'
+        const lightGrayBg = '#e2e8f0'
+
+        const isDynamic = sampleData && Array.isArray(sampleData.brands) && sampleData.brands.length > 0 && Array.isArray(sampleData.table)
+
+        // Dynamic Brands (or fallback)
+        const brands: string[] = isDynamic ? sampleData.brands : ['TVS HLX125', 'Bajaj BM 125 / Bajaj CT 125']
+        
+        // Dynamic Tenures (or fallback)
+        const tenures: string[] = isDynamic && Array.isArray(sampleData.tenures) && sampleData.tenures.length > 0 
+            ? sampleData.tenures 
+            : ['3-6 months', '6-12 months']
+
+        // Table Rows (Cities)
+        const tableRows: Record<string, any>[] = isDynamic
+            ? sampleData.table.filter((r: any) => r.city !== 'Grand Total')
+            : [
+                { city: 'Freetown', 'TVS HLX125_3-6 months': 40, 'TVS HLX125_6-12 months': 40, 'TVS HLX125_total': 80, 'Bajaj BM 125 / Bajaj CT 125_3-6 months': 41, 'Bajaj BM 125 / Bajaj CT 125_6-12 months': 39, 'Bajaj BM 125 / Bajaj CT 125_total': 80, grand_total: 160 },
+                { city: 'Bo', 'TVS HLX125_3-6 months': 20, 'TVS HLX125_6-12 months': 20, 'TVS HLX125_total': 40, 'Bajaj BM 125 / Bajaj CT 125_3-6 months': 20, 'Bajaj BM 125 / Bajaj CT 125_6-12 months': 20, 'Bajaj BM 125 / Bajaj CT 125_total': 40, grand_total: 80 },
+                { city: 'Kenema', 'TVS HLX125_3-6 months': 20, 'TVS HLX125_6-12 months': 20, 'TVS HLX125_total': 40, 'Bajaj BM 125 / Bajaj CT 125_3-6 months': 20, 'Bajaj BM 125 / Bajaj CT 125_6-12 months': 20, 'Bajaj BM 125 / Bajaj CT 125_total': 40, grand_total: 80 },
+                { city: 'Makeni', 'TVS HLX125_3-6 months': 19, 'TVS HLX125_6-12 months': 21, 'TVS HLX125_total': 40, 'Bajaj BM 125 / Bajaj CT 125_3-6 months': 22, 'Bajaj BM 125 / Bajaj CT 125_6-12 months': 18, 'Bajaj BM 125 / Bajaj CT 125_total': 40, grand_total: 80 },
+            ]
+
+        // Grand Total Row
+        const grandTotalRow: Record<string, any> = isDynamic
+            ? (sampleData.table.find((r: any) => r.city === 'Grand Total') || {})
+            : { city: 'Grand Total', 'TVS HLX125_3-6 months': 99, 'TVS HLX125_6-12 months': 101, 'TVS HLX125_total': 200, 'Bajaj BM 125 / Bajaj CT 125_3-6 months': 103, 'Bajaj BM 125 / Bajaj CT 125_6-12 months': 97, 'Bajaj BM 125 / Bajaj CT 125_total': 200, grand_total: 400 }
+
+        return (
+            <Card
+                sx={{
+                    border: `1px solid ${alpha(accentColor, 0.15)}`,
+                    borderRadius: 4,
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.04)',
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: `0 12px 48px ${alpha(accentColor, 0.12)}`,
+                    },
+                    overflow: 'hidden',
+                    position: 'relative',
+                    '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: '4px',
+                        background: `linear-gradient(90deg, ${accentColor}, ${alpha(accentColor, 0.4)})`,
+                    }
+                }}
+            >
+                <CardContent sx={{ p: 3.5 }}>
+                    <CardHeader
+                        title="Location & Model wise Sample Sizes"
+                        icon={<LocationCity sx={{ fontSize: 20 }} />}
+                        subtitle="Sample size breakdown by city (Col D), model (Col E), and tenure (Col T: 3-6 months & 6-12 months)"
+                        color={accentColor}
+                    />
+
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            overflowX: 'auto',
+                            borderRadius: 2,
+                            border: borderStyle,
+                        }}
+                    >
+                        <Table
+                            size="small"
+                            sx={{
+                                borderCollapse: 'collapse',
+                                fontFamily: 'Arial, Calibri, sans-serif',
+                                minWidth: 750,
+                                '& .MuiTableCell-root': {
+                                    border: borderStyle,
+                                    textAlign: 'center',
+                                    fontFamily: 'Arial, Calibri, sans-serif',
+                                    padding: '8px 12px',
+                                }
+                            }}
+                        >
+                            <TableHead>
+                                {/* Row 1 Headers */}
+                                <TableRow>
+                                    <TableCell
+                                        rowSpan={1}
+                                        align="center"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            background: lightBlueBg,
+                                            minWidth: 100,
+                                        }}
+                                    />
+
+                                    {brands.map((brand) => {
+                                        const isTvs = brand.toUpperCase().includes('TVS')
+                                        const isBajaj = brand.toUpperCase().includes('BAJAJ')
+                                        const bgColor = isTvs ? '#1871c9' : isBajaj ? '#2ae886' : getBrandColor(brand)
+                                        const textColor = isTvs ? '#ffffff' : '#000000'
+
+                                        return (
+                                            <>
+                                                <TableCell
+                                                    key={`brand-${brand}`}
+                                                    colSpan={tenures.length}
+                                                    align="center"
+                                                    sx={{
+                                                        fontWeight: 'bold',
+                                                        background: bgColor,
+                                                        color: textColor,
+                                                        fontSize: '0.85rem',
+                                                    }}
+                                                >
+                                                    {brand}
+                                                </TableCell>
+                                                <TableCell
+                                                    key={`brand-${brand}-total-header`}
+                                                    colSpan={1}
+                                                    align="center"
+                                                    sx={{
+                                                        fontWeight: 'bold',
+                                                        background: lightGrayBg,
+                                                        color: '#000000',
+                                                        fontSize: '0.85rem',
+                                                    }}
+                                                >
+                                                    {`${brand} Total`}
+                                                </TableCell>
+                                            </>
+                                        )
+                                    })}
+
+                                    <TableCell
+                                        rowSpan={2}
+                                        align="center"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            background: lightGrayBg,
+                                            color: '#000000',
+                                            fontSize: '0.85rem',
+                                            minWidth: 100,
+                                        }}
+                                    >
+                                        Grand Total
+                                    </TableCell>
+                                </TableRow>
+
+                                {/* Row 2 Sub-headers */}
+                                <TableRow>
+                                    <TableCell
+                                        align="center"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            background: lightBlueBg,
+                                            color: '#000000',
+                                            fontSize: '0.8rem',
+                                        }}
+                                    >
+                                        City
+                                    </TableCell>
+
+                                    {brands.map((brand) => (
+                                        <>
+                                            {tenures.map((tenure) => (
+                                                <TableCell
+                                                    key={`sub-${brand}-${tenure}`}
+                                                    align="center"
+                                                    sx={{
+                                                        fontWeight: 'bold',
+                                                        background: lightBlueBg,
+                                                        color: '#000000',
+                                                        fontSize: '0.8rem',
+                                                    }}
+                                                >
+                                                    {tenure}
+                                                </TableCell>
+                                            ))}
+                                            <TableCell
+                                                key={`sub-${brand}-total`}
+                                                align="center"
+                                                sx={{
+                                                    fontWeight: 'bold',
+                                                    background: lightGrayBg,
+                                                    color: '#000000',
+                                                    fontSize: '0.8rem',
+                                                }}
+                                            >
+                                                Total
+                                            </TableCell>
+                                        </>
+                                    ))}
+                                </TableRow>
+                            </TableHead>
+
+                            <TableBody>
+                                {/* Data Rows */}
+                                {tableRows.map((row) => (
+                                    <TableRow key={row.city}>
+                                        <TableCell align="center" sx={{ fontWeight: 500 }}>
+                                            {row.city}
+                                        </TableCell>
+
+                                        {brands.map((brand) => {
+                                            const brandTotKey = `${brand}_total`
+                                            const brandTotalVal = row[brandTotKey] ?? row[`${brand.split('/')[0].trim()}_total`] ?? 0
+
+                                            return (
+                                                <>
+                                                    {tenures.map((tenure) => {
+                                                        const key = `${brand}_${tenure}`
+                                                        const val = row[key] ?? row[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
+                                                        return (
+                                                            <TableCell key={`${row.city}-${brand}-${tenure}`} align="center">
+                                                                {val}
+                                                            </TableCell>
+                                                        )
+                                                    })}
+
+                                                    <TableCell
+                                                        key={`${row.city}-${brand}-total`}
+                                                        align="center"
+                                                        sx={{ fontWeight: 600, background: 'rgba(0,0,0,0.02)' }}
+                                                    >
+                                                        {brandTotalVal}
+                                                    </TableCell>
+                                                </>
+                                            )
+                                        })}
+
+                                        <TableCell align="center" sx={{ fontWeight: 600, background: 'rgba(0,0,0,0.02)' }}>
+                                            {row.grand_total ?? row.grandTotal ?? 0}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+
+                                {/* Footer Row: Grand Total */}
+                                <TableRow>
+                                    <TableCell
+                                        align="center"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            background: lightBlueBg,
+                                            color: '#000000',
+                                        }}
+                                    >
+                                        Grand Total
+                                    </TableCell>
+
+                                    {brands.map((brand) => {
+                                        const brandTotKey = `${brand}_total`
+                                        const brandTotalVal = grandTotalRow[brandTotKey] ?? grandTotalRow[`${brand.split('/')[0].trim()}_total`] ?? 0
+
+                                        return (
+                                            <>
+                                                {tenures.map((tenure) => {
+                                                    const key = `${brand}_${tenure}`
+                                                    const val = grandTotalRow[key] ?? grandTotalRow[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
+                                                    return (
+                                                        <TableCell
+                                                            key={`gt-${brand}-${tenure}`}
+                                                            align="center"
+                                                            sx={{
+                                                                fontWeight: 'bold',
+                                                                background: lightBlueBg,
+                                                                color: '#000000',
+                                                            }}
+                                                        >
+                                                            {val}
+                                                        </TableCell>
+                                                    )
+                                                })}
+
+                                                <TableCell
+                                                    key={`gt-${brand}-total`}
+                                                    align="center"
+                                                    sx={{
+                                                        fontWeight: 'bold',
+                                                        background: lightBlueBg,
+                                                        color: '#000000',
+                                                    }}
+                                                >
+                                                    {brandTotalVal}
+                                                </TableCell>
+                                            </>
+                                        )
+                                    })}
+
+                                    <TableCell
+                                        align="center"
+                                        sx={{
+                                            fontWeight: 'bold',
+                                            background: lightBlueBg,
+                                            color: '#000000',
+                                        }}
+                                    >
+                                        {grandTotalRow.grand_total ?? grandTotalRow.grandTotal ?? 0}
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </Paper>
+                </CardContent>
+            </Card>
+        )
+    }
+
     if (loading) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 12 }}>
@@ -844,6 +1163,11 @@ let cities: string[] = []
             </Box>
 
             <Grid container spacing={3}>
+                {/* Location & Model wise Sample Sizes - FULL WIDTH */}
+                <Grid size={{ xs: 12 }}>
+                    <LocationModelSampleSizeCard sampleData={data.location_model_sample_size} />
+                </Grid>
+
                 {/* Visualization 1: Age Group - Half width */}
                 <Grid size={{ xs: 12, md: 6 }}>
                     <VizCard
@@ -912,6 +1236,20 @@ let cities: string[] = []
                         icon={<Work sx={{ fontSize: 20 }} />}
                         subtitle="Professional background of survey respondents"
                         brandColor="#2ae886ff"
+                    />
+                </Grid>
+
+                {/* Visualization 6: Vehicle Usage Purpose (Column R) - Full width */}
+                <Grid size={{ xs: 12 }}>
+                    <VizCard
+                        title="Vehicle Usage Purpose"
+                        matrix={data.vehicle_usage}
+                        showMode="both"
+                        chartValueType="percent"
+                        chartLabelType="count"
+                        icon={<DirectionsBike sx={{ fontSize: 20 }} />}
+                        subtitle="Primary purpose of vehicle usage by brand (Column R)"
+                        brandColor="#a731abff"
                     />
                 </Grid>
             </Grid>
