@@ -109,6 +109,33 @@ export function useThemeColors() {
             agSelectedRow: isDark
                 ? 'rgba(108,99,255,0.15)'
                 : 'rgba(0, 127, 255, 0.08)',
+
+            // ─── PREMIUM / LOGIN ADDITIONS ───
+            // Add inside the return {} of useThemeColors
+
+            loginHeroBg: isDark
+                ? 'linear-gradient(135deg, #0A0A1A 0%, #1A0A2E 50%, #2A0A3E 100%)'
+                : 'linear-gradient(135deg, #1A1A2E 0%, #2A2A4E 50%, #3A2A5E 100%)',
+
+            loginRightBg: isDark
+                ? 'linear-gradient(160deg, #0D0D25 0%, #12122A 100%)'
+                : 'linear-gradient(160deg, #FBFBF7 0%, #F5F5F0 100%)',
+
+            goldAccent: '#C9A961',
+            goldAccentLight: '#E8D5A0',
+            goldAccentDark: '#A8894A',
+
+            loginDivider: isDark
+                ? 'rgba(201, 169, 97, 0.25)'
+                : 'rgba(201, 169, 97, 0.35)',
+
+            loginCardBgPremium: isDark
+                ? 'rgba(18, 18, 42, 0.85)'
+                : 'rgba(255, 255, 255, 0.92)',
+
+            loginShadowPremium: isDark
+                ? '0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,169,97,0.1)'
+                : '0 32px 80px rgba(0, 127, 255, 0.15), 0 0 0 1px rgba(201,169,97,0.15)',
         }
     }, [theme.palette.mode])
 }
