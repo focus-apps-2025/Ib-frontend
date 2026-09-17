@@ -8,10 +8,9 @@ import './index.css'
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule, InfiniteRowModelModule])
 
-// Apply global UI zoom scale (≈ Ctrl+- in the browser).
-// Root-level `zoom` scales the entire app (fonts, spacing, cards, tables,
-// AG Grid canvas) without breaking fixed/sticky positioning or viewport units.
-document.documentElement.style.zoom = String(LAYOUT_CONFIG.zoomScale)
+const zoomScale = LAYOUT_CONFIG.zoomScale || 0.8
+document.documentElement.style.zoom = String(zoomScale)
+document.documentElement.style.setProperty('--zoom-scale', String(zoomScale))
 
 // Apply theme CSS variables before render to prevent flash
 const stored = localStorage.getItem('theme-storage')

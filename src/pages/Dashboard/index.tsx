@@ -25,16 +25,35 @@ import PptxGenJS from 'pptxgenjs'
 import html2canvas from 'html2canvas'
 
 ModuleRegistry.registerModules([AllCommunityModule, InfiniteRowModelModule])
-import { responsesApi, regionsApi, countriesApi, ibVersionsApi, dashboardApi, comparisonApi, issuesApi } from '../../lib/api'
-import { useFilterStore } from '../../store'
+import { responsesApi, regionsApi, countriesApi, ibVersionsApi, dashboardApi, comparisonApi, issuesApi, marketFeedbackApi } from '../../lib/api'
+import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
 import IssuesTab from '../../components/dashboard/IssuesTab'
 import DashboardAnalytics from '../../components/dashboard/DashboardAnalytics'
 import ComparisonTab from '../../components/dashboard/ComparisonTab'
 import NpsTab from '../../components/dashboard/NpsTab'
 import ServiceDashboardTab from '../../components/dashboard/ServiceDashboardTab'
+import MarketFeedbackTab, { DEFAULT_TVS_TOP_ISSUES, getSortedFormattedKmBreakdown, generateFeedbackFromSurveyData, getPhotoUrl } from '../../components/dashboard/MarketFeedbackTab'
+import MultiSelectFilter from '../../components/dashboard/MultiSelectFilter'
 
 import { getColumnHeader } from '../../utils/columnHeaders'
+
+// ─── Month/Year Date Pickers ─────────────────────────────────────────────────
+import dayjs from 'dayjs'
+import type { Dayjs } from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
+import { DatePicker } from '@mui/x-date-pickers/DatePicker'
+
+// Allow parsing of the store's 'YYYY-MM' values (e.g. "2025-03") into dayjs.
+dayjs.extend(customParseFormat)
+
+/** Parse a stored 'YYYY-MM' string into a Dayjs object (null when empty). */
+const toMonthPickValue = (value: string): Dayjs | null =>
+  value ? dayjs(value, 'YYYY-MM') : null
+
+/** Convert a picked Dayjs value back into the 'YYYY-MM' store format ('' when empty). */
+const fromMonthPickValue = (value: Dayjs | null): string =>
+  value ? value.format('YYYY-MM') : ''
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 function StatCard({ title, value, icon, color, subtitle }: {
@@ -76,7 +95,7 @@ function StatCard({ title, value, icon, color, subtitle }: {
 
 export default function DashboardPage() {
   const [tab, setTab] = useState(0)
-  const [analysisMode, setAnalysisMode] = useState<'product' | 'service'>('product')
+  const [analysisMode, setAnalysisMode] = useState<string[]>(['product', 'service'])
   const filters = useFilterStore()
   const c = useThemeColors()
   const [regions, setRegions] = useState<{ id: string; name: string }[]>([])
@@ -121,6 +140,124 @@ export default function DashboardPage() {
       return ''
     }
   }
+
+  const createTitleSlide = (slide1: any, pptx: any, customBrands?: string[]) => {
+    slide1.background = { fill: 'FFFFFF' }
+
+    // Full-bleed hero image at the top
+    slide1.addImage({
+      path: '/assets/home.png',
+      x: 0,
+      y: 0,
+      w: 10,
+      h: 4.8,
+      sizing: { type: 'cover', w: 10, h: 4.8 },
+    })
+
+    // Bottom white strip
+    slide1.addShape(pptx.shapes.RECTANGLE, {
+      x: 0,
+      y: 4.6,
+      w: 10,
+      h: 1.1,
+      fill: { color: 'FFFFFF' },
+      line: { color: 'FFFFFF', width: 0 },
+    })
+
+    // Left side of the bottom strip: Filter summary & Analysis mode
+    const countryIds = Array.isArray(filters.countryId)
+      ? filters.countryId
+      : (filters.countryId ? [filters.countryId] : [])
+
+    const regionIds = Array.isArray(filters.regionId)
+      ? filters.regionId
+      : (filters.regionId ? [filters.regionId] : [])
+
+    let countryLabel = ''
+    if (countryIds.length > 0) {
+      const found = countries.find((c) => c.id === countryIds[0])
+      countryLabel = found ? found.name : countryIds[0]
+    } else if (regionIds.length > 0) {
+      const found = regions.find((r) => r.id === regionIds[0])
+      countryLabel = found ? found.name : regionIds[0]
+    }
+
+    const line1Text = countryLabel ? `${countryLabel}` : 'Overall'
+
+    const hasProduct = analysisMode.includes('product')
+    const hasService = analysisMode.includes('service')
+    let modeText = 'Product, Service'
+    if (hasProduct && !hasService) modeText = 'Product'
+    else if (hasService && !hasProduct) modeText = 'Service'
+
+    const line2Text = `${modeText}`
+
+    slide1.addText(
+      [
+        { text: line1Text, options: { bold: true, fontSize: 30, color: '1E293B', fontFace: 'Arial' } },
+        { text: '\n' + line2Text, options: { bold: false, fontSize: 11, color: '64748B', fontFace: 'Arial' } },
+      ],
+      {
+        x: 0.0,
+        y: 4.4,
+        w: 3.5,
+        h: 1.225,
+        valign: 'left',
+        lineSpacing: 18,
+      }
+    )
+
+    // Center of the bottom strip: Selected brand names list (or fallback to dataset brands)
+    let displayBrands: string[] = []
+    if (Array.isArray(filters.brandModel) && filters.brandModel.length > 0) {
+      displayBrands = filters.brandModel
+    } else if (Array.isArray(customBrands) && customBrands.length > 0) {
+      displayBrands = customBrands
+    } else if (Array.isArray(brands) && brands.length > 0) {
+      displayBrands = brands
+    }
+
+    if (displayBrands.length > 0) {
+      const count = displayBrands.length
+      const fontSize = count <= 3 ? 12 : count <= 5 ? 10 : 8
+      const lineSpacing = fontSize * 1.5          // 1.5x line spacing
+      const blockH = count * (lineSpacing / 72) + 0.1  // convert pt → inches, add padding
+      const blockY = 4.4 + (1.225 - blockH) / 2   // vertically center inside bottom strip
+
+      slide1.addText(
+        displayBrands.map((b, idx) => ({
+          text: b,
+          options: {
+            bold: true,
+            fontSize,
+            color: '000000',
+            fontFace: 'Arial',
+            breakLine: idx < count - 1,           // line break after each item except last
+            paraSpaceAfter: 0,
+            lineSpacing: lineSpacing,
+          },
+        })),
+        {
+          x: 3.6,
+          y: blockY,
+          w: 4.8,
+          h: blockH,
+          align: 'left',
+          valign: 'top',
+        }
+      )
+    }
+
+    // Right side of the bottom strip: Company logo
+    slide1.addImage({
+      path: '/assets/logo.png',
+      x: 8.6,
+      y: 4.7,
+      w: 1.1,
+      h: 0.8,
+    })
+  }
+
   const handleDownloadServicePPT = async () => {
     setPptGenerating(true)
     setPptProgress('Initializing & fetching Service Dashboard data...')
@@ -128,11 +265,11 @@ export default function DashboardPage() {
     try {
       const filterParams = {
         file_id: filters.fileId || undefined,
-        region_id: filters.regionId || undefined,
-        country_id: filters.countryId || undefined,
-        ib_version_id: filters.ibVersionId || undefined,
-        brand_model: filters.brandModel || undefined,
-        survey_location: filters.surveyLocation || undefined,
+        region_id: toParam(filters.regionId),
+        country_id: toParam(filters.countryId),
+        ib_version_id: toParam(filters.ibVersionId),
+        brand_model: toParam(filters.brandModel),
+        survey_location: toParam(filters.surveyLocation),
         date_from: filters.dateFrom || undefined,
         date_to: filters.dateTo || undefined,
         search: filters.search || undefined,
@@ -288,6 +425,7 @@ export default function DashboardPage() {
         fill: getBrandColor(brandName),
         color: 'FFFFFF',
         align: 'center',
+        valign: 'middle',
         fontFace: 'Arial',
         fontSize: 8
       })
@@ -313,7 +451,7 @@ export default function DashboardPage() {
 
       const NEUTRAL_GREY = '607D8B'
 
-      const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number) => {
+      const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number, hideTotal: boolean = false,) => {
         if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
           slide.addText('No data available', { x, y, w, h, fontSize: 12, color: '999999', align: 'center' })
           return
@@ -326,9 +464,26 @@ export default function DashboardPage() {
           { text: title || category_header || 'Category', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'left', fontSize: 8 } }
         ]
         orderedBrands.forEach((brand: string) => {
-          headerRow.push({ text: brand, options: getBrandHeaderOptions(brand) })
+          headerRow.push({
+            text: brand,
+            options: getBrandHeaderOptions(brand),
+          })
         })
-        headerRow.push({ text: 'Total', options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'right', fontSize: 8 } })
+
+        if (!hideTotal) {
+          headerRow.push({
+            text: 'Total',
+            options: {
+              bold: true,
+              fill: NEUTRAL_GREY,
+              color: 'FFFFFF',
+              align: 'right',
+              valign: 'middle',
+              fontSize: 8,
+            },
+          })
+        }
+
         rows.push(headerRow)
 
         table.forEach((row: any) => {
@@ -349,19 +504,41 @@ export default function DashboardPage() {
             }
             dataRow.push({ text: displayText, options: { bold: isTotal, align: 'right', fontSize: 7 } })
           })
+          if (!hideTotal) {
+            dataRow.push({
+              text:
+                typeof row.total === 'number'
+                  ? row.total.toLocaleString()
+                  : String(row.total || 0),
+              options: { bold: true, align: 'right', valign: 'middle', fontSize: 7 },
+            })
+          }
           dataRow.push({ text: typeof row.total === 'number' ? row.total.toLocaleString() : String(row.total || 0), options: { bold: true, align: 'right', fontSize: 7 } })
           rows.push(dataRow)
         })
 
-        const colCount = 2 + orderedBrands.length
+        const colCount = 2 + orderedBrands.length          // reference layout: always counts the Total slot
         const baseWidth = w / colCount
+
+        // Effective table width:
+        //   - hideTotal = false → full `w` (unchanged)
+        //   - hideTotal = true  → reserve the space the Total column would have used,
+        //                         so the remaining columns keep their original size.
+        const totalColW = baseWidth * 0.8
+        const effectiveW = hideTotal ? (w - totalColW) : w
+
         slide.addTable(rows, {
-          x, y, w, h,
+          x, y, w: effectiveW, h,
           border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
           fontSize: 7,
           fontFace: 'Arial',
-          colW: [baseWidth * 1.2, ...orderedBrands.map(() => baseWidth * 0.9), baseWidth * 0.8],
+          colW: [
+            baseWidth * 1.2,
+            ...orderedBrands.map(() => baseWidth * 0.9),
+            ...(hideTotal ? [] : [totalColW]),
+          ],
           rowH: rows.map(() => 0.2),
+          valign: 'middle',
         })
       }
 
@@ -519,6 +696,7 @@ export default function DashboardPage() {
           fontFace: 'Arial',
           colW: colWidths,
           rowH: tableRows.map(() => rowHeight),
+          valign: 'middle',
         })
       }
 
@@ -538,7 +716,6 @@ export default function DashboardPage() {
         slide.background = { fill: '1E293B' }
         slide.addText(sectionTitle, { x: 1.0, y: 2.0, w: 8.0, h: 1.2, fontSize: 38, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Arial' })
         slide.addShape(pptx.shapes.LINE, { x: 3.5, y: 3.4, w: 3.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
-        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
 
         slide.addText('« Back to Contents', {
           x: 0.3, y: 5.15, w: 2.4, h: 0.3,
@@ -652,12 +829,8 @@ export default function DashboardPage() {
       // ─── SLIDE 1: Title Page ───
       setPptProgress('Generating Slide 1: Title...')
       const slide1 = pptx.addSlide()
-      slide1.background = { fill: 'FFFFFF' }
-
-      slide1.addText('Survey Analysis Report', { x: 1.0, y: 2.0, w: 8.0, h: 0.8, fontSize: 36, bold: true, color: '1E293B', align: 'left', fontFace: 'Arial' })
-      slide1.addText('Brand Performance & Customer Feedback Analysis', { x: 1.0, y: 2.8, w: 8.0, h: 0.6, fontSize: 18, color: '6C63FF', align: 'left', fontFace: 'Arial' })
-      slide1.addShape(pptx.shapes.LINE, { x: 1.0, y: 3.5, w: 4.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
-      slide1.addText(`Report Generated: ${displayDate}`, { x: 1.0, y: 3.8, w: 8.0, h: 0.4, fontSize: 12, color: '64748B', align: 'left', fontFace: 'Arial' })
+      const rawServiceBrands = (kmsDataAll?.brand_breakdown || []).map((b: any) => b.brand || b.name || b)
+      createTitleSlide(slide1, pptx, rawServiceBrands)
       const tocSlide = pptx.addSlide()
       tocSlide.background = { fill: 'FFFFFF' }
       // ─── DIVIDER 1: Demography ───
@@ -756,7 +929,7 @@ export default function DashboardPage() {
           })
 
           if (Array.isArray(profMatrix.table) && profMatrix.table.length > 0) {
-            addMatrixTable(slide4, profMatrix, 'Profession', 0.3, 1.3, 4.4, 3.8)
+            addMatrixTable(slide4, profMatrix, 'Profession', 0.5, 1.3, 4.4, 3.8, true)
           }
 
           slide4.addText('Profession Distribution by Brand', {
@@ -996,7 +1169,8 @@ export default function DashboardPage() {
           fontSize: 8,
           fontFace: 'Arial',
           colW: colWidths,
-          rowH: tableRows.map(() => 0.22)
+          rowH: tableRows.map(() => 0.22),
+          valign: 'middle',
         })
       }
 
@@ -1393,6 +1567,7 @@ export default function DashboardPage() {
                 percentage: percentage,
               }
             })
+            .filter((it: any) => it.count > 0 || it.percentage > 0)   // ← add this line  
         }
 
         // ─── FIXED: renderPanelChart with descending sort ───
@@ -1405,13 +1580,7 @@ export default function DashboardPage() {
           items: { name: string; count: number; percentage: number }[],
           isGreen: boolean
         ) => {
-          if (!items || items.length === 0) {
-            slideObj.addText('No data available', {
-              x: panelX + 0.2, y: panelY + 2.0, w: panelW - 0.4, h: 0.4,
-              fontSize: 10, color: '999999', align: 'center', fontFace: 'Arial',
-            })
-            return
-          }
+          if (!items || items.length === 0) return
 
           // ─── SORT IN DESCENDING ORDER (largest first) ───
           const sortedItems = [...items].sort((a, b) => b.percentage - a.percentage)
@@ -1452,14 +1621,10 @@ export default function DashboardPage() {
               catAxisLabelColor: '333333',
               catAxisLineShow: false,
               valAxisLineShow: false,
-              valAxisHidden: false,
+              valAxisHidden: true,
               valAxisMinVal: 0,
               valAxisMaxVal: valAxisMax,
-              valAxisMajorUnit: Math.max(5, Math.ceil(valAxisMax / 5)),
-              valAxisLabelFormatCode: '0"%"',
-              valAxisLabelFontSize: 5.5,
-              valAxisLabelColor: '666666',
-              valGridLine: { style: 'dash', color: 'E0E0E0' },
+              valGridLine: { style: 'none' },
               barGapWidthPct: 40,
             })
           } catch (err) {
@@ -1477,54 +1642,104 @@ export default function DashboardPage() {
           isOverallCategory: boolean,
           baseCount: number
         ) => {
+          // ─── 1. Format data FIRST (before creating the slide) ───
+          const formattedBenefits = formatFeedbackItems(
+            benefitItemsRaw,
+            overallBenefitItemsRaw,
+            isOverallCategory,
+            baseCount
+          )
+          const formattedIssues = formatFeedbackItems(
+            issueItemsRaw,
+            overallIssueItemsRaw,
+            isOverallCategory,
+            baseCount
+          )
+
+          const hasBenefits = formattedBenefits.length > 0
+          const hasIssues = formattedIssues.length > 0
+
+          // ─── 2. Skip the slide entirely if both panels are empty ───
+          if (!hasBenefits && !hasIssues) return
+
+          // ─── 3. NOW create the slide ───
           setPptProgress(`Generating Slide: ${slideTitle}...`)
           const slideFB = pptx.addSlide()
           slideFB.background = { fill: 'FFFFFF' }
-
           addSlideTitle(slideFB, slideTitle, '')
 
-          const leftX = 0.3
-          const leftY = 1.0
-          const panelW = 4.55
-          const panelH = 4.25
+          // ─── 4. Layout constants ───
+          const SLIDE_CONTENT_X = 0.3
+          const SLIDE_CONTENT_W = 9.4
+          const PANEL_W = 4.55
+          const PANEL_H = 4.25
+          const PANEL_Y = 1.0
+          const PANEL_GAP = 0.3
 
-          // Left Panel (Green): AREAS FOR BENEFITS
-          slideFB.addShape(pptx.ShapeType.rect, {
-            x: leftX, y: leftY, w: panelW, h: panelH,
-            fill: { color: 'F0FDF4' },
-            line: { color: '4ECCA3', width: 1.5 },
-          })
+          const leftX = SLIDE_CONTENT_X                              // 0.3
+          const rightX = SLIDE_CONTENT_X + PANEL_W + PANEL_GAP       // 5.15
+          const centeredPanelX = SLIDE_CONTENT_X + (SLIDE_CONTENT_W - PANEL_W) / 2  // 2.725
 
-          slideFB.addText('AREAS FOR BENEFITS', {
-            x: leftX, y: leftY, w: panelW, h: 0.35,
-            fill: { color: '28A745' },
-            color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-            fontSize: 10, fontFace: 'Arial',
-          })
+          // ─── 5. Render panels based on data availability ───
+          if (hasBenefits && !hasIssues) {
+            // Only Benefits → centered
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+              fill: { color: 'F0FDF4' },
+              line: { color: '4ECCA3', width: 1.5 },
+            })
+            slideFB.addText('AREAS FOR BENEFITS', {
+              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+              fill: { color: '28A745' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
+            renderPanelChart(slideFB, centeredPanelX, PANEL_Y, PANEL_W, PANEL_H, formattedBenefits, true)
+          } else if (!hasBenefits && hasIssues) {
+            // Only Betterments → centered
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+              fill: { color: 'FEF2F2' },
+              line: { color: 'FF6584', width: 1.5 },
+            })
+            slideFB.addText('AREAS FOR BETTERMENT', {
+              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+              fill: { color: 'DC3545' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
+            renderPanelChart(slideFB, centeredPanelX, PANEL_Y, PANEL_W, PANEL_H, formattedIssues, false)
+          } else {
+            // Both present → side-by-side (original layout)
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: leftX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+              fill: { color: 'F0FDF4' },
+              line: { color: '4ECCA3', width: 1.5 },
+            })
+            slideFB.addText('AREAS FOR BENEFITS', {
+              x: leftX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+              fill: { color: '28A745' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
 
-          // Right Panel (Red): AREAS FOR BETTERMENT
-          const rightX = 5.15
-          const rightY = 1.0
+            slideFB.addShape(pptx.ShapeType.rect, {
+              x: rightX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+              fill: { color: 'FEF2F2' },
+              line: { color: 'FF6584', width: 1.5 },
+            })
+            slideFB.addText('AREAS FOR BETTERMENT', {
+              x: rightX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+              fill: { color: 'DC3545' },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
 
-          slideFB.addShape(pptx.ShapeType.rect, {
-            x: rightX, y: rightY, w: panelW, h: panelH,
-            fill: { color: 'FEF2F2' },
-            line: { color: 'FF6584', width: 1.5 },
-          })
+            renderPanelChart(slideFB, leftX, PANEL_Y, PANEL_W, PANEL_H, formattedBenefits, true)
+            renderPanelChart(slideFB, rightX, PANEL_Y, PANEL_W, PANEL_H, formattedIssues, false)
+          }
 
-          slideFB.addText('AREAS FOR BETTERMENT', {
-            x: rightX, y: rightY, w: panelW, h: 0.35,
-            fill: { color: 'DC3545' },
-            color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-            fontSize: 10, fontFace: 'Arial',
-          })
-
-          const formattedBenefits = formatFeedbackItems(benefitItemsRaw, overallBenefitItemsRaw, isOverallCategory, baseCount)
-          const formattedIssues = formatFeedbackItems(issueItemsRaw, overallIssueItemsRaw, isOverallCategory, baseCount)
-
-          renderPanelChart(slideFB, leftX, leftY, panelW, panelH, formattedBenefits, true)
-          renderPanelChart(slideFB, rightX, rightY, panelW, panelH, formattedIssues, false)
-
+          // ─── 6. Base footer (only rendered when a slide actually exists) ───
           slideFB.addText(`Base: ${baseCount || 0} respondents`, {
             x: 0.3, y: 5.32, w: 4.0, h: 0.25,
             fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
@@ -1610,7 +1825,7 @@ export default function DashboardPage() {
 
         // 1. Left Top Table: Positive Points Main Table
         const tableX = 0.3
-        const tableY = 1.05
+        const tableY = 1.20
         const tableW = 4.6
         const tableH = 2.4
 
@@ -1652,11 +1867,12 @@ export default function DashboardPage() {
           fontSize: 7,
           fontFace: 'Arial',
           colW: colWidths,
-          rowH: mainTableRows.map(() => 0.35)
+          rowH: mainTableRows.map(() => 0.35),
+          valign: 'middle',
         })
 
         // 2. Left Bottom Table: Authorized Workshop Base Table
-        const baseTableY = 3.65
+        const baseTableY = 3.80
         const baseTableH = 0.8
         const baseTableRows: any[][] = []
 
@@ -1687,7 +1903,8 @@ export default function DashboardPage() {
           fontSize: 7.5,
           fontFace: 'Arial',
           colW: colWidths,
-          rowH: [0.35, 0.35]
+          rowH: [0.35, 0.35],
+          valign: 'middle',
         })
 
         // ─── DIVIDER: Section A ───
@@ -1695,15 +1912,33 @@ export default function DashboardPage() {
 
         // ─── RIGHT SIDE CHART: Horizontal Bar Chart (Yes % Distribution per Brand) ───
         const chartX = 5.1
-        const chartY = 1.05
+        const chartY = 1.5                    // was 1.05 — shifted down to make room for box top + title
         const chartW = 4.6
-        const chartH = 4.0
+        const chartH = 3.15                   // was 4.0 — shrunk so box bottom stays at same Y
 
-        slide.addText('Percentage Distribution (Yes %)', {
-          x: chartX, y: chartY, w: chartW, h: 0.25,
-          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        // ─── Chart container box (drawn FIRST so it sits behind the title + chart) ───
+        const CHART_BOX_X = chartX - 0.1
+        const CHART_BOX_Y = 1.2
+        const CHART_BOX_W = chartW + 0.2
+        const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: CHART_BOX_X,
+          y: CHART_BOX_Y,
+          w: CHART_BOX_W,
+          h: CHART_BOX_H,
+          fill: { color: 'F8FAFC' },
+          line: { color: 'E2E8F0', width: 1 },
+          rectRadius: 0.08,
         })
 
+        // ─── Chart title inside the box (below box top) ───
+        slide.addText('Percentage Distribution (Yes %)', {
+          x: chartX, y: CHART_BOX_Y + 0.08, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial',
+        })
+
+        // ─── Chart inside the box (drawn after box + title) ───
         const chartSeries = orderedSatBrands.map((bName: string) => {
           const values = slideMetrics.map((m: any) => {
             const bd = (m.brand_data || []).find((item: any) => item.brand === bName)
@@ -1712,52 +1947,41 @@ export default function DashboardPage() {
           return {
             name: bName,
             labels: slideMetrics.map((m: any) => m.key),
-            values: values
+            values: values,
           }
         })
 
         try {
           slide.addChart(pptx.ChartType.bar, chartSeries, {
             x: chartX,
-            y: chartY + 0.3,
+            y: chartY,
             w: chartW,
-            h: chartH - 0.3,
+            h: chartH,
             barDir: 'bar',
             chartColors: satBrandColors,
             showTitle: false,
             showLegend: true,
             legendPos: 't',
             legendFontSize: 7.5,
-
-            // ─── CLEANED UP AXIS SETTINGS ───
             catAxisLabelFontSize: 8,
             catAxisLabelColor: '333333',
             catAxisLineShow: true,
+            catAxisLineColor: 'CBD5E1',
             catGridLine: { style: 'none' },
-
             valAxisHidden: true,
-            valAxisLabelFontSize: 7.5,
-            valAxisLabelFormatCode: '',
-            valAxisLabelPos: 'none',
-
-            // ─── DATA LABELS ───
+            valGridLine: { style: 'none' },
             showValue: true,
             dataLabelFormatCode: '0"%"',
             dataLabelFontSize: 7.5,
             dataLabelColor: '333333',
-
-            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
-            barGapWidthPct: 180,         // Increased category gap for cleaner separation
-            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
-
-            // ─── REMOVE VAL GRID LINES ───
-            valGridLine: { style: 'none' },
+            barGapWidthPct: 180,
+            barOverlapPct: -30,
           })
         } catch (chartErr) {
           console.error('Error adding satisfaction chart:', chartErr)
           slide.addText('Chart could not be rendered', {
             x: chartX, y: chartY + 0.5, w: chartW, h: 2.0,
-            fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle'
+            fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle',
           })
         }
       }
@@ -1862,21 +2086,39 @@ export default function DashboardPage() {
           fontSize: 8,
           fontFace: 'Arial',
           colW: Array(numCols).fill(colW),
-          rowH: [0.35, 0.35, 0.35, 0.35]
+          rowH: [0.35, 0.35, 0.35, 0.35],
+          valign: 'middle',
         })
 
-        // ─── RIGHT SIDE CHART: Yes/No Categories with Brand Bars ───
+        // ─── RIGHT SIDE CHART ───
         const chartX = 5.1
-        const chartY = 1.2
+        const chartY = 1.5                         // was 1.2
         const chartW = 4.6
-        const chartH = 3.4
+        const chartH = 3.15                        // was 3.4
 
-        slide.addText('Percentage Distribution (Yes vs No)', {
-          x: chartX, y: chartY, w: chartW, h: 0.25,
-          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        // ─── Chart container box (drawn FIRST) ───
+        const CHART_BOX_X = chartX - 0.1
+        const CHART_BOX_Y = 1.2
+        const CHART_BOX_W = chartW + 0.2
+        const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: CHART_BOX_X,
+          y: CHART_BOX_Y,
+          w: CHART_BOX_W,
+          h: CHART_BOX_H,
+          fill: { color: 'F8FAFC' },
+          line: { color: 'E2E8F0', width: 1 },
+          rectRadius: 0.08,
         })
 
-        // Build chart data: 2 categories (Yes/No) with brand values
+        // ─── Chart title inside box ───
+        slide.addText('Percentage Distribution (Yes vs No)', {
+          x: chartX, y: CHART_BOX_Y + 0.08, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial',
+        })
+
+        // ─── Chart ───
         const chartSeriesData = orderedSecBrands.map((bName: string) => {
           const bd = secData.find((d: any) => d.brand === bName)
           const yesPct = bd ? Math.round(bd.yes_pct || 0) : 0
@@ -1884,7 +2126,7 @@ export default function DashboardPage() {
           return {
             name: bName,
             labels: ['Yes', 'No'],
-            values: [yesPct, noPct]
+            values: [yesPct, noPct],
           }
         })
 
@@ -1893,39 +2135,28 @@ export default function DashboardPage() {
         try {
           slide.addChart(pptx.ChartType.bar, chartSeriesData, {
             x: chartX,
-            y: chartY + 0.3,
+            y: chartY,
             w: chartW,
-            h: chartH - 0.3,
+            h: chartH,
             barDir: 'bar',
             chartColors: secBrandColors,
             showTitle: false,
             showLegend: true,
             legendPos: 't',
             legendFontSize: 7.5,
-
-            // ─── CLEANED UP AXIS SETTINGS ───
             catAxisLabelFontSize: 8,
             catAxisLabelColor: '333333',
             catAxisLineShow: true,
+            catAxisLineColor: 'CBD5E1',
             catGridLine: { style: 'none' },
-
             valAxisHidden: true,
-            valAxisLabelFontSize: 7.5,
-            valAxisLabelFormatCode: '',
-            valAxisLabelPos: 'none',
-
-            // ─── DATA LABELS ───
+            valGridLine: { style: 'none' },
             showValue: true,
             dataLabelFormatCode: '0"%"',
             dataLabelFontSize: 7.5,
             dataLabelColor: '333333',
-
-            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
-            barGapWidthPct: 180,         // Increased category gap for cleaner separation
-            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
-
-            // ─── REMOVE VAL GRID LINES ───
-            valGridLine: { style: 'none' },
+            barGapWidthPct: 180,
+            barOverlapPct: -30,
           })
         } catch (err) {
           console.error(`Error adding section ${sKey} chart:`, err)
@@ -2002,28 +2233,46 @@ export default function DashboardPage() {
           fontSize: 7,
           fontFace: 'Arial',
           colW: colWidths,
-          rowH: tableRows.map(() => 0.45)
+          rowH: tableRows.map(() => 0.45),
+          valign: 'middle',
         })
 
-        // ─── RIGHT SIDE CHART: Total Responses per Brand ───
+        // ─── RIGHT SIDE CHART ───
         const chartX = 5.1
-        const chartY = 1.2
+        const chartY = 1.5                         // was 1.2
         const chartW = 4.6
-        const chartH = 3.4
+        const chartH = 3.15                        // was 3.4
 
-        slide.addText('Total Responses Comparison (Section 7 vs Section 8)', {
-          x: chartX, y: chartY, w: chartW, h: 0.25,
-          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial'
+        // ─── Chart container box (drawn FIRST) ───
+        const CHART_BOX_X = chartX - 0.1
+        const CHART_BOX_Y = 1.2
+        const CHART_BOX_W = chartW + 0.2
+        const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: CHART_BOX_X,
+          y: CHART_BOX_Y,
+          w: CHART_BOX_W,
+          h: CHART_BOX_H,
+          fill: { color: 'F8FAFC' },
+          line: { color: 'E2E8F0', width: 1 },
+          rectRadius: 0.08,
         })
 
-        // Build chart data: 2 categories (Section 7 / Section 8) with brand totals
+        // ─── Chart title inside box ───
+        slide.addText('Total Responses Comparison (Section 7 vs Section 8)', {
+          x: chartX, y: CHART_BOX_Y + 0.08, w: chartW, h: 0.25,
+          fontSize: 9, bold: true, color: '6C63FF', align: 'center', fontFace: 'Arial',
+        })
+
+        // ─── Chart ───
         const chartSeries = orderedMergedBrands.map((bName: string) => {
           const count7 = sec7 ? ((sec7.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
           const count8 = sec8 ? ((sec8.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
           return {
             name: bName,
             labels: ['Section 7', 'Section 8'],
-            values: [count7, count8]
+            values: [count7, count8],
           }
         })
 
@@ -2032,39 +2281,28 @@ export default function DashboardPage() {
         try {
           slide.addChart(pptx.ChartType.bar, chartSeries, {
             x: chartX,
-            y: chartY + 0.3,
+            y: chartY,
             w: chartW,
-            h: chartH - 0.3,
+            h: chartH,
             barDir: 'bar',
             chartColors: mergedBrandColors,
             showTitle: false,
             showLegend: true,
             legendPos: 't',
             legendFontSize: 7.5,
-
-            // ─── CLEANED UP AXIS SETTINGS ───
             catAxisLabelFontSize: 8,
             catAxisLabelColor: '333333',
             catAxisLineShow: true,
+            catAxisLineColor: 'CBD5E1',
             catGridLine: { style: 'none' },
-
             valAxisHidden: true,
-            valAxisLabelFontSize: 7.5,
-            valAxisLabelFormatCode: '',
-            valAxisLabelPos: 'none',
-
-            // ─── DATA LABELS ───
+            valGridLine: { style: 'none' },
             showValue: true,
             dataLabelFormatCode: '0',
             dataLabelFontSize: 7.5,
             dataLabelColor: '333333',
-
-            // ─── BAR GAP - ADD MORE SPACE BETWEEN BARS ───
-            barGapWidthPct: 180,         // Increased category gap for cleaner separation
-            barOverlapPct: -30,          // Negative overlap creates visible gap between individual bars
-
-            // ─── REMOVE VAL GRID LINES ───
-            valGridLine: { style: 'none' },
+            barGapWidthPct: 180,
+            barOverlapPct: -30,
           })
         } catch (err) {
           console.error('Error adding merged section 7 & 8 chart:', err)
@@ -2128,8 +2366,10 @@ export default function DashboardPage() {
         const authBrands: any[] = authObj.brand_breakdown || []
         const pgmBrands: any[] = pgmObj.brand_breakdown || []
 
-        const locationName = filters.countryId || filters.surveyLocation || filters.regionId || 'Overall'
-        const brandModelName = filters.brandModel ? ` (${filters.brandModel})` : ''
+        const firstSelected = (values: string[]) => (values && values.length > 0 ? values[0] : '')
+        const locationName = firstSelected(filters.countryId) || firstSelected(filters.surveyLocation) || firstSelected(filters.regionId) || 'Overall'
+        const brandModelLabel = toParam(filters.brandModel)
+        const brandModelName = brandModelLabel ? ` (${brandModelLabel})` : ''
         const titleLocation = `${locationName}${brandModelName}`
 
         const allBrands = Array.from(new Set([
@@ -2218,8 +2458,8 @@ export default function DashboardPage() {
           w: 8.4,
           h: 3.8,
           fontFace: 'Arial',
-          valign: 'top',
-          lineSpacing: 22,
+          valign: 'middle',
+          lineSpacing: 28,
           align: 'justify'
         }
       )
@@ -2229,37 +2469,144 @@ export default function DashboardPage() {
       setPptProgress('Building table of contents...')
 
       tocSlide.addText('Table of Contents', {
-        x: 0.5, y: 0.4, w: 9.0, h: 0.6,
-        fontSize: 26, bold: true, color: '1E293B', fontFace: 'Arial',
+        x: 0.3, y: 0.2, w: 8.0, h: 0.4,
+        fontSize: 18, bold: true, color: '1E293B', fontFace: 'Arial',
       })
       tocSlide.addShape(pptx.shapes.LINE, {
-        x: 0.5, y: 1.05, w: 9.0, h: 0.0, line: { color: '3B82F6', width: 2 },
+        x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+        line: { color: '3B82F6', width: 2 },
       })
-      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.53 })
 
-      const tocColW = 4.6
-      const tocColGap = 0.2
-      const tocStartY = 1.4
-      const tocRowH = 0.42
-      const rowsPerCol = 9
+      // ─── TOC layout config ───
+      const slideW = 10
+      const slideH = 5.625
+      const marginX = 0.5
+      const marginRight = 0.5
+      const colGap = 0.3
+      const rowGap = 0.25
+
+      const cols = 3
+      const cardW = (slideW - marginX - marginRight - (cols - 1) * colGap) / cols  // 2.8
+      let cardH = 0.95
+      let cardStartY = 1.5
+
+      // Auto-shrink if there are more than 9 items (4+ rows needed)
+      const rows = Math.ceil(dividerTOC.length / cols)
+      if (rows > 3) {
+        cardH = 0.75
+        cardStartY = 1.35
+      }
+
+      // ─── Card style constants ───
+      const CARD_BG = 'F1F5F9'
+      const CARD_BORDER = 'E2E8F0'
+      const ACCENT_BLUE = '3B82F6'
+      const NUMBER_COLOR = '3B82F6'
+      const TITLE_COLOR = '1E293B'
 
       dividerTOC.forEach((item, idx) => {
-        const col = Math.floor(idx / rowsPerCol)
-        const rowInCol = idx % rowsPerCol
-        const colX = 0.5 + col * (tocColW + tocColGap)
-        const rowY = tocStartY + rowInCol * tocRowH
+        const row = Math.floor(idx / cols)
+        const col = idx % cols
 
-        tocSlide.addText(String(idx + 1).padStart(2, '0'), {
-          x: colX, y: rowY, w: 0.5, h: 0.35,
-          fontSize: 12, bold: true, color: '3B82F6', fontFace: 'Arial',
+        const cardX = marginX + col * (cardW + colGap)
+        const cardY = cardStartY + row * (cardH + rowGap)
+
+        // ── Card background (rounded rect) ──
+        tocSlide.addShape(pptx.ShapeType.roundRect, {
+          x: cardX,
+          y: cardY,
+          w: cardW,
+          h: cardH,
+          fill: { color: CARD_BG },
+          line: { color: CARD_BORDER, width: 1 },
+          rectRadius: 0.08,
         })
+
+        // ── Left accent strip (thin vertical bar in brand blue) ──
+        tocSlide.addShape(pptx.ShapeType.rect, {
+          x: cardX,
+          y: cardY,
+          w: 0.06,
+          h: cardH,
+          fill: { color: ACCENT_BLUE },
+          line: { color: ACCENT_BLUE, width: 0 },
+        })
+
+        // ── Number badge (two-digit) ──
+        const numberText = String(idx + 1).padStart(2, '0')
+        tocSlide.addText(numberText, {
+          x: cardX + 0.15,
+          y: cardY,
+          w: 0.7,
+          h: cardH,
+          fontSize: 20,
+          bold: true,
+          color: NUMBER_COLOR,
+          fontFace: 'Arial',
+          align: 'center',
+          valign: 'middle',
+        })
+
+        // ── Section title (hyperlink) ──
         tocSlide.addText(item.title, {
-          x: colX + 0.5, y: rowY, w: tocColW - 0.5, h: 0.35,
-          fontSize: 12, color: '1E293B', fontFace: 'Arial',
-          underline: true,
+          x: cardX + 0.9,
+          y: cardY,
+          w: cardW - 1.05,
+          h: cardH,
+          fontSize: 11,
+          bold: true,
+          color: TITLE_COLOR,
+          fontFace: 'Arial',
+          align: 'left',
+          valign: 'middle',
           hyperlink: { slide: item.slideNumber, tooltip: `Go to ${item.title}` },
         })
       })
+
+      // ─── FINAL SLIDE: Thank You ───
+      setPptProgress('Generating Slide: Thank You...')
+      const slideThankYou = pptx.addSlide()
+      slideThankYou.background = { fill: 'FFFFFF' }
+
+      // Full-bleed background image
+      slideThankYou.addImage({
+        path: '/assets/Thank.png',
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 5.625,
+        sizing: { type: 'cover', w: 10, h: 5.625 },
+      })
+
+      // Centered "Thank You" text overlay
+      slideThankYou.addText(
+        [
+          { text: 'Thank', options: { breakLine: true } },
+          { text: 'You', options: {} },
+        ],
+        {
+          x: -0.1,
+          y: -0.2,              // pull the text block upward (negative = above center)
+          w: 10,
+          h: 5.625,
+          align: 'center',
+          valign: 'middle',
+          fontSize: 55,
+          bold: true,
+          color: '#1434A4',
+          fontFace: 'Calibri',
+          lineSpacing: 60,      // keeps the two stacked lines close together
+          shadow: {
+            type: 'outer',
+            color: '000000',
+            opacity: 0.5,
+            blur: 8,
+            offset: 2,
+            angle: 45,
+          },
+        }
+      )
       setPptProgress('Saving PowerPoint file...')
       await pptx.writeFile({ fileName: `Service_Dashboard_Report_${today}.pptx` })
 
@@ -2282,11 +2629,11 @@ export default function DashboardPage() {
 
     try {
       const filterParams = {
-        region_id: filters.regionId || undefined,
-        country_id: filters.countryId || undefined,
-        ib_version_id: filters.ibVersionId || undefined,
-        brand_model: filters.brandModel || undefined,
-        survey_location: filters.surveyLocation || undefined,
+        region_id: toParam(filters.regionId),
+        country_id: toParam(filters.countryId),
+        ib_version_id: toParam(filters.ibVersionId),
+        brand_model: toParam(filters.brandModel),
+        survey_location: toParam(filters.surveyLocation),
         date_from: filters.dateFrom || undefined,
         date_to: filters.dateTo || undefined,
         search: filters.search || undefined,
@@ -2444,6 +2791,7 @@ export default function DashboardPage() {
           fill: getBrandColor(brandName),
           color: 'FFFFFF',
           align: 'center',
+          valign: 'middle',
           fontFace: 'Arial',
           fontSize: 8
         }
@@ -2480,7 +2828,7 @@ export default function DashboardPage() {
       const NEUTRAL_GREY = '607D8B'
 
       // ─── HELPER: Add matrix table to slide ───
-      const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number) => {
+      const addMatrixTable = (slide: any, matrix: any, title: string, x: number, y: number, w: number, h: number, hideTotal: boolean = false) => {
         if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
           slide.addText('No data available', {
             x, y, w, h,
@@ -2504,13 +2852,24 @@ export default function DashboardPage() {
         orderedBrands.forEach((brand: string) => {
           headerRow.push({
             text: brand,
-            options: getBrandHeaderOptions(brand)
+            options: getBrandHeaderOptions(brand),
           })
         })
-        headerRow.push({
-          text: 'Total',
-          options: { bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF', align: 'right', fontSize: 8 }
-        })
+
+        if (!hideTotal) {
+          headerRow.push({
+            text: 'Total',
+            options: {
+              bold: true,
+              fill: NEUTRAL_GREY,
+              color: 'FFFFFF',
+              align: 'right',
+              valign: 'middle',
+              fontSize: 8,
+            },
+          })
+        }
+
         rows.push(headerRow)
 
         table.forEach((row: any) => {
@@ -2547,27 +2906,40 @@ export default function DashboardPage() {
               }
             })
           })
-          dataRow.push({
-            text: typeof row.total === 'number' ? row.total.toLocaleString() : String(row.total || 0),
-            options: {
-              bold: true,
-              align: 'right',
-              fontSize: 7
-            }
-          })
+          if (!hideTotal) {
+            dataRow.push({
+              text:
+                typeof row.total === 'number'
+                  ? row.total.toLocaleString()
+                  : String(row.total || 0),
+              options: { bold: true, align: 'right', valign: 'middle', fontSize: 7 },
+            })
+          }
           rows.push(dataRow)
         })
 
-        const colCount = 2 + orderedBrands.length
+        const colCount = 2 + orderedBrands.length          // reference layout: always counts the Total slot
         const baseWidth = w / colCount
 
+        // Effective table width:
+        //   - hideTotal = false → full `w` (unchanged)
+        //   - hideTotal = true  → reserve the space the Total column would have used,
+        //                         so the remaining columns keep their original size.
+        const totalColW = baseWidth * 0.8
+        const effectiveW = hideTotal ? (w - totalColW) : w
+
         slide.addTable(rows, {
-          x, y, w, h,
+          x, y, w: effectiveW, h,
           border: { type: 'solid', color: 'E0E0E0', size: 0.5 },
           fontSize: 7,
           fontFace: 'Arial',
-          colW: [baseWidth * 1.2, ...orderedBrands.map(() => baseWidth * 0.9), baseWidth * 0.8],
+          colW: [
+            baseWidth * 1.2,
+            ...orderedBrands.map(() => baseWidth * 0.9),
+            ...(hideTotal ? [] : [totalColW]),
+          ],
           rowH: rows.map(() => 0.2),
+          valign: 'middle',
         })
       }
 
@@ -2726,6 +3098,7 @@ export default function DashboardPage() {
           fontFace: 'Arial',
           colW: colWidths,
           rowH: tableRows.map(() => rowHeight),
+          valign: 'middle',
         })
       }
 
@@ -2768,7 +3141,7 @@ export default function DashboardPage() {
         slide.background = { fill: '1E293B' }
         slide.addText(sectionTitle, { x: 1.0, y: 2.0, w: 8.0, h: 1.2, fontSize: 38, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Arial' })
         slide.addShape(pptx.shapes.LINE, { x: 3.5, y: 3.4, w: 3.0, h: 0.0, line: { color: '3B82F6', width: 3 } })
-        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+        // slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
 
         slide.addText('« Back to Contents', {
           x: 0.3, y: 5.15, w: 2.4, h: 0.3,
@@ -2882,31 +3255,12 @@ export default function DashboardPage() {
       // ─── SLIDE 1: Title Page ──────────────────────────────────────
       setPptProgress('Generating Slide 1: Title...')
       const slide1 = pptx.addSlide()
-      slide1.background = { fill: 'FFFFFF' }
-
-      slide1.addText('Survey Analysis Report', {
-        x: 1.0, y: 2.0, w: 8.0, h: 0.8,
-        fontSize: 36, bold: true, color: '1E293B', align: 'left', fontFace: 'Arial',
-      })
-
-      slide1.addText('Brand Performance & Customer Feedback Analysis', {
-        x: 1.0, y: 2.8, w: 8.0, h: 0.6,
-        fontSize: 18, color: '6C63FF', align: 'left', fontFace: 'Arial',
-      })
-
-      slide1.addShape(pptx.shapes.LINE, {
-        x: 1.0, y: 3.5, w: 4.0, h: 0.0,
-        line: { color: '3B82F6', width: 3 }
-      })
-
-      slide1.addText(`Report Generated: ${displayDate}`, {
-        x: 1.0, y: 3.8, w: 8.0, h: 0.4,
-        fontSize: 12, color: '64748B', align: 'left', fontFace: 'Arial',
-      })
+      const rawProductBrands = analytics?.age_group?.brands || []
+      createTitleSlide(slide1, pptx, rawProductBrands)
       const tocSlide = pptx.addSlide()
       tocSlide.background = { fill: 'FFFFFF' }
       // ─── DIVIDER 1: Demography ───
-      addDividerSlide('Demography')
+      addDividerSlide('Demographics')
 
       setPptProgress('Generating Slide: Location & Model wise Sample Sizes...')
       const slideSample = pptx.addSlide()
@@ -2936,12 +3290,23 @@ export default function DashboardPage() {
           // ── Row 1 Header ── brand cells now BLANK (text added as overlay below)
           const headerRow1: any[] = [
             {
-              text: '',
+              text: 'City',
               options: {
                 fill: lightBlueBg,
-                border: [{ color: lightBlueBg, pt: 1 }, { color: '000000', pt: 1 }, { color: lightBlueBg, pt: 1 }, { color: '000000', pt: 1 }]
-              }
-            }
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                fontFace: 'Arial',
+                border: [
+                  { color: '000000', pt: 1 },   // top — solid black
+                  { color: '000000', pt: 1 },   // right
+                  { color: lightBlueBg, pt: 1 },// bottom — invisible (row2 draws its own top)
+                  { color: '000000', pt: 1 },   // left
+                ],
+              },
+            },
           ]
 
           sampleBrands.forEach((brand: string) => {
@@ -2949,58 +3314,116 @@ export default function DashboardPage() {
             const isBajaj = brand.toUpperCase().includes('BAJAJ')
             const bgColor = isTvs ? '1871C9' : isBajaj ? '2AE886' : getBrandColor(brand)
 
-            sampleTenures.forEach((_tenure: string, idx: number) => {
-              const isFirst = idx === 0
-              const isLast = idx === sampleTenures.length - 1
-              headerRow1.push({
-                text: '', // blank — real text drawn as overlay after table renders
-                options: {
-                  fill: bgColor,
-                  border: [
-                    { color: '000000', pt: 1 },
-                    { color: isLast ? '000000' : bgColor, pt: 1 },
-                    { color: '000000', pt: 1 },
-                    { color: isFirst ? '000000' : bgColor, pt: 1 }
-                  ]
-                }
-              })
+            headerRow1.push({
+              text: brand,
+              options: {
+                colspan: sampleTenures.length,
+                fill: bgColor,
+                color: 'FFFFFF',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                fontFace: 'Arial',
+                wrap: true,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: bgColor, pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: bgColor, pt: 1 },
+                ],
+              },
             })
 
             headerRow1.push({
               text: `${brand} Total`,
-              options: { fill: lightGrayBg, color: '000000', bold: true, align: 'center', fontSize: 8 }
+              options: {
+                fill: lightGrayBg,
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
             })
           })
 
           headerRow1.push({
             text: 'Grand Total',
             options: {
-              fill: lightGrayBg, color: '000000', bold: true, align: 'center', fontSize: 8,
-              border: [{ color: lightGrayBg, pt: 1 }, { color: '000000', pt: 1 }, { color: lightGrayBg, pt: 1 }, { color: '000000', pt: 1 }]
-            }
+              fill: lightGrayBg,
+              color: '000000',
+              bold: true,
+              align: 'center',
+              valign: 'middle',
+              fontSize: 8,
+              border: [
+                { color: '000000', pt: 1 },   // top — solid black
+                { color: '000000', pt: 1 },   // right
+                { color: lightGrayBg, pt: 1 },// bottom — invisible (row2 draws its own top)
+                { color: '000000', pt: 1 },   // left
+              ],
+            },
           })
-
           // ── Row 2 Sub-headers ──
           const headerRow2: any[] = [
             {
-              text: 'City',
+              text: '',
               options: {
-                fill: lightBlueBg, color: '000000', bold: true, align: 'center', fontSize: 8,
-                border: [{ color: lightBlueBg, pt: 1 }, { color: '000000', pt: 1 }, { color: '000000', pt: 1 }, { color: '000000', pt: 1 }]
-              }
-            }
+                fill: lightBlueBg,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
+            },
           ]
+
 
           sampleBrands.forEach((brand: string) => {
             sampleTenures.forEach((tenure: string) => {
               headerRow2.push({
                 text: tenure,
-                options: { fill: lightBlueBg, color: '000000', bold: true, align: 'center', fontSize: 8 }
+                options: {
+                  fill: lightBlueBg,
+                  color: '000000',
+                  bold: true,
+                  align: 'center',
+                  valign: 'middle',
+                  fontSize: 8,
+                  border: [
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                  ],
+                },
               })
             })
             headerRow2.push({
               text: 'Total',
-              options: { fill: lightGrayBg, color: '000000', bold: true, align: 'center', fontSize: 8 }
+              options: {
+                fill: lightGrayBg,
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
             })
           })
 
@@ -3008,8 +3431,13 @@ export default function DashboardPage() {
             text: '',
             options: {
               fill: lightGrayBg,
-              border: [{ color: lightGrayBg, pt: 1 }, { color: '000000', pt: 1 }, { color: '000000', pt: 1 }, { color: '000000', pt: 1 }]
-            }
+              border: [
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+              ],
+            },
           })
 
           const allRows: any[][] = [headerRow1, headerRow2]
@@ -3109,21 +3537,7 @@ export default function DashboardPage() {
           })
 
           // ── Overlay brand name text boxes, centered over each merged block ──
-          let cursorX = tableX + cityColW
-          sampleBrands.forEach((brand: string) => {
-            const isTvs = brand.toUpperCase().includes('TVS')
-            const textColor = isTvs ? 'FFFFFF' : '000000'
-            const blockWidth = tenureColW * sampleTenures.length
 
-            slideSample.addText(brand, {
-              x: cursorX, y: tableY, w: blockWidth, h: headerRowH,
-              align: 'center', valign: 'middle',
-              bold: true, fontSize: 8, fontFace: 'Arial', color: textColor,
-              wrap: true,
-            })
-
-            cursorX += blockWidth + brandTotalColW
-          })
         }
       } catch (e: any) {
         console.error('[PPT] SLIDE LOCATION SAMPLE ERROR:', e)
@@ -3252,13 +3666,13 @@ export default function DashboardPage() {
           // ─── MOVED TO LEFT-MIDDLE ───
           // Heading moved down from y: 1.0 to y: 2.2
           slide4.addText('Profession Distribution', {
-            x: 0.3, y: 2.0, w: 4.4, h: 0.25,
+            x: 0.3, y: 1.80, w: 4.4, h: 0.25,
             fontSize: 10, bold: true, color: '1E293B', align: 'center'
           })
 
           // Table moved down from y: 1.3 to y: 2.5
           if (Array.isArray(profMatrix.table) && profMatrix.table.length > 0) {
-            addMatrixTable(slide4, profMatrix, 'Profession', 0.3, 2.3, 4.4, 3.0)
+            addMatrixTable(slide4, profMatrix, 'Profession', 0.5, 2.1, 4.4, 3.0, true)
           }
 
           // Right side chart - keep at same position (Top)
@@ -3299,19 +3713,19 @@ export default function DashboardPage() {
 
         // Left side: Model Base table
         slide5.addText('Model', {
-          x: 0.3, y: 1.3, w: 2.0, h: 0.3,
+          x: 0.3, y: 1.15, w: 2.0, h: 0.3,
           fill: 'E0E0E0', color: '333333', bold: true, align: 'left', fontSize: 10,
           border: { type: 'solid', color: 'CCCCCC', pt: 1 },
           line: { color: 'CCCCCC', width: 1 }
         })
         slide5.addText('Base', {
-          x: 2.3, y: 1.3, w: 1.0, h: 0.3,
+          x: 2.3, y: 1.15, w: 1.0, h: 0.3,
           fill: 'E0E0E0', color: '333333', bold: true, align: 'center', fontSize: 10,
           border: { type: 'solid', color: 'CCCCCC', pt: 1 },
           line: { color: 'CCCCCC', width: 1 }
         })
 
-        let currentY = 1.6
+        let currentY = 1.45
         orderedNpsBrands.forEach((brand) => {
           const brandData = nps.recommend_vehicle_pie?.find((d: any) => d.brand === brand)
           const base = brandData ? (brandData.yes + brandData.no) : 0
@@ -3337,7 +3751,7 @@ export default function DashboardPage() {
         const pieSize = 2.0                    // bigger pie, like the image
         const pieGap = 0.3
         const totalPieWidth = pieCount * pieSize + (pieCount - 1) * pieGap
-        let pieX = 3.3 + Math.max(0, (6.4 - totalPieWidth) / 2)  // center in remaining space
+        let pieX = 1.3 + Math.max(0, (6.4 - totalPieWidth) / 2)  // center in remaining space
 
         orderedNpsBrands.forEach((brand) => {
           const brandData = nps.recommend_vehicle_pie?.find((d: any) => d.brand === brand)
@@ -3348,12 +3762,12 @@ export default function DashboardPage() {
 
             // Title above pie — bold, dark, matches image style
             slide5.addText(brand, {
-              x: pieX, y: 1.4, w: pieSize, h: 0.35,
+              x: pieX, y: 3.0, w: pieSize, h: 0.35,
               color: '1E293B', bold: true, align: 'center', fontSize: 8, fontFace: 'Arial'
             })
 
             slide5.addChart(pptx.charts.PIE, chartData, {
-              x: pieX, y: 1.6, w: pieSize, h: pieSize,
+              x: pieX, y: 3.2, w: pieSize, h: pieSize,
               showLegend: true,
               legendPos: 'b',
               legendFontSize: 9,
@@ -4024,114 +4438,8 @@ export default function DashboardPage() {
 
           feedbackCategories.forEach((catConfig) => {
             const catData = brandFb?.categories?.[catConfig.key] || { base: 0, topics: [], issues: [] }
-            const slideFB = pptx.addSlide()
-            slideFB.background = { fill: 'FFFFFF' }
 
-            addSlideTitle(slideFB, `${brandName} | ${catConfig.titleSuffix}`, '')
-
-            const leftX = 0.3
-            const leftY = 1.0
-            const panelW = 4.55
-            const panelH = 4.25
-
-            // Left Panel (Green): AREAS FOR BENEFITS
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: leftX, y: leftY, w: panelW, h: panelH,
-              fill: { color: 'F0FDF4' },
-              line: { color: '4ECCA3', width: 1.5 },
-            })
-
-            slideFB.addText('AREAS FOR BENEFITS', {
-              x: leftX, y: leftY, w: panelW, h: 0.35,
-              fill: { color: '28A745' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
-            })
-
-            // Right Panel (Red): AREAS FOR BETTERMENT
-            const rightX = 5.15
-            const rightY = 1.0
-
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: rightX, y: rightY, w: panelW, h: panelH,
-              fill: { color: 'FEF2F2' },
-              line: { color: 'FF6584', width: 1.5 },
-            })
-
-            slideFB.addText('AREAS FOR BETTERMENT', {
-              x: rightX, y: rightY, w: panelW, h: 0.35,
-              fill: { color: 'DC3545' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
-            })
-
-            const renderPanelChart = (
-              panelX: number,
-              items: { name: string; count: number; percentage: number }[],
-              isGreen: boolean
-            ) => {
-              if (!items || items.length === 0) {
-                slideFB.addText('No data available', {
-                  x: panelX + 0.2, y: 2.6, w: panelW - 0.4, h: 0.4,
-                  fontSize: 10, color: '999999', align: 'center', fontFace: 'Arial',
-                })
-                return
-              }
-
-              // ─── SORT IN DESCENDING ORDER (highest first) ───
-              const sortedItems = [...items].sort((a, b) => b.percentage - a.percentage)
-              const top10 = sortedItems.slice(0, 10)
-
-              // ─── NO REVERSE - Keep descending order (largest at top) ───
-              // For horizontal bar charts in PowerPoint, the first item appears at the bottom.
-              // To show largest at TOP, we need to REVERSE the array for rendering.
-              // But the user wants descending order visually (largest at top), so we reverse here.
-              const reversed = [...top10].reverse()
-
-              const chartData = [
-                {
-                  name: isGreen ? 'Benefits' : 'Betterment',
-                  labels: reversed.map((it) => it.name),
-                  values: reversed.map((it) => it.percentage),
-                },
-              ]
-
-              try {
-                slideFB.addChart(pptx.ChartType.bar, chartData, {
-                  x: panelX + 0.1,
-                  y: leftY + 0.40,
-                  w: panelW - 0.2,
-                  h: panelH - 0.50,
-                  barDir: 'bar',
-                  barGrouping: 'standard',
-                  chartColors: [isGreen ? '28A745' : 'DC3545'],
-                  showTitle: false,
-                  showLegend: false,
-                  showValue: true,
-                  dataLabelPosition: 'outEnd',
-                  dataLabelFormatCode: '0"%"',
-                  dataLabelFontSize: 8,
-                  dataLabelColor: '1E293B',
-                  dataLabelFontFace: 'Arial',
-                  catAxisLabelFontSize: 8,
-                  catAxisLabelColor: '333333',
-                  catAxisLineShow: false,
-                  valAxisLineShow: false,
-                  valAxisHidden: false,
-                  valAxisMinVal: 0,
-                  valAxisMaxVal: 100,
-                  valAxisMajorUnit: 20,
-                  valAxisLabelFormatCode: '0"%"',
-                  valAxisLabelFontSize: 5.5,
-                  valAxisLabelColor: '666666',
-                  valGridLine: { style: 'dash', color: 'E0E0E0' },
-                  barGapWidthPct: 40,
-                })
-              } catch (err) {
-                console.error('Error adding panel chart:', err)
-              }
-            }
-
+            // ─── 1. Define helpers + build data FIRST (no pptx calls yet) ───
             const isJunkTopicName = (name: string) => {
               if (!name) return true
               const s = String(name).trim().toLowerCase()
@@ -4163,13 +4471,8 @@ export default function DashboardPage() {
                 } else {
                   pct = Math.round(pct)
                 }
-                return {
-                  name: t.topic,
-                  count: t.count,
-                  percentage: pct,
-                }
+                return { name: t.topic, count: t.count, percentage: pct }
               })
-            renderPanelChart(leftX, topicItems, true)
 
             const issueItems = (catData.issues || [])
               .filter((i: any) => !isJunkTopicName(i.issue))
@@ -4184,19 +4487,148 @@ export default function DashboardPage() {
                 } else {
                   pct = Math.round(pct)
                 }
-                return {
-                  name: i.issue,
-                  count: i.count,
-                  percentage: pct,
-                }
+                return { name: i.issue, count: i.count, percentage: pct }
               })
-            renderPanelChart(rightX, issueItems, false)
 
+            const hasBenefits = topicItems.length > 0
+            const hasIssues = issueItems.length > 0
+
+            // ─── 2. SKIP SLIDE if both are empty — BEFORE calling pptx.addSlide() ───
+            if (!hasBenefits && !hasIssues) return
+
+            // ─── 3. NOW create the slide ───
+            const slideFB = pptx.addSlide()
+            slideFB.background = { fill: 'FFFFFF' }
+            addSlideTitle(slideFB, `${brandName} | ${catConfig.titleSuffix}`, '')
+
+            // ─── 4. Layout constants ───
+            const SLIDE_CONTENT_X = 0.3
+            const SLIDE_CONTENT_W = 9.4
+            const PANEL_W = 4.55
+            const PANEL_H = 4.25
+            const PANEL_Y = 1.0
+            const PANEL_GAP = 0.3
+
+            const leftX = SLIDE_CONTENT_X
+            const rightX = SLIDE_CONTENT_X + PANEL_W + PANEL_GAP
+            const centeredPanelX = SLIDE_CONTENT_X + (SLIDE_CONTENT_W - PANEL_W) / 2
+
+            // ─── 5. Panel chart renderer (unchanged) ───
+            const renderPanelChart = (
+              panelX: number,
+              items: { name: string; count: number; percentage: number }[],
+              isGreen: boolean
+            ) => {
+              if (!items || items.length === 0) return
+
+              const sortedItems = [...items].sort((a, b) => b.percentage - a.percentage)
+              const top10 = sortedItems.slice(0, 10)
+              const reversed = [...top10].reverse()
+
+              const chartData = [
+                {
+                  name: isGreen ? 'Benefits' : 'Betterment',
+                  labels: reversed.map((it) => it.name),
+                  values: reversed.map((it) => it.percentage),
+                },
+              ]
+
+              try {
+                slideFB.addChart(pptx.ChartType.bar, chartData, {
+                  x: panelX + 0.1,
+                  y: PANEL_Y + 0.40,
+                  w: PANEL_W - 0.2,
+                  h: PANEL_H - 0.50,
+                  barDir: 'bar',
+                  barGrouping: 'standard',
+                  chartColors: [isGreen ? '28A745' : 'DC3545'],
+                  showTitle: false,
+                  showLegend: false,
+                  showValue: true,
+                  dataLabelPosition: 'outEnd',
+                  dataLabelFormatCode: '0"%"',
+                  dataLabelFontSize: 8,
+                  dataLabelColor: '1E293B',
+                  dataLabelFontFace: 'Arial',
+                  catAxisLabelFontSize: 8,
+                  catAxisLabelColor: '333333',
+                  catAxisLineShow: false,
+                  valAxisLineShow: false,
+                  valAxisHidden: true,
+                  valAxisMinVal: 0,
+                  valAxisMaxVal: 100,
+                  valAxisMajorUnit: 20,
+                  valGridLine: { style: 'none' },
+                  barGapWidthPct: 40,
+                })
+              } catch (err) {
+                console.error('Error adding panel chart:', err)
+              }
+            }
+
+            // ─── 6. Render panels based on data availability ───
+            if (hasBenefits && !hasIssues) {
+              slideFB.addShape(pptx.ShapeType.rect, {
+                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+                fill: { color: 'F0FDF4' },
+                line: { color: '4ECCA3', width: 1.5 },
+              })
+              slideFB.addText('AREAS FOR BENEFITS', {
+                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+                fill: { color: '28A745' },
+                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+                fontSize: 10, fontFace: 'Arial',
+              })
+              renderPanelChart(centeredPanelX, topicItems, true)
+            } else if (!hasBenefits && hasIssues) {
+              slideFB.addShape(pptx.ShapeType.rect, {
+                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+                fill: { color: 'FEF2F2' },
+                line: { color: 'FF6584', width: 1.5 },
+              })
+              slideFB.addText('AREAS FOR BETTERMENT', {
+                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+                fill: { color: 'DC3545' },
+                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+                fontSize: 10, fontFace: 'Arial',
+              })
+              renderPanelChart(centeredPanelX, issueItems, false)
+            } else {
+              slideFB.addShape(pptx.ShapeType.rect, {
+                x: leftX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+                fill: { color: 'F0FDF4' },
+                line: { color: '4ECCA3', width: 1.5 },
+              })
+              slideFB.addText('AREAS FOR BENEFITS', {
+                x: leftX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+                fill: { color: '28A745' },
+                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+                fontSize: 10, fontFace: 'Arial',
+              })
+
+              slideFB.addShape(pptx.ShapeType.rect, {
+                x: rightX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
+                fill: { color: 'FEF2F2' },
+                line: { color: 'FF6584', width: 1.5 },
+              })
+              slideFB.addText('AREAS FOR BETTERMENT', {
+                x: rightX, y: PANEL_Y, w: PANEL_W, h: 0.35,
+                fill: { color: 'DC3545' },
+                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+                fontSize: 10, fontFace: 'Arial',
+              })
+
+              renderPanelChart(leftX, topicItems, true)
+              renderPanelChart(rightX, issueItems, false)
+            }
+
+            // ─── 7. Base footer (only rendered when we reach this point) ───
             slideFB.addText(`Base: ${catData.base || 0} respondents`, {
               x: 0.3, y: 5.32, w: 4.0, h: 0.25,
               fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
             })
           })
+
         })
       }
 
@@ -4371,16 +4803,31 @@ export default function DashboardPage() {
 
             // ─── RIGHT SIDE: CHART ───
             const chartX = 4.9
-            const chartY = 1.25
+            const chartY = 1.40
             const chartW = 4.8
-            const chartH = 4.05
+            const chartH = 3.75
 
-            // ─── LEGEND RENDERING (Below Header, Above Chart) ───
-            const legendStartY = 1.0
+            // ─── Chart container box (drawn FIRST so it sits behind legend + chart) ───
+            const CHART_BOX_X = chartX - 0.1
+            const CHART_BOX_Y = 1.10
+            const CHART_BOX_W = chartW + 0.2
+            const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+            slideBNL.addShape(pptx.ShapeType.roundRect, {
+              x: CHART_BOX_X,
+              y: CHART_BOX_Y,
+              w: CHART_BOX_W,
+              h: CHART_BOX_H,
+              fill: { color: 'F8FAFC' },
+              line: { color: 'E2E8F0', width: 1 },
+              rectRadius: 0.08,
+            })
+
+            // ─── Legend INSIDE the box (drawn after the box) ───
+            const legendStartY = CHART_BOX_Y + 0.15
             const legendItemWidth = 1.2
             const legendBoxSize = 0.12
             const legendTextGap = 0.02
-
             const legendTotalWidth = currentBrands.length * legendItemWidth
             const legendStartX = chartX + (chartW - legendTotalWidth) / 2
 
@@ -4395,7 +4842,7 @@ export default function DashboardPage() {
                 w: legendBoxSize,
                 h: legendBoxSize,
                 fill: { color: brandColor },
-                line: { color: brandColor, transparency: 100 }
+                line: { color: brandColor, transparency: 100 },
               })
 
               // Legend label text
@@ -4408,11 +4855,11 @@ export default function DashboardPage() {
                 color: '333333',
                 align: 'left',
                 valign: 'middle',
-                fontFace: 'Arial'
+                fontFace: 'Arial',
               })
             })
 
-            // Reverse sub-issues so top sub-issue appears at top of Y-axis
+            // ─── Chart INSIDE the box (drawn last) ───
             const reversedChunkSubIssues = [...chunkSubIssues].reverse()
 
             const chartDataBNL = currentBrands.map((b) => {
@@ -4426,7 +4873,7 @@ export default function DashboardPage() {
                   )
                   const count = match?.count || 0
                   return brandTotal > 0 ? Math.round((count / brandTotal) * 100) : 0
-                })
+                }),
               }
             })
 
@@ -4451,16 +4898,14 @@ export default function DashboardPage() {
                 dataLabelFontFace: 'Arial',
                 catAxisLabelFontSize: 8,
                 catAxisLabelColor: '333333',
-                catAxisLineShow: false,
+                catAxisLineShow: true,
+                catAxisLineColor: 'CBD5E1',
                 valAxisLineShow: false,
-                valAxisHidden: false,
+                valAxisHidden: true,
                 valAxisMinVal: 0,
                 valAxisMaxVal: 100,
                 valAxisMajorUnit: 20,
-                valAxisLabelFormatCode: '0"%"',
-                valAxisLabelFontSize: 7,
-                valAxisLabelColor: '666666',
-                valGridLine: { style: 'dash', color: 'E0E0E0' },
+                valGridLine: { style: 'none' },
                 barGapWidthPct: 100,
               })
             } catch (err) {
@@ -4777,45 +5222,769 @@ export default function DashboardPage() {
           x: 0.3, y: 0.85, w: 9.4, h: 0.0,
           line: { color: '3B82F6', width: 2 }
         })
-        fuSlide.addText('No follow-up question data available.', {
-          x: 0.5, y: 2.5, w: 9.0, h: 0.5,
-          fontSize: 12, color: '999999', align: 'center'
-        })
       }
+
+      // ─── DIVIDER: Feedback from the market ───
+      addDividerSlide('Feedback from the market')
+      setPptProgress('Generating Feedback from the market slides...')
+
+      let mfRemarks: Record<string, string> = {}
+      let mfPhotos: Record<string, any[]> = {}
+      try {
+        const mfRes = await marketFeedbackApi.getAll()
+        if (mfRes.data?.success && mfRes.data?.data) {
+          mfRemarks = mfRes.data.data.remarks || {}
+          mfPhotos = mfRes.data.data.photos || {}
+        }
+      } catch (err) {
+        console.warn('Could not fetch market feedback DB entries for PPT:', err)
+      }
+
+      try {
+        if (Object.keys(mfRemarks).length === 0) {
+          const localRem = localStorage.getItem('tvs_market_feedback_remarks_v4')
+          if (localRem) mfRemarks = JSON.parse(localRem)
+        }
+        if (Object.keys(mfPhotos).length === 0) {
+          const localPho = localStorage.getItem('tvs_market_feedback_photos_v4')
+          if (localPho) mfPhotos = JSON.parse(localPho)
+        }
+      } catch (e) { /* ignore */ }
+
+      let mfIssues: any[] = DEFAULT_TVS_TOP_ISSUES
+      try {
+        const tvsAnalysisRes = await issuesApi.analysis({
+          brand_model: 'TVS',
+          region_id: toParam(filters.regionId),
+          country_id: toParam(filters.countryId),
+          ib_version_id: toParam(filters.ibVersionId),
+          survey_location: toParam(filters.surveyLocation),
+          date_from: filters.dateFrom || undefined,
+          date_to: filters.dateTo || undefined,
+          search: filters.search || undefined,
+        })
+        const apiIssues = tvsAnalysisRes.data?.data
+        if (Array.isArray(apiIssues) && apiIssues.length > 0) {
+          mfIssues = generateFeedbackFromSurveyData(apiIssues, 'TVS')
+        }
+      } catch (err) {
+        console.warn('Using default TVS market feedback baseline for PPT:', err)
+      }
+
+      // ─── Group feedback entries: 
+      //     1. Entries WITH photo+remark → each gets its own slide (image + remark only)
+      //     2. Entries WITHOUT photo+remark → grouped 2 sub-issues per slide as bullets
+      // ────────────────────────────────────────────────────────────────────────────
+      const groupedByIssue: Record<string, any[]> = {}
+
+      mfIssues.forEach((issueCategory: any) => {
+        const issueName = issueCategory.issue_name || 'Issues'
+        if (!groupedByIssue[issueName]) groupedByIssue[issueName] = []
+          ; (issueCategory.feedbacks || []).forEach((feedback: any) => {
+            groupedByIssue[issueName].push({ issueName, feedback })
+          })
+      })
+
+      Object.entries(groupedByIssue).forEach(([issueName, entries]) => {
+        // ── Split entries into "with media" (photo or remark) and "text-only" ──
+        const withMedia: any[] = []
+        const textOnly: any[] = []
+
+        entries.forEach((entry) => {
+          const remarkKey = `${entry.issueName}_${entry.feedback.subIssueTitle}`
+          const remark = mfRemarks[remarkKey] || ''
+          const photos = mfPhotos[remarkKey] || []
+          if (photos.length > 0 || remark) {
+            withMedia.push({ ...entry, remark, photos })
+          } else {
+            textOnly.push(entry)
+          }
+        })
+
+        // ── SLIDES: entries WITH media (image + remark, NO bullet contents) ──
+        withMedia.forEach(({ issueName: iss, feedback, remark, photos }) => {
+          const mfSlide = pptx.addSlide()
+          mfSlide.background = { fill: 'FFFFFF' }
+
+          // ── Title (Issue name only) ──
+          mfSlide.addText(iss, {
+            x: 0.3, y: 0.2, w: 8.0, h: 0.45,
+            fontSize: 22, bold: true, color: '#1F2A6B', fontFace: 'Arial',
+          })
+
+          // ── Divider line under title ──
+          mfSlide.addShape(pptx.ShapeType.line, {
+            x: 0.3, y: 0.75, w: 9.4, h: 0,
+            line: { color: '3B82F6', width: 2 },
+          })
+
+          // ── Logo ──
+          mfSlide.addImage({
+            path: '/assets/logo.png',
+            x: 8.72, y: 0.15, w: 1.0, h: 0.52,
+          })
+
+          // ── Sub-heading (sub-issue name only) ──
+          mfSlide.addText(feedback.subIssueTitle, {
+            x: 0.3, y: 0.9, w: 9.4, h: 0.35,
+            fontSize: 14, bold: true, color: '1E293B', fontFace: 'Arial',
+          })
+
+          // ── Image + Remark only (no bullet contents) ──
+          if (photos.length > 0) {
+            const firstPhotoUrl = getPhotoUrl(photos[0].url)
+            if (photos.length === 1) {
+              mfSlide.addImage({
+                path: firstPhotoUrl,
+                x: 0.3, y: 1.35, w: 5.4, h: 3.9,
+                sizing: { type: 'contain', w: 5.4, h: 3.9 },
+              })
+            } else {
+              const secondPhotoUrl = getPhotoUrl(photos[1].url)
+              mfSlide.addImage({
+                path: firstPhotoUrl,
+                x: 0.3, y: 1.35, w: 2.6, h: 3.9,
+                sizing: { type: 'contain', w: 2.6, h: 3.9 },
+              })
+              mfSlide.addImage({
+                path: secondPhotoUrl,
+                x: 3.1, y: 1.35, w: 2.6, h: 3.9,
+                sizing: { type: 'contain', w: 2.6, h: 3.9 },
+              })
+            }
+
+            // Right side: only the Field Remark
+            if (remark) {
+              mfSlide.addText(
+                [
+                  { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
+                  { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
+                ],
+                {
+                  x: 6.0, y: 1.35, w: 3.7, h: 3.9,
+                  align: 'justify', valign: 'middle', fontFace: 'Arial',
+                }
+              )
+            }
+          } else if (remark) {
+            // Remark only (no photos)
+            mfSlide.addText(
+              [
+                { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
+                { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
+              ],
+              {
+                x: 0.8, y: 1.35, w: 8.4, h: 3.9,
+                align: 'justify', valign: 'middle', fontFace: 'Arial',
+              }
+            )
+          }
+        })
+
+        const buildBulletRuns = (feedback: any) => {
+          const runs: any[] = []
+          const sortedKm = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
+
+          const BULLET_FONT = 9
+          const BULLET_COLOR = '334155'
+          const BULLET_SPACE_AFTER = 8          // ← space between bullets (paragraphs)
+          const LINE_SPACING = 1.0              // ← space inside a wrapped bullet
+
+          // ── Regular bullets ──
+          sortedKm.forEach((item: any) => {
+            runs.push({
+              text: `• ${item.description}`,
+              options: {
+                fontSize: BULLET_FONT,
+                color: BULLET_COLOR,
+                fontFace: 'Arial',
+                breakLine: true,                // ← end this paragraph
+                paraSpaceAfter: BULLET_SPACE_AFTER,
+                lineSpacingMultiple: LINE_SPACING,
+              },
+            })
+          })
+
+          // ── Overall summary — same paragraph style, only highlight numbers ──
+          if (feedback.overallSummary) {
+            const summary: string = String(feedback.overallSummary)
+            const highlightRegex = /(\(\s*\d+\s*\)|\(\s*\d+\s*%\s*\)|\d+\s*%)/g
+
+            // Bullet prefix starts a NEW paragraph
+            runs.push({
+              text: '• ',
+              options: {
+                fontSize: BULLET_FONT,
+                color: BULLET_COLOR,
+                fontFace: 'Arial',  // ← gap before summary paragraph
+                paraSpaceAfter: BULLET_SPACE_AFTER,
+                lineSpacingMultiple: LINE_SPACING,
+              },
+            })
+
+            let lastIndex = 0
+            let match: RegExpExecArray | null
+
+            while ((match = highlightRegex.exec(summary)) !== null) {
+              const before = summary.slice(lastIndex, match.index)
+              if (before) {
+                runs.push({
+                  text: before,
+                  options: {
+                    fontSize: BULLET_FONT,
+                    color: BULLET_COLOR,
+                    fontFace: 'Arial',
+                    lineSpacingMultiple: LINE_SPACING,
+                  },
+                })
+              }
+
+              // Highlighted number — green + bold
+              runs.push({
+                text: match[0],
+                options: {
+                  fontSize: BULLET_FONT,
+                  color: '166534',
+                  bold: true,
+                  fontFace: 'Arial',
+                  lineSpacingMultiple: LINE_SPACING,
+                },
+              })
+
+              lastIndex = match.index + match[0].length
+            }
+
+            const after = summary.slice(lastIndex)
+            if (after) {
+              runs.push({
+                text: after,
+                options: {
+                  fontSize: BULLET_FONT,
+                  color: BULLET_COLOR,
+                  fontFace: 'Arial',
+                  lineSpacingMultiple: LINE_SPACING,
+                  // Last run of the summary = end paragraph
+                  breakLine: true,
+                },
+              })
+            } else {
+              // If summary ended exactly on a highlight, force a paragraph break
+              runs[runs.length - 1].options.breakLine = true
+            }
+          }
+
+          return runs
+        }
+
+        // Group textOnly into slide chunks:
+        //  - if all entries are "light", fit 4 per slide
+        //  - if mixed, fit 3 per slide
+        //  - if any is "heavy", fit 2 per slide
+        const LIGHT_THRESHOLD = 60   // <= this weight → light
+        const HEAVY_THRESHOLD = 110  // >= this weight → heavy
+
+
+
+        const estimateEntryLines = (entry: any): number => {
+          const fb = entry.feedback
+
+          const titleLen = (fb.subIssueTitle || '').length
+          const titleLines = Math.max(1, Math.ceil(titleLen / 70))
+
+          let bulletLines = 0
+            ; (fb.kmBreakdown || []).forEach((b: any) => {
+              const len = String(b.description || '').length
+              bulletLines += Math.max(1, Math.ceil(len / 95))
+            })
+
+          const summaryLen = (fb.overallSummary || '').length
+          const summaryLines = summaryLen > 0 ? Math.max(1, Math.ceil(summaryLen / 95)) : 0
+
+          // Compressed spacing means bullets + summary occupy ~half a normal line
+          const compressedBody = Math.ceil((bulletLines + summaryLines) * 0.5)
+
+          // Title stays 1 unit per line (it's not compressed)
+          return titleLines + compressedBody + 1   // +1 = padding/margin
+        }
+        // ── Pack text-only entries into slides ──
+        const MAX_LINES_PER_SLIDE = 22
+        const MAX_LINES_PER_SLIDE_3PLUS = 15   // stricter cap when 3+ topics land on one slide
+        const MAX_TOPICS_PER_SLIDE = 3         // ← hard cap: never more than 3 topics per slide
+
+        const textChunks: any[][] = []
+        {
+          let currentChunk: any[] = []
+          let currentLines = 0
+
+          textOnly.forEach((entry) => {
+            const lines = estimateEntryLines(entry)
+
+            // 1) Hard cap: if already 3 topics on this slide → flush
+            const reachedTopicCap = currentChunk.length >= MAX_TOPICS_PER_SLIDE
+
+            // 2) Base cap: adding this entry exceeds total line budget
+            const wouldExceedBase = currentLines + lines > MAX_LINES_PER_SLIDE
+
+            // 3) Stricter cap once 2 topics already present
+            const wouldExceed3Plus =
+              currentChunk.length >= 2 &&
+              currentLines + lines > MAX_LINES_PER_SLIDE_3PLUS
+
+            if (currentChunk.length > 0 && (reachedTopicCap || wouldExceedBase || wouldExceed3Plus)) {
+              textChunks.push(currentChunk)
+              currentChunk = []
+              currentLines = 0
+            }
+
+            currentChunk.push(entry)
+            currentLines += lines
+          })
+
+          if (currentChunk.length > 0) textChunks.push(currentChunk)
+        }
+
+        // ── Render each packed chunk ──
+        textChunks.forEach((chunk) => {
+          const mfSlide = pptx.addSlide()
+          mfSlide.background = { fill: 'FFFFFF' }
+
+          // Title
+          mfSlide.addText(issueName, {
+            x: 0.3, y: 0.2, w: 8.0, h: 0.45,
+            fontSize: 22, bold: true, color: '#1F2A6B', fontFace: 'Arial',
+          })
+
+          // Divider
+          mfSlide.addShape(pptx.ShapeType.line, {
+            x: 0.3, y: 0.75, w: 9.4, h: 0,
+            line: { color: '3B82F6', width: 2 },
+          })
+
+          // Logo
+          mfSlide.addImage({
+            path: '/assets/logo.png',
+            x: 8.72, y: 0.15, w: 1.0, h: 0.52,
+          })
+
+          // ── Distribute chunk blocks by their estimated weight ──
+          const contentTopY = 0.95
+          const contentBottomY = 5.45
+          const usableH = contentBottomY - contentTopY
+          const gap = 0.15
+
+          const totalLines = chunk.reduce((s, e) => s + estimateEntryLines(e), 0)
+          const totalGap = gap * (chunk.length - 1)
+          const distributableH = usableH - totalGap
+
+          let cursorY = contentTopY
+
+          chunk.forEach((entry) => {
+            const { feedback } = entry
+            const lines = estimateEntryLines(entry)
+            const blockH = (lines / totalLines) * distributableH
+
+            // ── Combine sub-heading + bullets into ONE addText call ──
+            //    PptxGenJS stacks them naturally, so the gap after the title is always correct.
+            const titleRun = {
+              text: (feedback.subIssueTitle || '') + '\n',
+              options: {
+                fontSize: 12,
+                bold: true,
+                color: '1E293B',
+                fontFace: 'Arial',
+                breakLine: true,        // end the title as its own paragraph
+                paraSpaceAfter: 1,      // ← FIXED gap after the title, always correct
+                lineSpacingMultiple: 0.9,
+              },
+            }
+
+            const bulletRuns = buildBulletRuns(feedback)
+            const combinedRuns = [titleRun, ...bulletRuns]
+
+            if (combinedRuns.length > 0) {
+              mfSlide.addText(combinedRuns, {
+                x: 0.4,
+                y: cursorY,
+                w: 9.2,
+                h: blockH - 0.05,
+                valign: 'top',
+                fontFace: 'Arial',
+                wrap: true,
+              })
+            }
+
+            cursorY += blockH + gap
+          })
+        })
+      })
+
+      // ─── DIVIDER: Key Insights ───
+      addDividerSlide('Key Insights')
+      setPptProgress('Generating Key Insights slide...')
+
+      const kiSlide = pptx.addSlide()
+      kiSlide.background = { fill: 'FFFFFF' }
+
+      // Title
+      kiSlide.addText('Key Insights', {
+        x: 0.3, y: 0.3, w: 8.2, h: 0.5,
+        fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
+      })
+
+      // Logo
+      kiSlide.addImage({
+        path: '/assets/logo.png',
+        x: 8.72, y: 0.25, w: 1.0, h: 0.52
+      })
+
+      // Divider
+      kiSlide.addShape(pptx.ShapeType.line, {
+        x: 0.3, y: 0.85, w: 9.4, h: 0,
+        line: { color: '3B82F6', width: 2 }
+      })
+
+      // ─────────────────────────────────────────────────────────────────
+      // DYNAMIC DATA EXTRACTION (correct paths)
+      // ─────────────────────────────────────────────────────────────────
+
+      // Brands
+      const availableBrands: string[] =
+        (nps && Array.isArray(nps.brands) && nps.brands.length > 0)
+          ? nps.brands
+          : (Array.isArray(orderedNpsBrands) && orderedNpsBrands.length > 0)
+            ? orderedNpsBrands
+            : (Array.isArray(issueBrands) ? issueBrands : [])
+
+      const primaryBrand =
+        availableBrands.find((b: string) => b.toUpperCase().includes('TVS')) ||
+        availableBrands[0] ||
+        'TVS'
+
+      const secondaryBrand =
+        availableBrands.find(
+          (b: string) =>
+            b !== primaryBrand && !b.toUpperCase().includes('TVS')
+        ) || availableBrands[1] || 'Competitor'
+
+      // ── NPS stats helper (uses recommend_category_bar) ──
+      const getBrandNpsStats = (brandName: string) => {
+        const bd = nps?.recommend_category_bar?.find(
+          (d: any) => String(d.brand || '').toUpperCase() === brandName.toUpperCase()
+        )
+        if (!bd) return null
+        const base = (bd.yes || 0) + (bd.maybe || 0) + (bd.no || 0)
+        if (base === 0) return null
+
+        const promotersPct = Math.round(((bd.yes || 0) / base) * 100)
+        const passivesPct = Math.round(((bd.maybe || 0) / base) * 100)
+        const detractorsPct = Math.round(((bd.no || 0) / base) * 100)
+        const npsScore = promotersPct - detractorsPct
+
+        return { npsScore, promotersPct, passivesPct, detractorsPct, base }
+      }
+
+      const primaryStats = getBrandNpsStats(primaryBrand)
+      const secondaryStats = getBrandNpsStats(secondaryBrand)
+
+      const primaryNps = primaryStats?.npsScore ?? 0
+      const secondaryNps = secondaryStats?.npsScore ?? 0
+      const primaryPassives = primaryStats?.passivesPct ?? 0
+      const secondaryPassives = secondaryStats?.passivesPct ?? 0
+      const primaryDetractors = primaryStats?.detractorsPct ?? 0
+      const secondaryDetractors = secondaryStats?.detractorsPct ?? 0
+
+      // ── Duration-based NPS (uses city_duration_segmentation) ──
+      // Aggregate across all cities to find per-brand NPS per duration.
+      const aggregateDurationNps = (): Record<string, Record<string, number>> => {
+        const map: Record<string, Record<string, number>> = {}
+
+        nps?.city_duration_segmentation?.forEach((cityObj: any) => {
+          cityObj.durations?.forEach((seg: any) => {
+            const durLabel = String(seg.duration || '').trim()
+            if (!durLabel) return
+
+            orderedNpsBrands.forEach((brand: string) => {
+              const bd = seg.data?.find((d: any) => d.brand === brand)
+              if (!bd) return
+              const base = (bd.yes || 0) + (bd.maybe || 0) + (bd.no || 0)
+              if (base === 0) return
+
+              const npsVal =
+                Math.round((bd.yes / base) * 100) - Math.round((bd.no / base) * 100)
+
+              if (!map[brand]) map[brand] = {}
+              // Simple approach: take the last seen (or average if you prefer)
+              if (!map[brand][durLabel]) map[brand][durLabel] = npsVal
+              else map[brand][durLabel] = Math.round((map[brand][durLabel] + npsVal) / 2)
+            })
+          })
+        })
+
+        return map
+      }
+
+      const durationNpsMap = aggregateDurationNps()
+
+      // Pick "3-6 months" and "6-12 months" dynamically (sorted)
+      const allDurations = new Set<string>()
+      Object.values(durationNpsMap).forEach((m) => Object.keys(m).forEach((d) => allDurations.add(d)))
+
+      const sortedDurations = Array.from(allDurations).sort((a, b) => {
+        const na = parseInt(a.match(/\d+/)?.[0] || '0', 10)
+        const nb = parseInt(b.match(/\d+/)?.[0] || '0', 10)
+        return na - nb
+      })
+
+      const firstDuration = sortedDurations[0] || '3 – 6 months'
+      const lastDuration = sortedDurations[sortedDurations.length - 1] || '6 – 12 months'
+
+      const primaryDurationInitial = durationNpsMap[primaryBrand]?.[firstDuration] ?? 0
+      const primaryDurationLater = durationNpsMap[primaryBrand]?.[lastDuration] ?? 0
+      const secondaryDurationInitial = durationNpsMap[secondaryBrand]?.[firstDuration] ?? 0
+      const secondaryDurationLater = durationNpsMap[secondaryBrand]?.[lastDuration] ?? 0
+
+      // ── Negative driver issues list ──
+      const negativeDriverList =
+        Array.isArray(issues) && issues.length > 0
+          ? issues
+            .map((cat: any) => {
+              const raw = String(cat.issue_name || '').trim()
+              if (!raw) return ''
+              // Title-case
+              return raw
+                .split(' ')
+                .map((w: string) =>
+                  w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''
+                )
+                .join(' ')
+            })
+            .filter((n: string) => n.length > 1)
+            .slice(0, 10)
+            .join(', ')
+          : 'None reported'
+
+      // ─────────────────────────────────────────────────────────────────
+      // BUILD TEXT RUNS
+      // ─────────────────────────────────────────────────────────────────
+      const INSIGHT_FONT = 11
+      const TEXT_COLOR = '334155'
+      const BULLET_COLOR = '3B82F6'
+      const PARA_GAP = 12
+      const LINE_SPACING = 1.8
+
+      // Helper: build runs for one insight bullet (prefix + text + breakLine)
+      const buildInsightRuns = (body: string): any[] => [
+        {
+          text: '• ',
+          options: {
+            fontSize: INSIGHT_FONT,
+            bold: true,
+            color: BULLET_COLOR,
+            fontFace: 'Arial',
+            lineSpacingMultiple: LINE_SPACING,
+          },
+        },
+        {
+          text: body,
+          options: {
+            fontSize: INSIGHT_FONT,
+            color: TEXT_COLOR,
+            fontFace: 'Arial',
+            breakLine: true,          // ← real paragraph break
+            paraSpaceAfter: PARA_GAP,
+            lineSpacingMultiple: LINE_SPACING,
+          },
+        },
+      ]
+
+      const insight1Body =
+        `The NPS of ${primaryBrand} (${primaryNps}%) ${primaryNps >= secondaryNps ? 'is higher than' : 'is lower than'
+        } that of ${secondaryBrand} (${secondaryNps}%). This is mainly because ${primaryBrand} has a ${primaryPassives <= secondaryPassives ? 'lower' : 'higher'
+        } percentage of Passives (${primaryPassives}%) compared to ${secondaryBrand} (${secondaryPassives}%). However, the percentage of Detractors ${primaryBrand} has (${primaryDetractors}%) is ${primaryDetractors >= secondaryDetractors ? 'higher than' : 'lower than'
+        } that of ${secondaryBrand} (${secondaryDetractors}%). Converting passives into promoters and reducing detractors can further improve the NPS of ${primaryBrand}.`
+
+      const insight2Body =
+        `The NPS of ${primaryBrand} ${primaryDurationLater >= primaryDurationInitial ? 'increased' : 'changed'
+        } from ${primaryDurationInitial}% to ${primaryDurationLater}% as vehicle usage duration progressed from ${firstDuration} to ${lastDuration}. In contrast, the NPS of ${secondaryBrand} ${secondaryDurationLater >= secondaryDurationInitial ? 'increased' : 'changed'
+        } from ${secondaryDurationInitial}% to ${secondaryDurationLater}% with usage duration.`
+
+      const insight3Body = `Analysis of negative drivers (areas for improvement) indicates issues related to ${negativeDriverList}.`
+
+      const kiTextRuns: any[] = [
+        ...buildInsightRuns(insight1Body),
+        ...buildInsightRuns(insight2Body),
+        ...buildInsightRuns(insight3Body),
+      ]
+
+      kiSlide.addText(kiTextRuns, {
+        x: 0.6,
+        y: 1.2,
+        w: 8.8,
+        h: 4.0,
+        valign: 'top',
+        align: 'justify',
+        fontFace: 'Arial',
+
+      })
+
+      // ── Diagnostic ──
+      console.log('[KEY INSIGHTS]', {
+        primaryBrand,
+        secondaryBrand,
+        primaryNps,
+        secondaryNps,
+        primaryPassives,
+        secondaryPassives,
+        primaryDetractors,
+        secondaryDetractors,
+        firstDuration,
+        lastDuration,
+        primaryDurationInitial,
+        primaryDurationLater,
+        secondaryDurationInitial,
+        secondaryDurationLater,
+        negativeDriverList,
+      })
       setPptProgress('Building table of contents...')
 
       tocSlide.addText('Table of Contents', {
-        x: 0.5, y: 0.4, w: 9.0, h: 0.6,
-        fontSize: 26, bold: true, color: '1E293B', fontFace: 'Arial',
+        x: 0.3, y: 0.2, w: 8.0, h: 0.4,
+        fontSize: 18, bold: true, color: '1E293B', fontFace: 'Arial',
       })
       tocSlide.addShape(pptx.shapes.LINE, {
-        x: 0.5, y: 1.05, w: 9.0, h: 0.0, line: { color: '3B82F6', width: 2 },
+        x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+        line: { color: '3B82F6', width: 2 },
       })
-      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.53 })
 
-      const tocColW = 4.6
-      const tocColGap = 0.2
-      const tocStartY = 1.4
-      const tocRowH = 0.42
-      const rowsPerCol = 9
+      // ─── TOC layout config ───
+      const slideW = 10
+      const slideH = 5.625
+      const marginX = 0.5
+      const marginRight = 0.5
+      const colGap = 0.3
+      const rowGap = 0.25
+
+      const cols = 3
+      const cardW = (slideW - marginX - marginRight - (cols - 1) * colGap) / cols  // 2.8
+      let cardH = 0.95
+      let cardStartY = 1.5
+
+      // Auto-shrink if there are more than 9 items (4+ rows needed)
+      const rows = Math.ceil(dividerTOC.length / cols)
+      if (rows > 3) {
+        cardH = 0.75
+        cardStartY = 1.35
+      }
+
+      // ─── Card style constants ───
+      const CARD_BG = 'F1F5F9'
+      const CARD_BORDER = 'E2E8F0'
+      const ACCENT_BLUE = '3B82F6'
+      const NUMBER_COLOR = '3B82F6'
+      const TITLE_COLOR = '1E293B'
 
       dividerTOC.forEach((item, idx) => {
-        const col = Math.floor(idx / rowsPerCol)
-        const rowInCol = idx % rowsPerCol
-        const colX = 0.5 + col * (tocColW + tocColGap)
-        const rowY = tocStartY + rowInCol * tocRowH
+        const row = Math.floor(idx / cols)
+        const col = idx % cols
 
-        tocSlide.addText(String(idx + 1).padStart(2, '0'), {
-          x: colX, y: rowY, w: 0.5, h: 0.35,
-          fontSize: 12, bold: true, color: '3B82F6', fontFace: 'Arial',
+        const cardX = marginX + col * (cardW + colGap)
+        const cardY = cardStartY + row * (cardH + rowGap)
+
+        // ── Card background (rounded rect) ──
+        tocSlide.addShape(pptx.ShapeType.roundRect, {
+          x: cardX,
+          y: cardY,
+          w: cardW,
+          h: cardH,
+          fill: { color: CARD_BG },
+          line: { color: CARD_BORDER, width: 1 },
+          rectRadius: 0.08,
         })
+
+        // ── Left accent strip (thin vertical bar in brand blue) ──
+        tocSlide.addShape(pptx.ShapeType.rect, {
+          x: cardX,
+          y: cardY,
+          w: 0.06,
+          h: cardH,
+          fill: { color: ACCENT_BLUE },
+          line: { color: ACCENT_BLUE, width: 0 },
+        })
+
+        // ── Number badge (two-digit) ──
+        const numberText = String(idx + 1).padStart(2, '0')
+        tocSlide.addText(numberText, {
+          x: cardX + 0.15,
+          y: cardY,
+          w: 0.7,
+          h: cardH,
+          fontSize: 20,
+          bold: true,
+          color: NUMBER_COLOR,
+          fontFace: 'Arial',
+          align: 'center',
+          valign: 'middle',
+        })
+
+        // ── Section title (hyperlink) ──
         tocSlide.addText(item.title, {
-          x: colX + 0.5, y: rowY, w: tocColW - 0.5, h: 0.35,
-          fontSize: 12, color: '1E293B', fontFace: 'Arial',
-          underline: true,
+          x: cardX + 0.9,
+          y: cardY,
+          w: cardW - 1.05,
+          h: cardH,
+          fontSize: 11,
+          bold: true,
+          color: TITLE_COLOR,
+          fontFace: 'Arial',
+          align: 'left',
+          valign: 'middle',
           hyperlink: { slide: item.slideNumber, tooltip: `Go to ${item.title}` },
         })
       })
+      // ─── FINAL SLIDE: Thank You ───
+      setPptProgress('Generating Slide: Thank You...')
+      const slideThankYou = pptx.addSlide()
+      slideThankYou.background = { fill: 'FFFFFF' }
+
+      // Full-bleed background image
+      slideThankYou.addImage({
+        path: '/assets/Thank.png',
+        x: 0,
+        y: 0,
+        w: 10,
+        h: 5.625,
+        sizing: { type: 'cover', w: 10, h: 5.625 },
+      })
+
+      // Centered "Thank You" text overlay
+      slideThankYou.addText(
+        [
+          { text: 'Thank', options: { breakLine: true } },
+          { text: 'You', options: {} },
+        ],
+        {
+          x: -0.1,
+          y: -0.2,              // pull the text block upward (negative = above center)
+          w: 10,
+          h: 5.625,
+          align: 'center',
+          valign: 'middle',
+          fontSize: 55,
+          bold: true,
+          color: '#1434A4',
+          fontFace: 'Calibri',
+          lineSpacing: 60,      // keeps the two stacked lines close together
+          shadow: {
+            type: 'outer',
+            color: '000000',
+            opacity: 0.5,
+            blur: 8,
+            offset: 2,
+            angle: 45,
+          },
+        }
+      )
       setPptProgress('Saving PowerPoint file...')
       await pptx.writeFile({ fileName: `Survey_Analysis_Report_${today}.pptx` })
 
@@ -4843,20 +6012,31 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    if (filters.regionId) {
-      countriesApi.byRegion(filters.regionId).then((r) => setCountries(r.data.data || []))
-    } else {
+    const ids = Array.isArray(filters.regionId) ? filters.regionId : []
+    if (ids.length === 0) {
       setCountries([])
+      return
     }
+    // BACKEND NOTE: `/countries/region/{region_id}` only accepts a SINGLE
+    // region_id per call (see backend/app/routes/countries.py). Since Region is
+    // now multi-select, we loop over each selected id and merge the results so
+    // Country shows options for all selected Regions.
+    Promise.all(ids.map((rid) => countriesApi.byRegion(rid).then((r) => r.data.data || [])))
+      .then((results) => {
+        const byId = new Map<string, { id: string; name: string }>()
+        results.forEach((list: { id: string; name: string }[]) => list.forEach((c) => byId.set(c.id, c)))
+        setCountries(Array.from(byId.values()))
+      })
+      .catch(() => setCountries([]))
   }, [filters.regionId])
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
     try {
       const params = {
-        region_id: (tab === 0 || tab === 1) ? (filters.regionId || undefined) : undefined,
-        country_id: (tab === 0 || tab === 1) ? (filters.countryId || undefined) : undefined,
-        ib_version_id: (tab === 0 || tab === 1) ? (filters.ibVersionId || undefined) : undefined,
+        region_id: (tab === 0 || tab === 1) ? toParam(filters.regionId) : undefined,
+        country_id: (tab === 0 || tab === 1) ? toParam(filters.countryId) : undefined,
+        ib_version_id: (tab === 0 || tab === 1) ? toParam(filters.ibVersionId) : undefined,
       }
       const res = await dashboardApi.stats(params)
       setStats(res.data)
@@ -4874,11 +6054,11 @@ export default function DashboardPage() {
         const res = await responsesApi.list({
           page,
           page_size: 25,
-          region_id: filters.regionId || undefined,
-          country_id: filters.countryId || undefined,
-          ib_version_id: filters.ibVersionId || undefined,
-          brand_model: filters.brandModel || undefined,
-          survey_location: filters.surveyLocation || undefined,
+          region_id: toParam(filters.regionId),
+          country_id: toParam(filters.countryId),
+          ib_version_id: toParam(filters.ibVersionId),
+          brand_model: toParam(filters.brandModel),
+          survey_location: toParam(filters.surveyLocation),
           date_from: filters.dateFrom || undefined,
           date_to: filters.dateTo || undefined,
           search: filters.search || undefined,
@@ -4985,6 +6165,26 @@ export default function DashboardPage() {
     }
   }
 
+  const showProduct = analysisMode.length === 0 || analysisMode.includes('product')
+  const showService = analysisMode.length === 0 || analysisMode.includes('service')
+
+  const availableTabs = [
+    ...(showProduct ? [
+      { id: 'tab-issues-view', key: 'issues', label: 'Issues Analysis' },
+      { id: 'tab-dashboard', key: 'dashboard', label: 'Dashboard' },
+      { id: 'tab-comparison', key: 'comparison', label: 'Comparison' },
+      { id: 'tab-nps', key: 'nps', label: 'NPS' },
+      { id: 'tab-market-feedback', key: 'market-feedback', label: 'Feedback From the Market' },
+      { id: 'tab-data-table', key: 'data-table', label: `Data Table (${totalRows.toLocaleString()} rows)` },
+    ] : []),
+    ...(showService ? [
+      { id: 'tab-service-dashboard', key: 'service-dashboard', label: 'Service Dashboard' },
+    ] : []),
+  ]
+
+  const activeTabKey = availableTabs[tab]?.key ?? availableTabs[0]?.key
+  const isServiceActive = activeTabKey === 'service-dashboard' || (analysisMode.length === 1 && analysisMode[0] === 'service')
+
   return (
     <Box>
       {/* Stats Cards */}
@@ -5013,87 +6213,76 @@ export default function DashboardPage() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel>Analysis Mode</InputLabel>
-              <Select
-                id="filter-analysis-mode"
-                value={analysisMode}
-                onChange={(e) => {
-                  const mode = e.target.value as 'product' | 'service'
-                  setAnalysisMode(mode)
-                  setTab(0)
-                }}
-                label="Analysis Mode"
-              >
-                <MenuItem value="product">Product</MenuItem>
-                <MenuItem value="service">Service</MenuItem>
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-analysis-mode"
+              label="Analysis Mode"
+              value={analysisMode}
+              options={[
+                { id: 'product', name: 'Product' },
+                { id: 'service', name: 'Service' },
+              ]}
+              onChange={(next) => {
+                setAnalysisMode(next)
+                setTab(0)
+              }}
+              minWidth={160}
+            />
 
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel>Region</InputLabel>
-              <Select
-                id="filter-region"
-                value={filters.regionId}
-                onChange={(e) => { filters.setFilter('regionId', e.target.value); filters.setFilter('countryId', '') }}
-                label="Region"
-              >
-                <MenuItem value="">All Regions</MenuItem>
-                {regions.map((r) => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-region"
+              label="Region"
+              value={filters.regionId}
+              options={regions}
+              onChange={(next) => {
+                // When the Region selection changes, clear Country so the
+                // options stay consistent with the newly selected Regions.
+                filters.setFilter('regionId', next)
+                filters.setFilter('countryId', [])
+              }}
+              minWidth={140}
+              searchable
+            />
 
-            <FormControl size="small" sx={{ minWidth: 140 }} disabled={!filters.regionId}>
-              <InputLabel>Country</InputLabel>
-              <Select
-                id="filter-country"
-                value={filters.countryId}
-                onChange={(e) => filters.setFilter('countryId', e.target.value)}
-                label="Country"
-              >
-                <MenuItem value="">All Countries</MenuItem>
-                {countries.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-country"
+              label="Country"
+              value={filters.countryId}
+              options={countries}
+              onChange={(next) => filters.setFilter('countryId', next)}
+              minWidth={140}
+              disabled={filters.regionId.length === 0}
+              searchable
+            />
 
-            <FormControl size="small" sx={{ minWidth: 120 }}>
-              <InputLabel>IB Version</InputLabel>
-              <Select
-                id="filter-ib-version"
-                value={filters.ibVersionId}
-                onChange={(e) => filters.setFilter('ibVersionId', e.target.value)}
-                label="IB Version"
-              >
-                <MenuItem value="">All</MenuItem>
-                {ibVersions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-ib-version"
+              label="IB Version"
+              value={filters.ibVersionId}
+              options={ibVersions}
+              onChange={(next) => filters.setFilter('ibVersionId', next)}
+              minWidth={120}
+              searchable
+            />
 
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel>Brand & Model</InputLabel>
-              <Select
-                id="filter-brand"
-                value={filters.brandModel}
-                onChange={(e) => filters.setFilter('brandModel', e.target.value)}
-                label="Brand & Model"
-              >
-                <MenuItem value="">All Brands</MenuItem>
-                {brands.map((b) => <MenuItem key={b} value={b}>{b}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-brand"
+              label="Brand & Model"
+              value={filters.brandModel}
+              options={brands}
+              onChange={(next) => filters.setFilter('brandModel', next)}
+              minWidth={160}
+              searchable
+            />
 
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel>City</InputLabel>
-              <Select
-                id="filter-city"
-                value={filters.surveyLocation}
-                onChange={(e) => filters.setFilter('surveyLocation', e.target.value)}
-                label="City"
-              >
-                <MenuItem value="">All Cities</MenuItem>
-                {cities.map((city) => <MenuItem key={city} value={city}>{city}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <MultiSelectFilter
+              id="filter-city"
+              label="City"
+              value={filters.surveyLocation}
+              options={cities}
+              onChange={(next) => filters.setFilter('surveyLocation', next)}
+              minWidth={140}
+              searchable
+            />
 
             <TextField
               size="small"
@@ -5105,25 +6294,57 @@ export default function DashboardPage() {
               sx={{ minWidth: 180 }}
             />
 
-            <TextField
-              size="small"
-              id="filter-date-from"
-              label="From Date"
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => filters.setFilter('dateFrom', e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ minWidth: 140 }}
+            <DatePicker
+              views={['year', 'month']}
+              openTo="year"
+              value={toMonthPickValue(filters.dateFrom)}
+              onChange={(value) => filters.setFilter('dateFrom', fromMonthPickValue(value))}
+              format="MMM YYYY"
+              slotProps={{
+                textField: {
+                  id: 'filter-date-from',
+                  size: 'small',
+                  label: 'From Month',
+                  sx: {
+                    minWidth: 140,
+                    '& .MuiOutlinedInput-root': {
+                      color: c.textPrimary,
+                    },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: c.border,
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: c.borderStrong,
+                    },
+                  },
+                },
+              }}
             />
-            <TextField
-              size="small"
-              id="filter-date-to"
-              label="To Date"
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => filters.setFilter('dateTo', e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-              sx={{ minWidth: 140 }}
+            <DatePicker
+              views={['year', 'month']}
+              openTo="year"
+              value={toMonthPickValue(filters.dateTo)}
+              onChange={(value) => filters.setFilter('dateTo', fromMonthPickValue(value))}
+              format="MMM YYYY"
+              slotProps={{
+                textField: {
+                  id: 'filter-date-to',
+                  size: 'small',
+                  label: 'To Month',
+                  sx: {
+                    minWidth: 140,
+                    '& .MuiOutlinedInput-root': {
+                      color: c.textPrimary,
+                    },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: c.border,
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: c.borderStrong,
+                    },
+                  },
+                },
+              }}
             />
 
             <Button
@@ -5146,14 +6367,14 @@ export default function DashboardPage() {
               Apply
             </Button>
 
-            <Tooltip title="Download Presentation (PPT)">
+            <Tooltip title={isServiceActive ? "Download Service Presentation (PPT)" : "Download Presentation (PPT)"}>
               <span>
                 <Button
                   id="download-ppt-btn"
                   variant="outlined"
                   size="small"
                   disabled={pptGenerating}
-                  onClick={analysisMode === 'service' ? handleDownloadServicePPT : handleDownloadPPT}
+                  onClick={isServiceActive ? handleDownloadServicePPT : handleDownloadPPT}
                   startIcon={pptGenerating ? <CircularProgress size={16} /> : <DownloadForOffline />}
                   sx={{
                     borderColor: '#6C63FF',
@@ -5165,7 +6386,7 @@ export default function DashboardPage() {
                     ml: 1
                   }}
                 >
-                  {pptGenerating ? 'Generating...' : analysisMode === 'service' ? 'Download Service PPT' : 'Download PPT'}
+                  {pptGenerating ? 'Generating...' : isServiceActive ? 'Download Service PPT' : 'Download PPT'}
                 </Button>
               </span>
             </Tooltip>
@@ -5189,101 +6410,123 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Tabs */}
-      <Box sx={{ borderBottom: `1px solid ${c.border}`, mb: 2 }}>
+
+      <Box sx={{ mb: 2 }}>
         <Tabs
-          value={tab}
+          key={`tabs-${analysisMode.join(',')}-${totalRows}`}
+          value={tab < availableTabs.length ? tab : 0}
           onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{
-            '& .MuiTab-root': { color: c.textSecondary, fontWeight: 600 },
-            '& .Mui-selected': { color: c.primaryLight },
-            '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #6C63FF, #FF6584)' },
+            minHeight: 42,
+            p: 0.5,
+            borderRadius: 2,
+            background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : 'rgba(108,99,255,0.04)',
+            border: `1px solid ${c.borderMuted}`,
+
+            // Hide the default underline indicator entirely (MUI v6-safe way)
+            '& .MuiTabs-indicator': {
+              display: 'none',
+            },
+
+            '& .MuiTabs-flexContainer': {
+              gap: 0.5,
+            },
+
+            '& .MuiTab-root': {
+              color: c.textSecondary,
+              fontWeight: 600,
+              minWidth: 'auto',
+              minHeight: 34,
+              px: 2,
+              borderRadius: 1.5,
+              textTransform: 'none',
+              transition: 'all 0.18s ease',
+              '&:hover': {
+                background: c.isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(108,99,255,0.08)',
+                color: c.textPrimary,
+              },
+            },
+
+            '& .Mui-selected': {
+              color: '#fff !important',
+              background: 'linear-gradient(135deg, #6C63FF, #9A94FF)',
+              boxShadow: '0 4px 12px rgba(108,99,255,0.35)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5B52F0, #8B84FF)',
+              },
+            },
           }}
         >
-          {analysisMode === 'product' ? [
-            <Tab key="t0" id="tab-data-table" label={`Data Table (${totalRows.toLocaleString()} rows)`} />,
-            <Tab key="t1" id="tab-issues-view" label="Issues Analysis" />,
-            <Tab key="t2" id="tab-dashboard" label="Dashboard" />,
-            <Tab key="t3" id="tab-comparison" label="Comparison" />,
-            <Tab key="t4" id="tab-nps" label="NPS" />,
-          ] : [
-            <Tab key="ts0" id="tab-service-dashboard" label="Service Dashboard" />,
-          ]}
+          {availableTabs.map((t) => (
+            <Tab key={t.id} id={t.id} label={t.label} disableRipple />
+          ))}
         </Tabs>
       </Box>
 
-      {/* Conditional Tab Content */}
-      {analysisMode === 'service' ? (
+      {/* Dynamic Tab Content */}
+      {activeTabKey === 'service-dashboard' && (
         <ServiceDashboardTab onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} />
-      ) : (
-        <>
-          {/* Tab 1: Data Table */}
-          {tab === 0 && (
-            <Card>
-              <CardContent sx={{ p: 0 }}>
-                <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${c.borderMuted}` }}>
-                  <Typography variant="body2" sx={{ color: c.textSecondary, flex: 1 }}>
-                    Showing all 422 columns • Horizontally scrollable • Server-side pagination
-                  </Typography>
-                  <Tooltip title="Export CSV">
-                    <IconButton id="export-csv-btn" size="small" onClick={handleExportCSV} sx={{ color: c.success }}>
-                      <FileDownload />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Refresh">
-                    <IconButton id="refresh-table-btn" size="small" onClick={() => (gridApi as { refreshInfiniteCache: () => void } | null)?.refreshInfiniteCache()} sx={{ color: c.textSecondary }}>
-                      <Refresh />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-                <Box
-                  className={c.isDarkTheme ? 'ag-theme-alpine-dark' : 'ag-theme-alpine'}
-                  sx={{
-                    height: 600,
-                    width: '100%',
-                    '--ag-background-color': c.agGridBg,
-                    '--ag-odd-row-background-color': c.agGridOddRow,
-                    '--ag-header-background-color': c.agGridHeader,
-                    '--ag-border-color': c.agBorder,
-                    '--ag-row-hover-color': c.agRowHover,
-                    '--ag-selected-row-background-color': c.agSelectedRow,
-                    '--ag-font-size': '12px',
-                    '--ag-foreground-color': c.textPrimary,
-                    '--ag-header-foreground-color': c.textSecondary,
-                    '--ag-secondary-foreground-color': c.textSecondary,
-                  } as React.CSSProperties}
-                >
-                  <AgGridReact
-                    datasource={datasource}
-                    columnDefs={columnDefs}
-                    defaultColDef={defaultColDef}
-                    rowModelType="infinite"
-                    cacheBlockSize={25}
-                    maxBlocksInCache={10}
-                    onGridReady={onGridReady}
-                    animateRows={true}
-                    rowSelection="multiple"
-                    suppressRowClickSelection={true}
-                    enableCellTextSelection={true}
-                    tooltipShowDelay={500}
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tab 2: Issues Analysis */}
-          {tab === 1 && <IssuesTab filters={filters} />}
-
-          {/* Tab 3: Dashboard Analytics */}
-          {tab === 2 && <DashboardAnalytics filters={filters} />}
-
-          {/* Tab 4: Comparison */}
-          {tab === 3 && <ComparisonTab filters={filters} />}
-
-          {/* Tab 5: NPS */}
-          {tab === 4 && <NpsTab />}
-        </>
+      )}
+      {activeTabKey === 'issues' && <IssuesTab filters={filters} />}
+      {activeTabKey === 'dashboard' && <DashboardAnalytics filters={filters} />}
+      {activeTabKey === 'comparison' && <ComparisonTab filters={filters} />}
+      {activeTabKey === 'nps' && <NpsTab />}
+      {activeTabKey === 'market-feedback' && <MarketFeedbackTab filters={filters} />}
+      {activeTabKey === 'data-table' && (
+        <Card>
+          <CardContent sx={{ p: 0 }}>
+            <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${c.borderMuted}` }}>
+              <Typography variant="body2" sx={{ color: c.textSecondary, flex: 1 }}>
+                Showing all 422 columns • Horizontally scrollable • Server-side pagination
+              </Typography>
+              <Tooltip title="Export CSV">
+                <IconButton id="export-csv-btn" size="small" onClick={handleExportCSV} sx={{ color: c.success }}>
+                  <FileDownload />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Refresh">
+                <IconButton id="refresh-table-btn" size="small" onClick={() => (gridApi as { refreshInfiniteCache: () => void } | null)?.refreshInfiniteCache()} sx={{ color: c.textSecondary }}>
+                  <Refresh />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            <Box
+              className={c.isDarkTheme ? 'ag-theme-alpine-dark' : 'ag-theme-alpine'}
+              sx={{
+                height: 600,
+                width: '100%',
+                '--ag-background-color': c.agGridBg,
+                '--ag-odd-row-background-color': c.agGridOddRow,
+                '--ag-header-background-color': c.agGridHeader,
+                '--ag-border-color': c.agBorder,
+                '--ag-row-hover-color': c.agRowHover,
+                '--ag-selected-row-background-color': c.agSelectedRow,
+                '--ag-font-size': '12px',
+                '--ag-foreground-color': c.textPrimary,
+                '--ag-header-foreground-color': c.textSecondary,
+                '--ag-secondary-foreground-color': c.textSecondary,
+              } as React.CSSProperties}
+            >
+              <AgGridReact
+                datasource={datasource}
+                columnDefs={columnDefs}
+                defaultColDef={defaultColDef}
+                rowModelType="infinite"
+                cacheBlockSize={25}
+                maxBlocksInCache={10}
+                onGridReady={onGridReady}
+                animateRows={true}
+                rowSelection="multiple"
+                suppressRowClickSelection={true}
+                enableCellTextSelection={true}
+                tooltipShowDelay={500}
+              />
+            </Box>
+          </CardContent>
+        </Card>
       )}
 
       {/* PPT progress alert */}

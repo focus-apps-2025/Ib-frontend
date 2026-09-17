@@ -12,7 +12,7 @@ import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { dashboardApi } from '../../lib/api'
-import { useFilterStore } from '../../store'
+import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
 
 // Colors for Recommend Categories
@@ -40,11 +40,11 @@ export default function NpsTab() {
       setError(null)
       try {
         const filterParams = {
-          region_id: filters.regionId || undefined,
-          country_id: filters.countryId || undefined,
-          ib_version_id: filters.ibVersionId || undefined,
-          brand_model: filters.brandModel || undefined,
-          survey_location: filters.surveyLocation || undefined,
+          region_id: toParam(filters.regionId),
+          country_id: toParam(filters.countryId),
+          ib_version_id: toParam(filters.ibVersionId),
+          brand_model: toParam(filters.brandModel),
+          survey_location: toParam(filters.surveyLocation),
           date_from: filters.dateFrom || undefined,
           date_to: filters.dateTo || undefined,
           search: filters.search || undefined,

@@ -12,6 +12,8 @@ import {
 } from 'recharts'
 import { issuesApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
+import type { FilterState } from '../../store'
+import { toParam } from '../../store'
 
 
 const ISSUE_COLORS = [
@@ -19,17 +21,6 @@ const ISSUE_COLORS = [
   '#AB47BC', '#26C6DA', '#EC407A', '#66BB6A', '#FFA726',
   '#42A5F5', '#EF5350', '#8D6E63', '#78909C', '#00BCD4',
 ]
-
-interface FilterState {
-  regionId: string
-  countryId: string
-  ibVersionId: string
-  brandModel: string
-  surveyLocation: string
-  dateFrom: string
-  dateTo: string
-  search: string
-}
 
 interface BrandData {
   name: string
@@ -90,11 +81,11 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
     setLoading(true)
     try {
       const params: Record<string, string | undefined> = {
-        region_id: filters.regionId || undefined,
-        country_id: filters.countryId || undefined,
-        ib_version_id: filters.ibVersionId || undefined,
-        brand_model: filters.brandModel || undefined,
-        survey_location: filters.surveyLocation || undefined,
+        region_id: toParam(filters.regionId),
+        country_id: toParam(filters.countryId),
+        ib_version_id: toParam(filters.ibVersionId),
+        brand_model: toParam(filters.brandModel),
+        survey_location: toParam(filters.surveyLocation),
         date_from: filters.dateFrom || undefined,
         date_to: filters.dateTo || undefined,
         search: filters.search || undefined,

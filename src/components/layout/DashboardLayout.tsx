@@ -217,7 +217,7 @@ export default function DashboardLayout() {
   )
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', background: c.background }}>
+    <Box sx={{ display: 'flex', minHeight: 'calc(100vh / var(--zoom-scale, 0.8))', background: c.background }}>
       {/* Sidebar */}
       <Drawer
         variant={isMobile ? 'temporary' : 'persistent'}

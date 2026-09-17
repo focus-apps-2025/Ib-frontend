@@ -8,21 +8,24 @@ import {
 } from 'recharts'
 import { dashboardApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
+import { toParam } from '../../store'
+
+// Permissive filter shape: the Dashboard store provides string[] values, while
+// the standalone Comparison page passes plain strings. `toParam` handles both.
+interface FilterState {
+    regionId?: string | string[]
+    countryId?: string | string[]
+    ibVersionId?: string | string[]
+    brandModel?: string | string[]
+    surveyLocation?: string | string[]
+    dateFrom?: string
+    dateTo?: string
+    search?: string
+}
 
 interface PassiveTopicData {
     topic: string
     count: number
-}
-
-interface FilterState {
-    regionId: string
-    countryId: string
-    ibVersionId: string
-    brandModel?: string
-    surveyLocation?: string
-    dateFrom?: string
-    dateTo?: string
-    search?: string
 }
 
 const TOPIC_COLORS = [
@@ -43,11 +46,11 @@ export default function PassiveTopicsChart({ filters }: { filters: FilterState }
         setError('')
         try {
             const params: Record<string, string | undefined> = {
-                region_id: filters.regionId || undefined,
-                country_id: filters.countryId || undefined,
-                ib_version_id: filters.ibVersionId || undefined,
-                brand_model: filters.brandModel || undefined,
-                survey_location: filters.surveyLocation || undefined,
+                region_id: toParam(filters.regionId),
+                country_id: toParam(filters.countryId),
+                ib_version_id: toParam(filters.ibVersionId),
+                brand_model: toParam(filters.brandModel),
+                survey_location: toParam(filters.surveyLocation),
                 date_from: filters.dateFrom || undefined,
                 date_to: filters.dateTo || undefined,
                 search: filters.search || undefined,

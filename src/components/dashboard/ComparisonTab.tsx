@@ -1,17 +1,7 @@
 import { Box, Grid } from '@mui/material'
 import BrandComparisonChart from './BrandComparisonChart'
 import PassiveTopicsChart from './PassiveTopicsChart'
-
-interface FilterState {
-    regionId: string
-    countryId: string
-    ibVersionId: string
-    brandModel?: string
-    surveyLocation?: string
-    dateFrom?: string
-    dateTo?: string
-    search?: string
-}
+import type { FilterState } from '../../store'
 
 export default function ComparisonTab({ filters }: { filters: FilterState }) {
     // Pass ALL filters to child components, not just a subset

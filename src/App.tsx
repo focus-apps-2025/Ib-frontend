@@ -1,5 +1,8 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider, CssBaseline } from '@mui/material'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { useAuthStore } from './store'
 import { useThemeStore } from './store/themeStore'
 import { themes } from './theme'
@@ -32,11 +35,24 @@ export default function App() {
   const { mode } = useThemeStore()
   const theme = themes[mode]
 
+  useEffect(() => {
+    const isDark = mode === 'dark'
+    const bg = isDark ? '#0A0A1A' : '#F4F4FA'
+    const text = isDark ? '#E8E8FF' : '#1A1A2E'
+    const root = document.documentElement
+    root.style.setProperty('--app-bg', bg)
+    root.style.setProperty('--app-text', text)
+    root.style.backgroundColor = bg
+    document.body.style.backgroundColor = bg
+    document.body.style.color = text
+  }, [mode])
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
-        <Routes>
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <BrowserRouter>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route
@@ -101,8 +117,9 @@ export default function App() {
             />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </LocalizationProvider>
     </ThemeProvider>
   )
 }

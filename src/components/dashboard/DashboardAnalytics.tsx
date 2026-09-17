@@ -10,21 +10,12 @@ import {
 } from 'recharts'
 import { dashboardApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
+import type { FilterState } from '../../store'
+import { toParam } from '../../store'
 import {
     TrendingUp, People, LocationCity, ShoppingBag, Home, Work, DirectionsBike,
     BarChart as BarChartIcon, PieChart as PieChartIcon,
 } from '@mui/icons-material'
-
-interface FilterState {
-    regionId: string
-    countryId: string
-    ibVersionId: string
-    brandModel?: string
-    surveyLocation?: string
-    dateFrom?: string
-    dateTo?: string
-    search?: string
-}
 
 interface AnalyticsData {
     age_group: MatrixData
@@ -139,11 +130,11 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
         setError('')
         try {
             const params: Record<string, string | undefined> = {
-                region_id: filters.regionId || undefined,
-                country_id: filters.countryId || undefined,
-                ib_version_id: filters.ibVersionId || undefined,
-                brand_model: filters.brandModel || undefined,
-                survey_location: filters.surveyLocation || undefined,
+                region_id: toParam(filters.regionId),
+                country_id: toParam(filters.countryId),
+                ib_version_id: toParam(filters.ibVersionId),
+                brand_model: toParam(filters.brandModel),
+                survey_location: toParam(filters.surveyLocation),
                 date_from: filters.dateFrom || undefined,
                 date_to: filters.dateTo || undefined,
                 search: filters.search || undefined,
@@ -195,8 +186,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
         const allBrands = Array.from(new Set([...(matrix?.brands || []), ...tableBrands]))
 
         // Special rendering for Age Group by City & Brand
-let sortedAgeGroups: string[] = [];
-let cities: string[] = []
+        let sortedAgeGroups: string[] = [];
+        let cities: string[] = []
         if (isAgeCity && matrix) {
             const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
             const allAgeGroups = new Set<string>()
@@ -820,10 +811,10 @@ let cities: string[] = []
 
         // Dynamic Brands (or fallback)
         const brands: string[] = isDynamic ? sampleData.brands : ['TVS HLX125', 'Bajaj BM 125 / Bajaj CT 125']
-        
+
         // Dynamic Tenures (or fallback)
-        const tenures: string[] = isDynamic && Array.isArray(sampleData.tenures) && sampleData.tenures.length > 0 
-            ? sampleData.tenures 
+        const tenures: string[] = isDynamic && Array.isArray(sampleData.tenures) && sampleData.tenures.length > 0
+            ? sampleData.tenures
             : ['3-6 months', '6-12 months']
 
         // Table Rows (Cities)
@@ -968,7 +959,7 @@ let cities: string[] = []
                                         sx={{
                                             fontWeight: 'bold',
                                             background: lightBlueBg,
-                                            color: '#000000',
+                                            color: c.textPrimary,   // 👈 use theme-aware text color
                                             fontSize: '0.8rem',
                                         }}
                                     >
@@ -984,7 +975,7 @@ let cities: string[] = []
                                                     sx={{
                                                         fontWeight: 'bold',
                                                         background: lightBlueBg,
-                                                        color: '#000000',
+                                                        color: c.textPrimary,
                                                         fontSize: '0.8rem',
                                                     }}
                                                 >
@@ -1056,7 +1047,7 @@ let cities: string[] = []
                                         sx={{
                                             fontWeight: 'bold',
                                             background: lightBlueBg,
-                                            color: '#000000',
+                                            color: c.textPrimary,
                                         }}
                                     >
                                         Grand Total
@@ -1078,7 +1069,7 @@ let cities: string[] = []
                                                             sx={{
                                                                 fontWeight: 'bold',
                                                                 background: lightBlueBg,
-                                                                color: '#000000',
+                                                                color: c.textPrimary,
                                                             }}
                                                         >
                                                             {val}
@@ -1092,7 +1083,7 @@ let cities: string[] = []
                                                     sx={{
                                                         fontWeight: 'bold',
                                                         background: lightBlueBg,
-                                                        color: '#000000',
+                                                        color: c.textPrimary,
                                                     }}
                                                 >
                                                     {brandTotalVal}
@@ -1106,7 +1097,7 @@ let cities: string[] = []
                                         sx={{
                                             fontWeight: 'bold',
                                             background: lightBlueBg,
-                                            color: '#000000',
+                                            color: c.textPrimary,
                                         }}
                                     >
                                         {grandTotalRow.grand_total ?? grandTotalRow.grandTotal ?? 0}

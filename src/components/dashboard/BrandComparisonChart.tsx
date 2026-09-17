@@ -9,6 +9,20 @@ import {
 } from 'recharts'
 import { dashboardApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
+import { toParam } from '../../store'
+
+// Permissive filter shape: the Dashboard store provides string[] values, while
+// the standalone Comparison page passes plain strings. `toParam` handles both.
+interface FilterState {
+    regionId?: string | string[]
+    countryId?: string | string[]
+    ibVersionId?: string | string[]
+    brandModel?: string | string[]
+    surveyLocation?: string | string[]
+    dateFrom?: string
+    dateTo?: string
+    search?: string
+}
 
 interface BrandComparisonData {
     brand: string
@@ -45,17 +59,6 @@ interface TopPassiveByNpsData {
     promoters: { topics: TopicItem[] }
     passives: { topics: TopicItem[] }
     detractors: { topics: TopicItem[] }
-}
-
-interface FilterState {
-    regionId: string
-    countryId: string
-    ibVersionId: string
-    brandModel?: string
-    surveyLocation?: string
-    dateFrom?: string
-    dateTo?: string
-    search?: string
 }
 
 const PASSIVE_COLOR = '#4ECCA3'
@@ -101,13 +104,15 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
     }, [data, brandTopics])
 
     const getFilterParams = () => {
-        const activeBrand = globalBrand || filters.brandModel || undefined
+        // `globalBrand` (the chart's own single-select dropdown) wins when set;
+        // otherwise send the multi-selected brand_model values comma-joined.
+        const activeBrand = globalBrand || toParam(filters.brandModel)
         return {
-            region_id: filters.regionId || undefined,
-            country_id: filters.countryId || undefined,
-            ib_version_id: filters.ibVersionId || undefined,
+            region_id: toParam(filters.regionId),
+            country_id: toParam(filters.countryId),
+            ib_version_id: toParam(filters.ibVersionId),
             brand_model: activeBrand,
-            survey_location: filters.surveyLocation || undefined,
+            survey_location: toParam(filters.surveyLocation),
             date_from: filters.dateFrom || undefined,
             date_to: filters.dateTo || undefined,
             search: filters.search || undefined,

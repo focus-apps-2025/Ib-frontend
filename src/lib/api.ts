@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.DEV
   ? 'http://localhost:8000/api'
-  : 'https://ib-backend-uao1.onrender.com/api'
+  : 'https://ibbackend.focusengineeringapp.com/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -163,3 +163,17 @@ export const comparisonApi = {
 export const activityLogsApi = {
   list: (params?: object) => api.get('/activity-logs', { params }),
 }
+
+// ─── Market Feedback ─────────────────────────────────────────────────────────
+export const marketFeedbackApi = {
+  getAll: () => api.get('/market-feedback'),
+  saveRemark: (data: { remark_key: string; remark: string; issue_name?: string; sub_issue_title?: string }) =>
+    api.post('/market-feedback/remark', data),
+  uploadPhoto: (formData: FormData) =>
+    api.post('/market-feedback/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  deletePhoto: (remark_key: string, photo_id: string) =>
+    api.delete(`/market-feedback/photo/${encodeURIComponent(remark_key)}/${encodeURIComponent(photo_id)}`),
+}
+

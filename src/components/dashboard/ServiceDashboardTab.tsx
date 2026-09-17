@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import { Speed, AccessTime, BuildCircle, DownloadForOffline, Star, ThumbUp, Handyman, VerifiedUser } from '@mui/icons-material'
 import { dashboardApi } from '../../lib/api'
-import { useFilterStore } from '../../store'
+import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
 
 const BRAND_COLORS = ['#3B82F6', '#4ECCA3', '#FF6584', '#FFD93D', '#9B51E0', '#F2994A', '#27AE60', '#E8903D']
@@ -88,11 +88,11 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
       try {
         const filterParams = {
           file_id: filters.fileId || undefined,
-          region_id: filters.regionId || undefined,
-          country_id: filters.countryId || undefined,
-          ib_version_id: filters.ibVersionId || undefined,
-          brand_model: filters.brandModel || undefined,
-          survey_location: filters.surveyLocation || undefined,
+          region_id: toParam(filters.regionId),
+          country_id: toParam(filters.countryId),
+          ib_version_id: toParam(filters.ibVersionId),
+          brand_model: toParam(filters.brandModel),
+          survey_location: toParam(filters.surveyLocation),
           date_from: filters.dateFrom || undefined,
           date_to: filters.dateTo || undefined,
           search: filters.search || undefined,
