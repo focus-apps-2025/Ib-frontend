@@ -92,7 +92,22 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
       }
       const res = await issuesApi.analysis(params)
       const rawIssues: IssueData[] = res.data.data || []
-      const apiBrands: string[] = res.data.brands || []
+      
+      // Dynamically extract all brands from the dataset to ensure no columns are missing
+      const extractedBrands = new Set<string>(res.data.brands || [])
+      rawIssues.forEach(issue => {
+        issue.sub_issues?.forEach(sub => {
+          sub.brands?.forEach(b => extractedBrands.add(b.name))
+          sub.follow_ups?.forEach(fu => {
+            fu.brands?.forEach(b => extractedBrands.add(b.name))
+            fu.answers?.forEach(ans => {
+              ans.brands?.forEach(b => extractedBrands.add(b.name))
+            })
+          })
+        })
+      })
+      const apiBrands = Array.from(extractedBrands).sort()
+      
       setIssues(rawIssues)
       setBrands(apiBrands)
       setSummary(res.data.summary || {})
@@ -148,7 +163,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
           { label: 'Most Common', value: (summary.most_common_issue as string) || 'N/A', color: '#FFD93D' },
           { label: 'Least Common', value: (summary.least_common_issue as string) || 'N/A', color: '#FF6584' },
         ].map((s) => (
-          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={s.label}>
+          <Grid size={{xs: 12, sm: 6, md: 3}} key={s.label}>
             <Card sx={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, display: 'block' }}>
@@ -166,7 +181,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
       {/* Charts Row */}
       {filtered.length > 0 && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, md: 8 }}>
+          <Grid size={{xs: 12, md: 8}}>
             <Card>
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
@@ -189,7 +204,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{xs: 12, md: 4}}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
@@ -292,7 +307,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
               ) : (
                 <Grid container spacing={3}>
                   {/* LEFT SIDE: TABLE */}
-                  <Grid size={{ xs: 12, lg: 6 }}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Complaint Breakdown by Brand
                     </Typography>
@@ -476,7 +491,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                   </Grid>
 
                   {/* RIGHT SIDE: CHART */}
-                  <Grid size={{ xs: 12, lg: 6 }}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Distribution by Sub-Issue
                     </Typography>

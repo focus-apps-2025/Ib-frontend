@@ -10,6 +10,7 @@ import {
 import { dashboardApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
 import { toParam } from '../../store'
+import EmptyState from './EmptyState'
 
 // Permissive filter shape: the Dashboard store provides string[] values, while
 // the standalone Comparison page passes plain strings. `toParam` handles both.
@@ -342,6 +343,10 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
         )
     }
 
+    if (!loading && !npsLoading && !topicsLoading && data.length === 0) {
+        return <EmptyState title="No Brand Comparison Data" message="Try adjusting your filters or uploading new survey data." />
+    }
+
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {/* Top Global Brand Filter Bar */}
@@ -433,21 +438,21 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
                     <Alert severity="error" sx={{ borderRadius: 2 }}>{npsError}</Alert>
                 ) : (
                     <Grid container spacing={2.5}>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Promoters - Top 10 Issues',
                                 (topIssuesByNps?.promoters.issues || []).map((i) => ({ name: i.issue, count: i.count, percentage: i.percentage })),
                                 NPS_COLORS.promoters
                             )}
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Passives - Top 10 Issues',
                                 (topIssuesByNps?.passives.issues || []).map((i) => ({ name: i.issue, count: i.count, percentage: i.percentage })),
                                 NPS_COLORS.passives
                             )}
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Detractors - Top 10 Issues',
                                 (topIssuesByNps?.detractors.issues || []).map((i) => ({ name: i.issue, count: i.count, percentage: i.percentage })),
@@ -471,21 +476,21 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
                     <Alert severity="error" sx={{ borderRadius: 2 }}>{npsError}</Alert>
                 ) : (
                     <Grid container spacing={2.5}>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Promoters - Top 10 Passive Topics',
                                 (topPassiveByNps?.promoters.topics || []).map((t) => ({ name: t.topic, count: t.count, percentage: t.percentage })),
                                 NPS_COLORS.promoters
                             )}
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Passives - Top 10 Passive Topics',
                                 (topPassiveByNps?.passives.topics || []).map((t) => ({ name: t.topic, count: t.count, percentage: t.percentage })),
                                 NPS_COLORS.passives
                             )}
                         </Grid>
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             {renderNpsCategoryCard(
                                 'Detractors - Top 10 Passive Topics',
                                 (topPassiveByNps?.detractors.topics || []).map((t) => ({ name: t.topic, count: t.count, percentage: t.percentage })),
@@ -532,7 +537,7 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
                     ) : (
                         <Grid container spacing={2}>
                             {/* Passive Topics for selected brand */}
-                            <Grid size={{ xs: 12, md: 6 }}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <Card sx={{ background: `${PASSIVE_COLOR}08`, border: `1px solid ${PASSIVE_COLOR}30` }}>
                                     <CardContent>
                                         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: PASSIVE_COLOR }}>
@@ -571,7 +576,7 @@ export default function BrandComparisonChart({ filters }: { filters: FilterState
                             </Grid>
 
                             {/* Issues Topics for selected brand */}
-                            <Grid size={{ xs: 12, md: 6 }}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <Card sx={{ background: `${ISSUES_COLOR}08`, border: `1px solid ${ISSUES_COLOR}30` }}>
                                     <CardContent>
                                         <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2, color: ISSUES_COLOR }}>

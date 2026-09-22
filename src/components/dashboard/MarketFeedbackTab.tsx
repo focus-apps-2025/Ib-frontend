@@ -9,10 +9,12 @@ import {
   DirectionsCar, Search, Close, Assessment, CloudUpload
 } from '@mui/icons-material'
 import { useThemeColors } from '../../utils/colors'
-import { issuesApi, marketFeedbackApi } from '../../lib/api'
-
+import { dashboardApi, issuesApi, marketFeedbackApi } from '../../lib/api'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts'
 import type { FilterState } from '../../store'
 import { toParam } from '../../store'
+import EmptyState from './EmptyState'
 
 interface PhotoItem {
   id: string
@@ -788,6 +790,7 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   const c = useThemeColors()
   const [issuesData, setIssuesData] = useState<IssueMarketData[]>(DEFAULT_TVS_TOP_ISSUES)
   const [loading, setLoading] = useState<boolean>(false)
+  const [isEmpty, setIsEmpty] = useState<boolean>(false)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null)
 
@@ -834,6 +837,33 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
       console.error('Failed to save photos to localStorage:', e)
     }
   }, [photos])
+
+  // Check if data is empty via dashboard API
+  useEffect(() => {
+    const checkData = async () => {
+      try {
+        const params = {
+          region_id: toParam(filters.regionId),
+          country_id: toParam(filters.countryId),
+          ib_version_id: toParam(filters.ibVersionId),
+          brand_model: toParam(filters.brandModel),
+          survey_location: toParam(filters.surveyLocation),
+          date_from: filters.dateFrom || undefined,
+          date_to: filters.dateTo || undefined,
+          search: filters.search || undefined,
+        }
+        const res = await dashboardApi.stats(params)
+        if (res.data && res.data.total_records === 0) {
+          setIsEmpty(true)
+        } else {
+          setIsEmpty(false)
+        }
+      } catch (err) {
+        console.error('Failed to check dashboard stats:', err)
+      }
+    }
+    checkData()
+  }, [filters])
 
   // Initial load of saved remarks and photos from backend MongoDB
   useEffect(() => {
@@ -997,8 +1027,16 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     })
   }, [issuesData, searchQuery, selectedIssue])
 
+  if (!loading && (filteredIssues.length === 0 || isEmpty)) {
+      return (
+          <Box sx={{ p: { xs: 2, md: 4 } }}>
+              <EmptyState title="No Market Feedback Data" message="There is no data available for the current selection." />
+          </Box>
+      )
+  }
+
   return (
-    <Box sx={{ width: '100%', pb: 4 }}>
+    <Box sx={{ p: { xs: 2, md: 4 } }}>
       {/* Top Banner Header */}
       <Card
         sx={{
@@ -1097,7 +1135,7 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
       {/* Issue Cards */}
       <Grid container spacing={3}>
         {filteredIssues.map((issueCategory, catIndex) => (
-          <Grid size={12} key={issueCategory.issue_name}>
+          <Grid size={{ xs: 12 }} key={issueCategory.issue_name}>
             <Card
               elevation={2}
               sx={{

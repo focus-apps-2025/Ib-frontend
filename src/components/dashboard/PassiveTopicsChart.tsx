@@ -93,6 +93,10 @@ export default function PassiveTopicsChart({ filters }: { filters: FilterState }
         return null
     }
 
+    if (!loading && data.length === 0) {
+        return null;
+    }
+
     return (
         <Card>
             <CardContent>

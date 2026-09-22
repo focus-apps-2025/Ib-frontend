@@ -57,6 +57,7 @@ export const useAuthStore = create<AuthState>()(
 
 // Filter store for dashboard
 export interface FilterState {
+  fileId: string | null
   regionId: string[]
   countryId: string[]
   ibVersionId: string[]
@@ -65,7 +66,7 @@ export interface FilterState {
   dateFrom: string
   dateTo: string
   search: string
-  setFilter: (key: keyof Omit<FilterState, 'setFilter' | 'resetFilters'>, value: string | string[]) => void
+  setFilter: (key: keyof Omit<FilterState, 'setFilter' | 'resetFilters'>, value: string | string[] | null) => void
   resetFilters: () => void
 }
 
@@ -91,6 +92,7 @@ export const toParam = (v: string | string[] | undefined): string | undefined =>
 }
 
 export const useFilterStore = create<FilterState>((set) => ({
+  fileId: null,
   regionId: [],
   countryId: [],
   ibVersionId: [],
@@ -102,6 +104,7 @@ export const useFilterStore = create<FilterState>((set) => ({
   setFilter: (key, value) => set((state) => ({ ...state, [key]: value })),
   resetFilters: () =>
     set({
+      fileId: null,
       regionId: [],
       countryId: [],
       ibVersionId: [],

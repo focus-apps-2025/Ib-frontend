@@ -10,8 +10,9 @@ import {
   Refresh, FolderOpen,
 } from '@mui/icons-material'
 import { useDropzone } from 'react-dropzone'
-import { regionsApi, countriesApi, ibVersionsApi, uploadApi } from '../../lib/api'
+import { regionsApi, countriesApi, ibVersionsApi, uploadApi, usersApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
+import { useAuthStore } from '../../store'
 
 interface Region { id: string; name: string }
 interface Country { id: string; name: string }
@@ -20,6 +21,15 @@ interface UploadRecord {
   id: string; file_name: string; region_name: string; country_name: string
   ib_version_name: string; total_records: number; processed_records: number
   status: string; upload_started_at: string; uploader_name: string
+}
+
+interface AdminScope {
+  all_regions: boolean
+  region_ids: string[]
+  all_countries: boolean
+  country_ids: string[]
+  all_ib_versions: boolean
+  ib_version_ids: string[]
 }
 
 export default function UploadPage() {
@@ -38,11 +48,21 @@ export default function UploadPage() {
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
 
+  const user = useAuthStore((s) => s.user)
+  const [admins, setAdmins] = useState<{id: string, full_name: string, username: string}[]>([])
+  const [selectedAdminId, setSelectedAdminId] = useState('')
+  const [adminScope, setAdminScope] = useState<AdminScope | null>(null)
+
+  const stepOffset = user?.role === 'super_admin' ? 1 : 0
+
   useEffect(() => {
     regionsApi.list().then((r) => setRegions(r.data.data || []))
     ibVersionsApi.list().then((r) => setIbVersions(r.data.data || []))
     loadHistory()
-  }, [])
+    if (user?.role === 'super_admin') {
+      usersApi.list({ role: 'admin' }).then((r) => setAdmins(r.data.data || []))
+    }
+  }, [user?.role])
 
   useEffect(() => {
     if (selectedRegion) {
@@ -50,6 +70,26 @@ export default function UploadPage() {
       setSelectedCountry('')
     }
   }, [selectedRegion])
+
+  useEffect(() => {
+    if (selectedAdminId) {
+      usersApi.getScope(selectedAdminId).then((r) => setAdminScope(r.data)).catch(() => setAdminScope(null))
+    } else {
+      setAdminScope(null)
+    }
+  }, [selectedAdminId])
+
+  const filteredRegions = adminScope && !adminScope.all_regions
+    ? regions.filter(r => adminScope.region_ids.includes(r.id))
+    : regions;
+
+  const filteredCountries = adminScope && !adminScope.all_countries
+    ? countries.filter(c => adminScope.country_ids.includes(c.id))
+    : countries;
+
+  const filteredIBVersions = adminScope && !adminScope.all_ib_versions
+    ? ibVersions.filter(v => adminScope.ib_version_ids.includes(v.id))
+    : ibVersions;
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -80,11 +120,14 @@ export default function UploadPage() {
       form.append('region_id', selectedRegion)
       form.append('country_id', selectedCountry)
       form.append('ib_version_id', selectedIB)
+      if (selectedAdminId) {
+        form.append('assigned_admin_id', selectedAdminId)
+      }
       form.append('file', uploadedFile)
 
       const res = await uploadApi.upload(form)
       const fileId = res.data.file_id
-      setActiveStep(4)
+      setActiveStep(stepOffset + 4)
 
       // SSE Progress tracking
       const token = localStorage.getItem('access_token')
@@ -114,11 +157,12 @@ export default function UploadPage() {
     } catch { /* ignore */ }
   }
 
-  const canProceed = (step: number) => {
-    if (step === 0) return !!selectedRegion
-    if (step === 1) return !!selectedCountry
-    if (step === 2) return !!selectedIB
-    if (step === 3) return !!uploadedFile
+  const canProceed = (stepIndex: number) => {
+    if (user?.role === 'super_admin' && stepIndex === 0) return true
+    if (stepIndex === stepOffset + 0) return !!selectedRegion
+    if (stepIndex === stepOffset + 1) return !!selectedCountry
+    if (stepIndex === stepOffset + 2) return !!selectedIB
+    if (stepIndex === stepOffset + 3) return !!uploadedFile
     return false
   }
 
@@ -139,6 +183,41 @@ export default function UploadPage() {
         <Card sx={{ flex: '1 1 400px', minWidth: 0 }}>
           <CardContent>
             <Stepper activeStep={activeStep} orientation="vertical">
+              {user?.role === 'super_admin' && (
+                <Step>
+                  <StepLabel>Select Admin</StepLabel>
+                  <StepContent>
+                    <FormControl fullWidth sx={{ mt: 1, mb: 2 }}>
+                      <InputLabel>Assign to Admin (Optional)</InputLabel>
+                      <Select
+                        value={selectedAdminId}
+                        onChange={(e) => {
+                          setSelectedAdminId(e.target.value)
+                          setSelectedRegion('')
+                          setSelectedCountry('')
+                          setSelectedIB('')
+                        }}
+                        label="Assign to Admin (Optional)"
+                      >
+                        <MenuItem value=""><em>None / Self</em></MenuItem>
+                        {admins.map((a) => (
+                          <MenuItem key={a.id} value={a.id}>{a.full_name} ({a.username})</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      disabled={!canProceed(0)}
+                      onClick={() => setActiveStep(activeStep + 1)}
+                      sx={{ background: 'linear-gradient(135deg, #6C63FF, #9A94FF)' }}
+                    >
+                      Next
+                    </Button>
+                  </StepContent>
+                </Step>
+              )}
+
               {/* Step 1: Region */}
               <Step>
                 <StepLabel>Select Region</StepLabel>
@@ -151,19 +230,24 @@ export default function UploadPage() {
                       onChange={(e) => setSelectedRegion(e.target.value)}
                       label="Region"
                     >
-                      {regions.map((r) => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
+                      {filteredRegions.map((r) => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
                     </Select>
                   </FormControl>
-                  <Button
-                    id="step1-next"
-                    variant="contained"
-                    size="small"
-                    disabled={!canProceed(0)}
-                    onClick={() => setActiveStep(1)}
-                    sx={{ background: 'linear-gradient(135deg, #6C63FF, #9A94FF)' }}
-                  >
-                    Next
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    {user?.role === 'super_admin' && (
+                      <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>Back</Button>
+                    )}
+                    <Button
+                      id="step1-next"
+                      variant="contained"
+                      size="small"
+                      disabled={!canProceed(stepOffset + 0)}
+                      onClick={() => setActiveStep(activeStep + 1)}
+                      sx={{ background: 'linear-gradient(135deg, #6C63FF, #9A94FF)' }}
+                    >
+                      Next
+                    </Button>
+                  </Box>
                 </StepContent>
               </Step>
 
@@ -179,17 +263,17 @@ export default function UploadPage() {
                       onChange={(e) => setSelectedCountry(e.target.value)}
                       label="Country"
                     >
-                      {countries.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+                      {filteredCountries.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
                     </Select>
                   </FormControl>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button size="small" onClick={() => setActiveStep(0)}>Back</Button>
+                    <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>Back</Button>
                     <Button
                       id="step2-next"
                       variant="contained"
                       size="small"
-                      disabled={!canProceed(1)}
-                      onClick={() => setActiveStep(2)}
+                      disabled={!canProceed(stepOffset + 1)}
+                      onClick={() => setActiveStep(activeStep + 1)}
                       sx={{ background: 'linear-gradient(135deg, #6C63FF, #9A94FF)' }}
                     >
                       Next
@@ -210,17 +294,17 @@ export default function UploadPage() {
                       onChange={(e) => setSelectedIB(e.target.value)}
                       label="IB Version"
                     >
-                      {ibVersions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}
+                      {filteredIBVersions.map((v) => <MenuItem key={v.id} value={v.id}>{v.name}</MenuItem>)}
                     </Select>
                   </FormControl>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button size="small" onClick={() => setActiveStep(1)}>Back</Button>
+                    <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>Back</Button>
                     <Button
                       id="step3-next"
                       variant="contained"
                       size="small"
-                      disabled={!canProceed(2)}
-                      onClick={() => setActiveStep(3)}
+                      disabled={!canProceed(stepOffset + 2)}
+                      onClick={() => setActiveStep(activeStep + 1)}
                       sx={{ background: 'linear-gradient(135deg, #6C63FF, #9A94FF)' }}
                     >
                       Next
@@ -264,12 +348,12 @@ export default function UploadPage() {
                   )}
 
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button size="small" onClick={() => setActiveStep(2)}>Back</Button>
+                    <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>Back</Button>
                     <Button
                       id="upload-submit-btn"
                       variant="contained"
-                      size="small"
-                      disabled={!canProceed(3) || uploading}
+                      color="primary"
+                      disabled={!canProceed(stepOffset + 3) || uploading}
                       onClick={handleUpload}
                       startIcon={uploading ? <CircularProgress size={14} color="inherit" /> : <CloudUpload />}
                       sx={{ background: 'linear-gradient(135deg, #FF6584, #FF8A65)' }}

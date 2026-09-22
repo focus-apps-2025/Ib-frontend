@@ -141,7 +141,7 @@ export default function NpsTab() {
             Will you recommend your vehicle? (Brand-wise)
           </Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={3}>
+            <Grid size={{xs: 12, md: 3}}>
               <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: c.bgPaper, borderColor: c.border, borderRadius: 1, overflow: 'hidden' }}>
                 <Table size="small" sx={{ borderCollapse: 'collapse', '& .MuiTableCell-root': { border: `1px solid ${c.border}` } }}>
                   <TableHead sx={{ bgcolor: `${c.primary}10` }}>
@@ -161,7 +161,7 @@ export default function NpsTab() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Grid item xs={12} md={9}>
+            <Grid size={{xs: 12, md: 9}}>
               <Grid container spacing={2}>
                 {data.recommend_vehicle_pie.map((item: any) => {
                   const pieData = [
@@ -169,7 +169,7 @@ export default function NpsTab() {
                     { name: 'No', value: item.no }
                   ]
                   return (
-                    <Grid item xs={12} sm={6} md={4} key={item.brand}>
+                    <Grid size={{xs: 12, sm: 6, md: 4}} key={item.brand}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <Typography variant="subtitle2" sx={{ color: c.textSecondary }}>{item.brand}</Typography>
                         <PieChart width={200} height={200}>
@@ -206,7 +206,7 @@ export default function NpsTab() {
             Likelihood to Recommend (Overall)
           </Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={3}>
+            <Grid size={{xs: 12, md: 3}}>
               <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: c.bgPaper, borderColor: c.border, borderRadius: 1, overflow: 'hidden' }}>
                 <Table size="small" sx={{ borderCollapse: 'collapse', '& .MuiTableCell-root': { border: `1px solid ${c.border}` } }}>
                   <TableHead sx={{ bgcolor: `${c.primary}10` }}>
@@ -226,12 +226,12 @@ export default function NpsTab() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Grid item xs={12} md={9} sx={{ minWidth: 0 }}>
+            <Grid size={{xs: 12, md: 9}} sx={{ minWidth: 0 }}>
               <Grid container spacing={2}>
                 {data.recommend_category_bar.map((item: any) => {
                   const chartData = [item]
                   return (
-                    <Grid item xs={12} sm={6} md={4} key={item.brand}>
+                    <Grid size={{xs: 12, sm: 6, md: 4}} key={item.brand}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', height: 250 }}>
                         <Typography variant="subtitle2" sx={{ color: c.textSecondary, mb: 1, textAlign: 'center' }}>{item.brand}</Typography>
                         <ResponsiveContainer width="99%" height="100%">

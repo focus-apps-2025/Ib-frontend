@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.DEV
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000,
 })
 
 // Request interceptor: attach JWT
@@ -71,6 +71,9 @@ export const usersApi = {
   toggleStatus: (id: string) => api.put(`/users/${id}/toggle-status`),
   resetPassword: (id: string, new_password: string) =>
     api.post(`/users/${id}/reset-password`, { new_password }),
+  getScope: (id: string) => api.get(`/users/${id}/scope`),
+  updateScope: (id: string, data: object) => api.put(`/users/${id}/scope`, data),
+  clearScope: (id: string) => api.delete(`/users/${id}/scope`),
 }
 
 // ─── Regions ─────────────────────────────────────────────────────────────────
@@ -150,6 +153,7 @@ export const dashboardApi = {
   serviceNps: (params?: object) => api.get('/dashboard/service-nps', { params }),
   serviceBenefitsBetterments: (params?: object) => api.get('/dashboard/service-benefits-betterments', { params }),
   serviceSatisfaction: (params?: object) => api.get('/dashboard/service-satisfaction', { params }),
+  serviceCps: (params?: object) => api.get('/dashboard/service-cps', { params }),
   ibSummaryTable: (params?: object) => api.get('/dashboard/ib-summary-table', { params }),
 }
 

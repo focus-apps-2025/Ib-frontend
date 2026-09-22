@@ -13,7 +13,7 @@ export default function SettingsPage() {
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3, color: c.textPrimary }}>⚙️ System Settings</Typography>
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid size={{xs: 12, md: 6}}>
           <Card>
             <CardContent>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>📧 Email Configuration</Typography>
@@ -25,7 +25,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid size={{xs: 12, md: 6}}>
           <Card>
             <CardContent>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>📁 Upload Settings</Typography>
@@ -40,7 +40,7 @@ export default function SettingsPage() {
         </Grid>
 
         {/* Appearance / Theme Settings */}
-        <Grid size={{ xs: 12 }}>
+        <Grid size={{xs: 12}}>
           <Card>
             <CardContent>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 3, color: c.textPrimary }}>🎨 Appearance</Typography>

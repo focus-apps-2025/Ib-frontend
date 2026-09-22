@@ -6,12 +6,13 @@ import {
 } from '@mui/material'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LabelList,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell, Label
 } from 'recharts'
-import { Speed, AccessTime, BuildCircle, DownloadForOffline, Star, ThumbUp, Handyman, VerifiedUser } from '@mui/icons-material'
+import { Speed, AccessTime, BuildCircle, DownloadForOffline, Star, ThumbUp, Handyman, VerifiedUser, Assessment } from '@mui/icons-material'
 import { dashboardApi } from '../../lib/api'
 import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
+
 
 const BRAND_COLORS = ['#3B82F6', '#4ECCA3', '#FF6584', '#FFD93D', '#9B51E0', '#F2994A', '#27AE60', '#E8903D']
 
@@ -65,7 +66,7 @@ const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, perc
   )
 }
 
-export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: ServiceDashboardTabProps = {}) {
+export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {}) {
   const filters = useFilterStore()
   const c = useThemeColors()
 
@@ -77,6 +78,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
   const [npsData, setNpsData] = useState<any>(null)
   const [benefitsData, setBenefitsData] = useState<any>(null)
   const [satisfactionData, setSatisfactionData] = useState<any>(null)
+  const [cpsData, setCpsData] = useState<any>(null)
 
   const [authSubSegment, setAuthSubSegment] = useState<string>('overall')
   const [pgmSubSegment, setPgmSubSegment] = useState<string>('overall')
@@ -98,17 +100,19 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
           search: filters.search || undefined,
         }
 
-        const [freqRes, npsRes, benefitsRes, satisfactionRes] = await Promise.all([
+        const [freqRes, npsRes, benefitsRes, satisfactionRes, cpsRes] = await Promise.all([
           dashboardApi.serviceFrequency(filterParams),
           dashboardApi.serviceNps(filterParams),
           dashboardApi.serviceBenefitsBetterments(filterParams),
           dashboardApi.serviceSatisfaction(filterParams),
+          dashboardApi.serviceCps(filterParams),
         ])
 
         setFreqData(freqRes.data)
         setNpsData(npsRes.data)
         setBenefitsData(benefitsRes.data)
         setSatisfactionData(satisfactionRes.data)
+        setCpsData(cpsRes.data)
       } catch (err: any) {
         console.error('Failed to fetch Service Dashboard data:', err)
         setError(err?.response?.data?.detail || err?.message || 'Failed to load Service Dashboard data.')
@@ -247,7 +251,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
 
           {/* Key Metrics Cards */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={6} sm={3}>
+            <Grid size={{xs: 6, sm: 3}}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Total Responses
@@ -258,7 +262,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
               </Paper>
             </Grid>
 
-            <Grid item xs={6} sm={3}>
+            <Grid size={{xs: 6, sm: 3}}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Would Recommend
@@ -272,7 +276,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
               </Paper>
             </Grid>
 
-            <Grid item xs={6} sm={3}>
+            <Grid size={{xs: 6, sm: 3}}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Promoters (9-10)
@@ -286,7 +290,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
               </Paper>
             </Grid>
 
-            <Grid item xs={6} sm={3}>
+            <Grid size={{xs: 6, sm: 3}}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Net NPS Score
@@ -304,7 +308,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
           {/* Overall Section Pie Charts Row */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
             {/* Pie Chart 1: Overall Recommend Distribution */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ThumbUp sx={{ fontSize: 18, color: '#10B981' }} /> Overall - Will You Recommend? (Column BR)
@@ -383,7 +387,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
             </Grid>
 
             {/* Pie Chart 2: Overall NPS Distribution */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Star sx={{ fontSize: 18, color: '#F59E0B' }} /> Overall - NPS Score Distribution (Column BS)
@@ -507,7 +511,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
 
           <Grid container spacing={3} sx={{ alignItems: 'stretch', mb: 1 }}>
             {/* Left side: compact "Will You Recommend?" pie per brand */}
-            <Grid item xs={12} lg={5}>
+            <Grid size={{xs: 12, lg: 5}}>
               {brandData.length === 0 ? (
                 <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: `1px solid ${c.border}`, borderRadius: 2, height: '100%' }}>
                   <Typography variant="body2" sx={{ color: c.textSecondary }}>
@@ -524,7 +528,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                     const bColor = BRAND_COLORS[idx % BRAND_COLORS.length]
 
                     return (
-                      <Grid item xs={12} key={bRow.brand}>
+                      <Grid size={{xs: 12}} key={bRow.brand}>
                         <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
                             <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: bColor }} />
@@ -572,7 +576,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
             </Grid>
 
             {/* Right side: Single Bar Chart Containing All Brands for NPS Score Distribution (Column BS) */}
-            <Grid item xs={12} lg={7}>
+            <Grid size={{xs: 12, lg: 7}}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Star sx={{ fontSize: 18, color: '#F59E0B' }} /> NPS Score Distribution across All Brands (Column BS)
@@ -744,14 +748,14 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
           {/* Benefits & Issues Side by Side Layout */}
           <Grid container spacing={3}>
             {/* Left Side: Top 10 Benefits */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#10B981', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ThumbUp sx={{ fontSize: 20 }} /> Top 10 Benefits (Passive/Feedback) - Columns OI to OU
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}>
                       <Table size="small">
                         <TableHead>
@@ -771,7 +775,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                             </TableRow>
                           ) : (
                             topBenefits.map((item: any, idx: number) => {
-                              const pct = sampleSize > 0 ? ((item.count / sampleSize) * 100).toFixed(1) : '0.0'
+                              const pct = item.percentage !== undefined ? item.percentage.toFixed(1) : (sampleSize > 0 ? ((item.count / sampleSize) * 100).toFixed(1) : '0.0')
                               return (
                                 <TableRow key={item.topic} hover>
                                   <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textSecondary }}>{idx + 1}</TableCell>
@@ -788,7 +792,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </Grid>
 
                   {/* Right: Bar Chart */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Box sx={{ height: 300, width: '100%' }}>
                       {topBenefits.length === 0 ? (
                         <Box sx={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -830,14 +834,14 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
             </Grid>
 
             {/* Right Side: Top 10 Issues */}
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#EF4444', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <BuildCircle sx={{ fontSize: 20 }} /> Top 10 Issues (Betterments) - Columns OV to PJ
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}>
                       <Table size="small">
                         <TableHead>
@@ -857,7 +861,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                             </TableRow>
                           ) : (
                             topIssues.map((item: any, idx: number) => {
-                              const pct = sampleSize > 0 ? ((item.count / sampleSize) * 100).toFixed(1) : '0.0'
+                              const pct = item.percentage !== undefined ? item.percentage.toFixed(1) : (sampleSize > 0 ? ((item.count / sampleSize) * 100).toFixed(1) : '0.0')
                               return (
                                 <TableRow key={item.topic} hover>
                                   <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textSecondary }}>{idx + 1}</TableCell>
@@ -874,7 +878,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </Grid>
 
                   {/* Right: Bar Chart */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Box sx={{ height: 300, width: '100%' }}>
                       {topIssues.length === 0 ? (
                         <Box sx={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -1094,7 +1098,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
 
                 <Grid container spacing={3}>
                   {/* Left Side Merged Main Table & Base Table */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {/* Merged Main Table (5A to 5J) */}
                       <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
@@ -1216,7 +1220,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </Grid>
 
                   {/* Right Side Single Grouped Horizontal Bar Chart */}
-                  <Grid item xs={12} lg={6}>
+                  <Grid size={{xs: 12, lg: 6}}>
                     <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%', minHeight: 480 }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                         Brand-wise Positive Points Percentage Distribution (5A - 5J)
@@ -1314,9 +1318,9 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   Section 7 & 8: Vehicle Issues & Reporting Summary
                 </Typography>
 
-                <Grid container spacing={2} alignItems="stretch">
+                <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
                   {/* Left Side Merged Table (Section 7 & 8 Total Counts) */}
-                  <Grid item xs={12} lg={6} sx={{ minWidth: 0 }}>
+                  <Grid size={{xs: 12, lg: 6}} sx={{ minWidth: 0 }}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
                       <Table size="small">
                         <TableHead>
@@ -1378,7 +1382,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </Grid>
 
                   {/* Right Side Merged Chart - Shows Total Counts per Brand */}
-                  <Grid item xs={12} lg={6} sx={{ minWidth: 0, flexGrow: 1 }}>
+                  <Grid size={{xs: 12, lg: 6}} sx={{ minWidth: 0, flexGrow: 1 }}>
                     <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                         Total Responses Comparison (Section 7 vs Section 8)
@@ -1465,9 +1469,9 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                     {secObj.question}
                   </Typography>
 
-                  <Grid container spacing={2} alignItems="stretch">
+                  <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
                     {/* Left Side Table (Yes, No, Grand Total) */}
-                    <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
+                    <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
                       <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
                         <Table size="small">
                           <TableHead>
@@ -1532,7 +1536,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                     </Grid>
 
                     {/* Right Side Chart (Yes/No categories with brand bars) */}
-                    <Grid item xs={12} md={8} sx={{ minWidth: 0, flexGrow: 1 }}>
+                    <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flexGrow: 1 }}>
                       <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                         <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                           Percentage Distribution (Yes vs No)
@@ -1585,6 +1589,264 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
     )
   }
 
+  const renderServiceCpsTab = () => {
+    if (!cpsData) return null
+
+    const questions = [
+      { id: 'pk', title: 'Recommend TVS Genuine Spare Parts', code: 'C1 (PK)' },
+      { id: 'po', title: 'Availability of TVS Genuine Spare Parts', code: 'C2 (PO)' },
+      { id: 'ps', title: 'Quality of TVS Genuine Spare Parts', code: 'C3 (PS)' },
+      { id: 'pw', title: 'Value for Money of TVS Genuine Spare Parts', code: 'C4 (PW)' },
+    ]
+
+    const pieColors = {
+      Yes: '#10B981', // Emerald Green
+      Maybe: '#F59E0B', // Amber
+      No: '#EF4444',  // Coral Red
+    }
+
+    const brandBreakdown = cpsData.brand_breakdown || []
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+          <Box sx={{ p: 1, borderRadius: 2, backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6', display: 'flex' }}>
+            <Assessment sx={{ fontSize: 24 }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: c.textPrimary }}>
+              Customer Perception Score (CPS)
+            </Typography>
+            <Typography variant="caption" sx={{ color: c.textSecondary }}>
+              Analysis of customer feedback on TVS Genuine Spare Parts (Breakdown by Brand)
+            </Typography>
+          </Box>
+        </Box>
+
+        {questions.map(q => {
+          const overallData = cpsData.overall?.[q.id] || { Yes: 0, Maybe: 0, No: 0, total: 0 }
+
+          return (
+            <Card key={q.id} sx={{ border: `1px solid ${c.border}` }}>
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5, color: c.textPrimary }}>
+                  {q.code}: {q.title}
+                </Typography>
+                <Typography variant="body2" sx={{ color: c.textSecondary, mb: 3 }}>
+                  Overall responses: {overallData.total}
+                </Typography>
+
+                <Grid container spacing={4}>
+                  {/* LEFT SIDE: Table */}
+                  <Grid size={{xs: 12, md: 5}}>
+                    <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                      <Table size="small">
+                        <TableHead sx={{ backgroundColor: c.tableHeaderBg }}>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600, color: c.textPrimary, py: 1.5 }}>Brand Model</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, color: pieColors.Yes, py: 1.5 }}>Yes</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, color: pieColors.Maybe, py: 1.5 }}>Maybe</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, color: pieColors.No, py: 1.5 }}>No</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, color: c.textSecondary, py: 1.5 }}>Total</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {brandBreakdown.map((row: any) => {
+                            const qData = row[q.id] || { Yes: 0, Maybe: 0, No: 0, total: 0 }
+                            if (qData.total === 0) return null
+                            return (
+                              <TableRow key={row.brand} hover>
+                                <TableCell sx={{ color: c.textSecondary, fontWeight: 500 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Box sx={{ borderRadius: '50%', backgroundColor: getBrandColor(row.brand, 0), width: 8, height: 8 }} />
+                                    {row.brand}
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right" sx={{ color: c.textPrimary }}>
+                                  {qData.Yes} <Typography component="span" variant="caption" sx={{ color: c.textMuted, ml: 0.5 }}>({Math.round((qData.Yes / qData.total) * 100)}%)</Typography>
+                                </TableCell>
+                                <TableCell align="right" sx={{ color: c.textPrimary }}>
+                                  {qData.Maybe} <Typography component="span" variant="caption" sx={{ color: c.textMuted, ml: 0.5 }}>({Math.round((qData.Maybe / qData.total) * 100)}%)</Typography>
+                                </TableCell>
+                                <TableCell align="right" sx={{ color: c.textPrimary }}>
+                                  {qData.No} <Typography component="span" variant="caption" sx={{ color: c.textMuted, ml: 0.5 }}>({Math.round((qData.No / qData.total) * 100)}%)</Typography>
+                                </TableCell>
+                                <TableCell align="right" sx={{ color: c.textSecondary, fontWeight: 600 }}>{qData.total}</TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+
+                    {/* Legend underneath table */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, mt: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 12, height: 12, backgroundColor: pieColors.Yes, borderRadius: '50%' }} />
+                        <Typography variant="body2" sx={{ color: c.textSecondary }}>Yes</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 12, height: 12, backgroundColor: pieColors.Maybe, borderRadius: '50%' }} />
+                        <Typography variant="body2" sx={{ color: c.textSecondary }}>Maybe</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ width: 12, height: 12, backgroundColor: pieColors.No, borderRadius: '50%' }} />
+                        <Typography variant="body2" sx={{ color: c.textSecondary }}>No</Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  {/* RIGHT SIDE: Larger Pie Charts */}
+                  {/* RIGHT SIDE: Larger Pie Charts — Fixed Card Width */}
+                  <Grid size={{xs: 12, md: 7}}>
+                    <Grid container spacing={3}>
+                      {brandBreakdown.map((row: any) => {
+                        const qData = row[q.id] || { Yes: 0, Maybe: 0, No: 0, total: 0 }
+                        if (qData.total === 0) return null
+
+                        const pieData = [
+                          { name: 'Yes', value: qData.Yes, pct: qData.Yes / qData.total },
+                          { name: 'Maybe', value: qData.Maybe, pct: qData.Maybe / qData.total },
+                          { name: 'No', value: qData.No, pct: qData.No / qData.total },
+                        ].filter(d => d.value > 0)
+
+                        // Fixed card dimensions — same for every brand
+                        const CARD_WIDTH = 320
+                        const CHART_SIZE = 260
+
+                        return (
+                          <Grid size={{xs: 12, sm: 6, md: 6, lg: 4}} key={row.brand}>
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 2,
+                                border: `1px solid ${c.border}`,
+                                borderRadius: 2,
+                                backgroundColor: c.cardBg,
+                                width: '100%',
+                                maxWidth: CARD_WIDTH,
+                                mx: 'auto',                    // center the fixed-width card
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                boxSizing: 'border-box',
+                              }}
+                            >
+                              {/* Fixed-height, ellipsis title — long brand names won't stretch the card */}
+                              <Typography
+                                variant="subtitle2"
+                                title={row.brand}
+                                sx={{
+                                  fontWeight: 700,
+                                  color: c.textPrimary,
+                                  mb: 1,
+                                  width: '100%',
+                                  textAlign: 'center',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  fontSize: 13,
+                                }}
+                              >
+                                {row.brand}
+                              </Typography>
+
+                              {/* Fixed-size pie — no ResponsiveContainer, no clipping */}
+                              <Box
+                                sx={{
+                                  width: CHART_SIZE,
+                                  height: CHART_SIZE,
+                                  position: 'relative',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <PieChart width={CHART_SIZE} height={CHART_SIZE}>
+                                  <Pie
+                                    data={pieData}
+                                    cx={CHART_SIZE / 2}
+                                    cy={CHART_SIZE / 2}
+                                    innerRadius={65}
+                                    outerRadius={95}
+                                    paddingAngle={pieData.length > 1 ? 2 : 0}
+                                    dataKey="value"
+                                    label={renderCustomPieLabel}
+                                    labelLine={false}
+                                  >
+                                    {pieData.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={(pieColors as any)[entry.name] || '#999'} />
+                                    ))}
+                                  </Pie>
+
+                                  <RechartsTooltip formatter={(val: number) => [val, 'Count']} />
+
+                                  {/* ── Center total drawn directly, always visible ── */}
+                                  <text
+                                    x={CHART_SIZE / 2}
+                                    y={CHART_SIZE / 2 - 4}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill={c.textPrimary}
+                                    fontSize={26}
+                                    fontWeight={800}
+                                  >
+                                    {qData.total}
+                                  </text>
+                                  <text
+                                    x={CHART_SIZE / 2}
+                                    y={CHART_SIZE / 2 + 20}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill={c.textMuted}
+                                    fontSize={11}
+                                    fontWeight={500}
+                                  >
+                                    Responses
+                                  </text>
+                                </PieChart>
+                              </Box>
+
+                              {/* Legend — fixed height, doesn't stretch card */}
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  justifyContent: 'center',
+                                  gap: 1.5,
+                                  mt: 1,
+                                  minHeight: 28,
+                                }}
+                              >
+                                {pieData.map((entry) => (
+                                  <Box key={entry.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Box
+                                      sx={{
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: '50%',
+                                        backgroundColor: (pieColors as any)[entry.name] || '#999',
+                                      }}
+                                    />
+                                    <Typography variant="caption" sx={{ color: c.textSecondary, fontSize: 11 }}>
+                                      {entry.name}
+                                    </Typography>
+                                  </Box>
+                                ))}
+                              </Box>
+                            </Paper>
+                          </Grid>
+                        )
+                      })}
+                    </Grid>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </Box>
+    )
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Header Bar */}
@@ -1609,6 +1871,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
           <Tab icon={<Star sx={{ fontSize: 20 }} />} iconPosition="start" label="Service NPS (Authorized & PGM)" />
           <Tab icon={<ThumbUp sx={{ fontSize: 20 }} />} iconPosition="start" label="Benefits & Betterments" />
           <Tab icon={<VerifiedUser sx={{ fontSize: 20 }} />} iconPosition="start" label="Service Satisfaction" />
+          <Tab icon={<Assessment sx={{ fontSize: 20 }} />} iconPosition="start" label="Customer Perception Score" />
         </Tabs>
       </Box>
 
@@ -1639,7 +1902,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
               </Box>
 
               <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
-                <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
+                <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     KMS Frequency by Brand (%)
                   </Typography>
@@ -1695,7 +1958,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </TableContainer>
                 </Grid>
 
-                <Grid item xs={12} md={8} sx={{ minWidth: 0, flex: 1 }}>
+                <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     KMS Frequency Percentage by Brand
                   </Typography>
@@ -1775,7 +2038,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
               </Box>
 
               <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
-                <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
+                <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     Time Frequency by Brand (%)
                   </Typography>
@@ -1831,7 +2094,7 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
                   </TableContainer>
                 </Grid>
 
-                <Grid item xs={12} md={8} sx={{ minWidth: 0, flex: 1 }}>
+                <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     Time Frequency Percentage by Brand
                   </Typography>
@@ -1941,6 +2204,9 @@ export default function ServiceDashboardTab({ onDownloadPPT, pptGenerating }: Se
 
       {/* Tab 3: Service Satisfaction (Authorized Service Workshop) */}
       {activeTab === 3 && renderServiceSatisfactionTab()}
+
+      {/* Tab 4: Customer Perception Score */}
+      {activeTab === 4 && renderServiceCpsTab()}
     </Box>
   )
 } 

@@ -34,6 +34,7 @@ export function useThemeColors() {
             paper: isDark ? '#12122A' : '#FFFFFF', // Pure white for cards
             sidebar: isDark ? '#0D0D25' : '#F8F8F4', // Slightly darker cream
             headerCell: isDark ? '#1A1A3A' : '#F0F4FA', // Light blue-tinted cream
+            tableHeaderBg: isDark ? '#1A1A3A' : '#F0F4FA',
             tableHover: isDark
                 ? 'rgba(108,99,255,0.05)'
                 : 'rgba(0, 127, 255, 0.04)',

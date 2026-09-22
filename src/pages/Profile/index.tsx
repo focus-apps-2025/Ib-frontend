@@ -33,7 +33,7 @@ export default function ProfilePage() {
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3, color: c.textPrimary }}>👤 My Profile</Typography>
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 5 }}>
+        <Grid size={{xs: 12, md: 5}}>
           <Card>
             <CardContent sx={{ textAlign: 'center', py: 4 }}>
               <Avatar sx={{ width: 80, height: 80, mx: 'auto', mb: 2, background: 'linear-gradient(135deg, #6C63FF, #FF6584)', fontSize: '2rem' }}>
@@ -48,7 +48,7 @@ export default function ProfilePage() {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 7 }}>
+        <Grid size={{xs: 12, md: 7}}>
           <Card>
             <CardContent>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>🔒 Change Password</Typography>

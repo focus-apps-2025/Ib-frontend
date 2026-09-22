@@ -4,6 +4,7 @@ import {
     TableCell, TableHead, TableRow, CircularProgress, Alert,
     Paper, Divider, Chip, useTheme, alpha,
 } from '@mui/material'
+import EmptyState from './EmptyState'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     Legend, LabelList, ReferenceLine,
@@ -1127,6 +1128,12 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
         return <Alert severity="info" sx={{ borderRadius: 3 }}>No analytics data available.</Alert>
     }
 
+    const isDataEmpty = !data.age_group?.brands?.length;
+
+    if (isDataEmpty) {
+        return <EmptyState />;
+    }
+
     return (
         <Box sx={{ py: 2 }}>
             {/* Section Header */}
@@ -1155,12 +1162,12 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
 
             <Grid container spacing={3}>
                 {/* Location & Model wise Sample Sizes - FULL WIDTH */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <LocationModelSampleSizeCard sampleData={data.location_model_sample_size} />
                 </Grid>
 
                 {/* Visualization 1: Age Group - Half width */}
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid size={{xs: 12, md: 6}}>
                     <VizCard
                         title="Age Group Distribution"
                         matrix={data.age_group}
@@ -1174,7 +1181,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 2: Age Group by City & Brand - FULL WIDTH */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <VizCard
                         title="Age Group by City & Brand"
                         matrix={data.age_city}
@@ -1189,7 +1196,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 3: Mode of Purchase - Half width */}
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid size={{xs: 12, md: 6}}>
                     <VizCard
                         title="Mode of Purchase"
                         matrix={data.mode_of_purchase}
@@ -1203,7 +1210,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 4: Ownership - Half width */}
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid size={{xs: 12, md: 6}}>
                     <VizCard
                         title="Ownership"
                         matrix={data.ownership}
@@ -1217,7 +1224,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 5: User Profession - Full width */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <VizCard
                         title="User Profession Distribution"
                         matrix={data.profession}
@@ -1231,7 +1238,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 6: Vehicle Usage Purpose (Column R) - Full width */}
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <VizCard
                         title="Vehicle Usage Purpose"
                         matrix={data.vehicle_usage}

@@ -8,13 +8,13 @@ export default function ComparisonTab({ filters }: { filters: FilterState }) {
     return (
         <Box>
             <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <BrandComparisonChart filters={filters} />
                 </Grid>
             </Grid>
 
             <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <PassiveTopicsChart filters={filters} />
                 </Grid>
             </Grid>

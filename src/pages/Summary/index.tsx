@@ -252,7 +252,7 @@ export default function SummaryPage() {
           { label: 'Total Issues / Complaints', value: grandIssues.toLocaleString(), icon: <BuildCircle sx={{ fontSize: 26 }} />, color: '#FF6584' },
           { label: 'Average NPS Score', value: avgNps, icon: <RateReview sx={{ fontSize: 26 }} />, color: '#3B82F6' },
         ].map((kpi) => (
-          <Grid item xs={12} sm={6} md={3} key={kpi.label}>
+          <Grid size={{xs: 12, sm: 6, md: 3}} key={kpi.label}>
             <Card
               elevation={0}
               sx={{

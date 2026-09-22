@@ -103,14 +103,14 @@ export default function ComparisonPage() {
 
             {/* Top: Brand Comparison (full width) */}
             <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <BrandComparisonChart filters={filters} />
                 </Grid>
             </Grid>
 
             {/* Bottom: Passive Topics (full width) */}
             <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+                <Grid size={{xs: 12}}>
                     <PassiveTopicsChart filters={filters} />
                 </Grid>
             </Grid>
