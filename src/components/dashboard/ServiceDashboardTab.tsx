@@ -14,26 +14,71 @@ import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
 
 
-const BRAND_COLORS = ['#3B82F6', '#4ECCA3', '#FF6584', '#FFD93D', '#9B51E0', '#F2994A', '#27AE60', '#E8903D']
-
+const BRAND_COLORS = [
+  '#00B4D8', // TVS
+  '#7C3AED', // Bajaj
+  '#FF5A00', // Yamaha
+  '#1E3A8A', // Honda
+  '#2A9D8F', // Suzuki
+  '#3B82F6',
+  '#EC4899',
+  '#F97316',
+  '#10B981',
+  '#8B5CF6',
+]
 const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+  // TVS
+  'TVS Raider': '#00B4D8',
+  'TVS Apache': '#00B4D8',
   'Apache RTR 160 4V CARB': '#00B4D8',
-  'Suzuki Gixxer': '#7C3AED',
-  'Yamaha FZ version 3': '#F59E0B',
+  'TVS': '#00B4D8',
+
+  // Bajaj
+  'Bajaj Pulsar': '#7C3AED',
+  'Bajaj': '#7C3AED',
+
+  // Yamaha
+  'Yamaha FZ': '#FF5A00',
+  'Yamaha FZ version 3': '#FF5A00',
+  'Yamaha': '#FF5A00',
+
+  // Honda
+  'Honda CB': '#1E3A8A',
+  'Honda': '#1E3A8A',
+
+  // Suzuki
+  'Suzuki Gixxer': '#2A9D8F',
+  'Suzuki': '#2A9D8F',
+}
+const FALLBACK_BRAND_COLORS = [
+  '#00B4D8', '#7C3AED', '#FF5A00', '#1E3A8A', '#2A9D8F',
+  '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6',
+]
+
+const hashBrandName = (str: string): number => {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return Math.abs(hash)
 }
 
-const FALLBACK_BRAND_COLORS = ['#00B4D8', '#7C3AED', '#F59E0B', '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6']
 const getBrandColor = (brand: string, index: number): string => {
-  if (SPECIFIC_BRAND_COLORS[brand]) {
-    return SPECIFIC_BRAND_COLORS[brand]
-  }
-  const lower = brand.toLowerCase()
-  if (lower.includes('apache')) return '#00B4D8'      // Light blue
-  if (lower.includes('tvs')) return '#00B4D8'         // Light blue for TVS
-  if (lower.includes('honda')) return '#7C3AED'       // Violet for Honda
-  if (lower.includes('gixxer') || lower.includes('suzuki')) return '#7C3AED'
-  if (lower.includes('yamaha') || lower.includes('fz')) return '#F59E0B'
-  return FALLBACK_BRAND_COLORS[index % FALLBACK_BRAND_COLORS.length]
+  if (!brand) return '#475569'
+  const clean = String(brand).trim()
+  if (SPECIFIC_BRAND_COLORS[clean]) return SPECIFIC_BRAND_COLORS[clean]
+
+  const lower = clean.toLowerCase()
+
+  if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '#00B4D8'
+  if (lower.includes('pulsar') || lower.includes('bajaj')) return '#7C3AED'
+  if (lower.includes('yamaha') || lower.includes('fz')) return '#FF5A00'
+  if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
+  if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
+
+  // Deterministic hash so the same unknown brand always gets the same color
+  // (don't use `index` here — index changes per chart and breaks consistency)
+  return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]
 }
 
 const PIE_RECOMMEND_COLORS = {
@@ -251,7 +296,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
           {/* Key Metrics Cards */}
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{xs: 6, sm: 3}}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Total Responses
@@ -262,7 +307,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
               </Paper>
             </Grid>
 
-            <Grid size={{xs: 6, sm: 3}}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Would Recommend
@@ -276,7 +321,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
               </Paper>
             </Grid>
 
-            <Grid size={{xs: 6, sm: 3}}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Promoters (9-10)
@@ -290,7 +335,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
               </Paper>
             </Grid>
 
-            <Grid size={{xs: 6, sm: 3}}>
+            <Grid size={{ xs: 6, sm: 3 }}>
               <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>
                   Net NPS Score
@@ -308,7 +353,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           {/* Overall Section Pie Charts Row */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
             {/* Pie Chart 1: Overall Recommend Distribution */}
-            <Grid size={{xs: 12, md: 6}}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ThumbUp sx={{ fontSize: 18, color: '#10B981' }} /> Overall - Will You Recommend? (Column BR)
@@ -387,7 +432,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             </Grid>
 
             {/* Pie Chart 2: Overall NPS Distribution */}
-            <Grid size={{xs: 12, md: 6}}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Star sx={{ fontSize: 18, color: '#F59E0B' }} /> Overall - NPS Score Distribution (Column BS)
@@ -511,7 +556,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
           <Grid container spacing={3} sx={{ alignItems: 'stretch', mb: 1 }}>
             {/* Left side: compact "Will You Recommend?" pie per brand */}
-            <Grid size={{xs: 12, lg: 5}}>
+            <Grid size={{ xs: 12, lg: 5 }}>
               {brandData.length === 0 ? (
                 <Paper elevation={0} sx={{ p: 4, textAlign: 'center', border: `1px solid ${c.border}`, borderRadius: 2, height: '100%' }}>
                   <Typography variant="body2" sx={{ color: c.textSecondary }}>
@@ -528,7 +573,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                     const bColor = BRAND_COLORS[idx % BRAND_COLORS.length]
 
                     return (
-                      <Grid size={{xs: 12}} key={bRow.brand}>
+                      <Grid size={{ xs: 12 }} key={bRow.brand}>
                         <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
                             <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: bColor }} />
@@ -576,7 +621,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             </Grid>
 
             {/* Right side: Single Bar Chart Containing All Brands for NPS Score Distribution (Column BS) */}
-            <Grid size={{xs: 12, lg: 7}}>
+            <Grid size={{ xs: 12, lg: 7 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: c.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Star sx={{ fontSize: 18, color: '#F59E0B' }} /> NPS Score Distribution across All Brands (Column BS)
@@ -748,14 +793,14 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           {/* Benefits & Issues Side by Side Layout */}
           <Grid container spacing={3}>
             {/* Left Side: Top 10 Benefits */}
-            <Grid size={{xs: 12, md: 6}}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#10B981', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ThumbUp sx={{ fontSize: 20 }} /> Top 10 Benefits (Passive/Feedback) - Columns OI to OU
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}>
                       <Table size="small">
                         <TableHead>
@@ -792,7 +837,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </Grid>
 
                   {/* Right: Bar Chart */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Box sx={{ height: 300, width: '100%' }}>
                       {topBenefits.length === 0 ? (
                         <Box sx={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -834,14 +879,14 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             </Grid>
 
             {/* Right Side: Top 10 Issues */}
-            <Grid size={{xs: 12, md: 6}}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#EF4444', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <BuildCircle sx={{ fontSize: 20 }} /> Top 10 Issues (Betterments) - Columns OV to PJ
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}>
                       <Table size="small">
                         <TableHead>
@@ -878,7 +923,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </Grid>
 
                   {/* Right: Bar Chart */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Box sx={{ height: 300, width: '100%' }}>
                       {topIssues.length === 0 ? (
                         <Box sx={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -1098,7 +1143,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
                 <Grid container spacing={3}>
                   {/* Left Side Merged Main Table & Base Table */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {/* Merged Main Table (5A to 5J) */}
                       <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
@@ -1220,7 +1265,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </Grid>
 
                   {/* Right Side Single Grouped Horizontal Bar Chart */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%', minHeight: 480 }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                         Brand-wise Positive Points Percentage Distribution (5A - 5J)
@@ -1320,7 +1365,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
                 <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
                   {/* Left Side Merged Table (Section 7 & 8 Total Counts) */}
-                  <Grid size={{xs: 12, lg: 6}} sx={{ minWidth: 0 }}>
+                  <Grid size={{ xs: 12, lg: 6 }} sx={{ minWidth: 0 }}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
                       <Table size="small">
                         <TableHead>
@@ -1382,7 +1427,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </Grid>
 
                   {/* Right Side Merged Chart - Shows Total Counts per Brand */}
-                  <Grid size={{xs: 12, lg: 6}} sx={{ minWidth: 0, flexGrow: 1 }}>
+                  <Grid size={{ xs: 12, lg: 6 }} sx={{ minWidth: 0, flexGrow: 1 }}>
                     <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                         Total Responses Comparison (Section 7 vs Section 8)
@@ -1471,7 +1516,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
                   <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
                     {/* Left Side Table (Yes, No, Grand Total) */}
-                    <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
+                    <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
                       <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
                         <Table size="small">
                           <TableHead>
@@ -1536,7 +1581,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                     </Grid>
 
                     {/* Right Side Chart (Yes/No categories with brand bars) */}
-                    <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flexGrow: 1 }}>
+                    <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0, flexGrow: 1 }}>
                       <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg }}>
                         <Typography variant="caption" sx={{ fontWeight: 700, color: c.textSecondary, mb: 1, display: 'block' }}>
                           Percentage Distribution (Yes vs No)
@@ -1638,7 +1683,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
                 <Grid container spacing={4}>
                   {/* LEFT SIDE: Table */}
-                  <Grid size={{xs: 12, md: 5}}>
+                  <Grid size={{ xs: 12, md: 5 }}>
                     <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 2 }}>
                       <Table size="small">
                         <TableHead sx={{ backgroundColor: c.tableHeaderBg }}>
@@ -1698,7 +1743,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
                   {/* RIGHT SIDE: Larger Pie Charts */}
                   {/* RIGHT SIDE: Larger Pie Charts — Fixed Card Width */}
-                  <Grid size={{xs: 12, md: 7}}>
+                  <Grid size={{ xs: 12, md: 7 }}>
                     <Grid container spacing={3}>
                       {brandBreakdown.map((row: any) => {
                         const qData = row[q.id] || { Yes: 0, Maybe: 0, No: 0, total: 0 }
@@ -1715,7 +1760,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                         const CHART_SIZE = 260
 
                         return (
-                          <Grid size={{xs: 12, sm: 6, md: 6, lg: 4}} key={row.brand}>
+                          <Grid size={{ xs: 12, sm: 6, md: 6, lg: 4 }} key={row.brand}>
                             <Paper
                               elevation={0}
                               sx={{
@@ -1902,7 +1947,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
               </Box>
 
               <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
-                <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
+                <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     KMS Frequency by Brand (%)
                   </Typography>
@@ -1958,7 +2003,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </TableContainer>
                 </Grid>
 
-                <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flex: 1 }}>
+                <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0, flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     KMS Frequency Percentage by Brand
                   </Typography>
@@ -1996,7 +2041,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                           />
                           <Legend wrapperStyle={{ paddingTop: 10, fontSize: 11 }} />
                           {kmsBrands.map((b: string, index: number) => (
-                            <Bar key={b} dataKey={b} name={b} fill={BRAND_COLORS[index % BRAND_COLORS.length]} radius={[4, 4, 0, 0]} maxBarSize={36}>
+                            <Bar key={b} dataKey={b} name={b} fill={getBrandColor(b, index)} radius={[4, 4, 0, 0]} maxBarSize={36}>
                               <LabelList
                                 dataKey={b}
                                 position="top"
@@ -2038,7 +2083,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
               </Box>
 
               <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
-                <Grid size={{xs: 12, md: 4}} sx={{ minWidth: 0 }}>
+                <Grid size={{ xs: 12, md: 4 }} sx={{ minWidth: 0 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     Time Frequency by Brand (%)
                   </Typography>
@@ -2094,7 +2139,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                   </TableContainer>
                 </Grid>
 
-                <Grid size={{xs: 12, md: 8}} sx={{ minWidth: 0, flex: 1 }}>
+                <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0, flex: 1 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: c.textPrimary }}>
                     Time Frequency Percentage by Brand
                   </Typography>
@@ -2132,7 +2177,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                           />
                           <Legend wrapperStyle={{ paddingTop: 10, fontSize: 11 }} />
                           {timeBrands.map((b: string, index: number) => (
-                            <Bar key={b} dataKey={b} name={b} fill={BRAND_COLORS[(index + 2) % BRAND_COLORS.length]} radius={[4, 4, 0, 0]} maxBarSize={36}>
+                            <Bar key={b} dataKey={b} name={b} fill={getBrandColor(b, index)} radius={[4, 4, 0, 0]} maxBarSize={36}>
                               <LabelList
                                 dataKey={b}
                                 position="top"

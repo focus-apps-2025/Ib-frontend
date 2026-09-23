@@ -273,7 +273,7 @@ export default function DashboardLayout() {
             </Typography>
 
             {/* Theme Toggle */}
-            <Tooltip title={mode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+            <Tooltip title={mode === 'dark' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}>
               <IconButton
                 id="theme-toggle-btn"
                 onClick={toggleTheme}

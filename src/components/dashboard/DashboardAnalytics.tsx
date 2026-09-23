@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
     Box, Card, CardContent, Typography, Grid, Table, TableBody,
     TableCell, TableHead, TableRow, CircularProgress, Alert,
@@ -41,35 +41,58 @@ interface MatrixData {
     chart: Record<string, number | string>[]
 }
 
-const BRAND_COLOR_PALETTE = [
-    '#1871c9ff', '#2ae886ff', '#e8903dff', '#a731abff', '#f59f1bff',
-    '#0097a7ff', '#ed6433ff', '#5e35b0ff', '#d62929ff', '#6cb6ff',
-]
-
-const getBrandColor = (brand: string) => {
-    if (brand.includes('TVS')) return '#1871c9ff'
-    if (brand.includes('Bajaj')) return '#2ae886ff'
-    // Dynamic hash-based colour for any brand coming from the DB
-    let hash = 0
-    for (let i = 0; i < brand.length; i++) hash = brand.charCodeAt(i) + ((hash << 5) - hash)
-    return BRAND_COLOR_PALETTE[Math.abs(hash) % BRAND_COLOR_PALETTE.length]
+// ─── Unified brand palette (matches PPT handlers + ServiceDashboardTab) ───
+const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+    'TVS Raider': '#00B4D8', 'TVS Apache': '#00B4D8', 'TVS': '#00B4D8',
+    'Bajaj Pulsar': '#7C3AED', 'Bajaj': '#7C3AED',
+    'Yamaha FZ': '#FF5A00', 'Yamaha': '#FF5A00',
+    'Honda CB': '#1E3A8A', 'Honda': '#1E3A8A',
+    'Suzuki Gixxer': '#2A9D8F', 'Suzuki': '#2A9D8F',
 }
 
-const getBrandColorLight = (brand: string) => {
-    if (brand.includes('TVS')) return 'rgba(24, 113, 201, 0.15)'
-    if (brand.includes('Bajaj')) return 'rgba(42, 232, 134, 0.15)'
-    // Dynamic hash-based light colour for any brand coming from the DB
+const BRAND_COLOR_PALETTE = [
+    '#00B4D8', // TVS
+    '#7C3AED', // Bajaj
+    '#FF5A00', // Yamaha
+    '#1E3A8A', // Honda
+    '#2A9D8F', // Suzuki
+    '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6',
+]
+
+const hashBrandName = (str: string): number => {
     let hash = 0
-    for (let i = 0; i < brand.length; i++) hash = brand.charCodeAt(i) + ((hash << 5) - hash)
-    const idx = Math.abs(hash) % BRAND_COLOR_PALETTE.length
-    const match = BRAND_COLOR_PALETTE[idx].match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/)
-    if (match) {
-        const r = parseInt(match[1], 16)
-        const g = parseInt(match[2], 16)
-        const b = parseInt(match[3], 16)
-        return `rgba(${r}, ${g}, ${b}, 0.15)`
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash)
     }
-    return 'rgba(232, 144, 61, 0.15)'
+    return Math.abs(hash)
+}
+
+const getBrandColor = (brand: string): string => {
+    if (!brand) return '#475569'
+    const clean = String(brand).trim()
+    if (SPECIFIC_BRAND_COLORS[clean]) return SPECIFIC_BRAND_COLORS[clean]
+
+    const lower = clean.toLowerCase()
+    if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '#00B4D8'
+    if (lower.includes('pulsar') || lower.includes('bajaj')) return '#7C3AED'
+    if (lower.includes('yamaha') || lower.includes('fz')) return '#FF5A00'
+    if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
+    if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
+
+    return BRAND_COLOR_PALETTE[hashBrandName(clean.toUpperCase()) % BRAND_COLOR_PALETTE.length]
+}
+
+const hexToRgba = (hex: string, alpha = 0.15): string => {
+    const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i)
+    if (!m) return `rgba(24, 113, 201, ${alpha})`
+    const r = parseInt(m[1], 16)
+    const g = parseInt(m[2], 16)
+    const b = parseInt(m[3], 16)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+const getBrandColorLight = (brand: string): string => {
+    return hexToRgba(getBrandColor(brand), 0.15)
 }
 
 // ─── Custom Card Header ─────────────────────────────────────────────
@@ -803,7 +826,6 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
     // ── Location & Model wise Sample Sizes Component ───────────────────
     const LocationModelSampleSizeCard = ({ sampleData }: { sampleData?: any }) => {
         const c = useThemeColors()
-        const accentColor = '#1871c9ff'
         const borderStyle = '1px solid #000000'
         const lightBlueBg = 'rgba(24, 113, 201, 0.15)'
         const lightGrayBg = '#e2e8f0'
@@ -812,6 +834,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
 
         // Dynamic Brands (or fallback)
         const brands: string[] = isDynamic ? sampleData.brands : ['TVS HLX125', 'Bajaj BM 125 / Bajaj CT 125']
+        const accentColor = getBrandColor(brands[0] || 'TVS')
+
 
         // Dynamic Tenures (or fallback)
         const tenures: string[] = isDynamic && Array.isArray(sampleData.tenures) && sampleData.tenures.length > 0
@@ -901,13 +925,11 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                     />
 
                                     {brands.map((brand) => {
-                                        const isTvs = brand.toUpperCase().includes('TVS')
-                                        const isBajaj = brand.toUpperCase().includes('BAJAJ')
-                                        const bgColor = isTvs ? '#1871c9' : isBajaj ? '#2ae886' : getBrandColor(brand)
-                                        const textColor = isTvs ? '#ffffff' : '#000000'
+                                        const bgColor = getBrandColor(brand)
+                                        const textColor = '#ffffff'
 
                                         return (
-                                            <>
+                                            <React.Fragment key={`brand-hdr-${brand}`}>
                                                 <TableCell
                                                     key={`brand-${brand}`}
                                                     colSpan={tenures.length}
@@ -934,7 +956,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                 >
                                                     {`${brand} Total`}
                                                 </TableCell>
-                                            </>
+                                            </React.Fragment>
                                         )
                                     })}
 
@@ -968,7 +990,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                     </TableCell>
 
                                     {brands.map((brand) => (
-                                        <>
+                                        <React.Fragment key={`brand-subhdr-${brand}`}>
                                             {tenures.map((tenure) => (
                                                 <TableCell
                                                     key={`sub-${brand}-${tenure}`}
@@ -995,7 +1017,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             >
                                                 Total
                                             </TableCell>
-                                        </>
+                                        </React.Fragment>
                                     ))}
                                 </TableRow>
                             </TableHead>
@@ -1013,7 +1035,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             const brandTotalVal = row[brandTotKey] ?? row[`${brand.split('/')[0].trim()}_total`] ?? 0
 
                                             return (
-                                                <>
+                                                <React.Fragment key={`row-${row.city}-${brand}`}>
                                                     {tenures.map((tenure) => {
                                                         const key = `${brand}_${tenure}`
                                                         const val = row[key] ?? row[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
@@ -1031,7 +1053,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                     >
                                                         {brandTotalVal}
                                                     </TableCell>
-                                                </>
+                                                </React.Fragment>
                                             )
                                         })}
 
@@ -1059,7 +1081,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         const brandTotalVal = grandTotalRow[brandTotKey] ?? grandTotalRow[`${brand.split('/')[0].trim()}_total`] ?? 0
 
                                         return (
-                                            <>
+                                            <React.Fragment key={`gt-frag-${brand}`}>
                                                 {tenures.map((tenure) => {
                                                     const key = `${brand}_${tenure}`
                                                     const val = grandTotalRow[key] ?? grandTotalRow[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
@@ -1089,7 +1111,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                 >
                                                     {brandTotalVal}
                                                 </TableCell>
-                                            </>
+                                            </React.Fragment>
                                         )
                                     })}
 
@@ -1162,12 +1184,12 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
 
             <Grid container spacing={3}>
                 {/* Location & Model wise Sample Sizes - FULL WIDTH */}
-                <Grid size={{xs: 12}}>
+                <Grid size={{ xs: 12 }}>
                     <LocationModelSampleSizeCard sampleData={data.location_model_sample_size} />
                 </Grid>
 
                 {/* Visualization 1: Age Group - Half width */}
-                <Grid size={{xs: 12, md: 6}}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <VizCard
                         title="Age Group Distribution"
                         matrix={data.age_group}
@@ -1181,7 +1203,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 2: Age Group by City & Brand - FULL WIDTH */}
-                <Grid size={{xs: 12}}>
+                <Grid size={{ xs: 12 }}>
                     <VizCard
                         title="Age Group by City & Brand"
                         matrix={data.age_city}
@@ -1196,7 +1218,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 3: Mode of Purchase - Half width */}
-                <Grid size={{xs: 12, md: 6}}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <VizCard
                         title="Mode of Purchase"
                         matrix={data.mode_of_purchase}
@@ -1210,7 +1232,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 4: Ownership - Half width */}
-                <Grid size={{xs: 12, md: 6}}>
+                <Grid size={{ xs: 12, md: 6 }}>
                     <VizCard
                         title="Ownership"
                         matrix={data.ownership}
@@ -1224,7 +1246,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 5: User Profession - Full width */}
-                <Grid size={{xs: 12}}>
+                <Grid size={{ xs: 12 }}>
                     <VizCard
                         title="User Profession Distribution"
                         matrix={data.profession}
@@ -1238,7 +1260,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 </Grid>
 
                 {/* Visualization 6: Vehicle Usage Purpose (Column R) - Full width */}
-                <Grid size={{xs: 12}}>
+                <Grid size={{ xs: 12 }}>
                     <VizCard
                         title="Vehicle Usage Purpose"
                         matrix={data.vehicle_usage}

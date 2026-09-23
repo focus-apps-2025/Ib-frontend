@@ -21,6 +21,11 @@ interface UploadRecord {
   id: string; file_name: string; region_name: string; country_name: string
   ib_version_name: string; total_records: number; processed_records: number
   status: string; upload_started_at: string; uploader_name: string
+  uploaded_by?: string
+  assigned_admin_id?: string | null
+  assigned_admin_name?: string
+  assigned_admin_username?: string
+  assigned_admin_email?: string
 }
 
 interface AdminScope {
@@ -49,7 +54,7 @@ export default function UploadPage() {
   const [historyLoading, setHistoryLoading] = useState(true)
 
   const user = useAuthStore((s) => s.user)
-  const [admins, setAdmins] = useState<{id: string, full_name: string, username: string}[]>([])
+  const [admins, setAdmins] = useState<{ id: string, full_name: string, username: string }[]>([])
   const [selectedAdminId, setSelectedAdminId] = useState('')
   const [adminScope, setAdminScope] = useState<AdminScope | null>(null)
 
@@ -172,10 +177,23 @@ export default function UploadPage() {
     return <HourglassEmpty sx={{ color: '#FFD93D', fontSize: 18 }} />
   }
 
+  // ─── Superadmin: resolve the admin associated with an uploaded file ────────
+  const historyAdminName = (u: UploadRecord): string => {
+    if (user?.role === 'super_admin' && u.assigned_admin_name) return u.assigned_admin_name
+    return u.uploader_name || '—'
+  }
+
+  const historyAdminUsername = (u: UploadRecord): string => {
+    if (user?.role !== 'super_admin') return ''
+    if (u.assigned_admin_username) return `@${u.assigned_admin_username}`
+    const matched = admins.find((a) => a.id === u.uploaded_by)
+    return matched ? `@${matched.username}` : ''
+  }
+
   return (
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 3, color: c.textPrimary }}>
-        📤 Upload Excel Data
+        Upload Excel Data
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
@@ -440,7 +458,7 @@ export default function UploadPage() {
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, color: c.textPrimary, flex: 1 }}>
-                  📋 Upload History
+                  Upload History
                 </Typography>
                 <Tooltip title="Refresh">
                   <IconButton size="small" onClick={loadHistory} sx={{ color: c.textSecondary }}>
@@ -465,6 +483,7 @@ export default function UploadPage() {
                       <TableRow>
                         <TableCell>#</TableCell>
                         <TableCell>File</TableCell>
+                        {user?.role === 'super_admin' && <TableCell>Admin</TableCell>}
                         <TableCell>Region / Country</TableCell>
                         <TableCell>IB</TableCell>
                         <TableCell>Records</TableCell>
@@ -484,6 +503,22 @@ export default function UploadPage() {
                               </Typography>
                             </Tooltip>
                           </TableCell>
+                          {user?.role === 'super_admin' && (
+                            <TableCell sx={{ maxWidth: 140 }}>
+                              <Tooltip title={u.assigned_admin_email || historyAdminUsername(u) || historyAdminName(u)}>
+                                <span>
+                                  <Typography variant="caption" sx={{ color: c.textPrimary, display: 'block', fontWeight: 600 }} noWrap>
+                                    {historyAdminName(u)}
+                                  </Typography>
+                                  {historyAdminUsername(u) && (
+                                    <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                                      {historyAdminUsername(u)}
+                                    </Typography>
+                                  )}
+                                </span>
+                              </Tooltip>
+                            </TableCell>
+                          )}
                           <TableCell>
                             <Typography variant="caption" sx={{ color: c.textSecondary, display: 'block' }}>
                               {u.region_name}

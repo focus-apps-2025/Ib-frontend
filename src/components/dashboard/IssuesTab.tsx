@@ -22,6 +22,62 @@ const ISSUE_COLORS = [
   '#42A5F5', '#EF5350', '#8D6E63', '#78909C', '#00BCD4',
 ]
 
+// ─── Brand palette (matches the PPT + ServiceDashboardTab) ─────────────────
+const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+  // TVS
+  'TVS Raider': '#00B4D8',
+  'TVS Apache': '#00B4D8',
+  'Apache RTR 160 4V CARB': '#00B4D8',
+  'TVS': '#00B4D8',
+
+  // Bajaj
+  'Bajaj Pulsar': '#7C3AED',
+  'Bajaj': '#7C3AED',
+
+  // Yamaha
+  'Yamaha FZ': '#FF5A00',
+  'Yamaha FZ version 3': '#FF5A00',
+  'Yamaha': '#FF5A00',
+
+  // Honda
+  'Honda CB': '#1E3A8A',
+  'Honda': '#1E3A8A',
+
+  // Suzuki
+  'Suzuki Gixxer': '#2A9D8F',
+  'Suzuki': '#2A9D8F',
+}
+
+const FALLBACK_BRAND_COLORS = [
+  '#00B4D8', '#7C3AED', '#FF5A00', '#1E3A8A', '#2A9D8F',
+  '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6',
+]
+
+const hashBrandName = (str: string): number => {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return Math.abs(hash)
+}
+
+const getBrandColor = (brandName: string, index: number): string => {
+  if (!brandName) return '#475569'
+  const clean = String(brandName).trim()
+  if (SPECIFIC_BRAND_COLORS[clean]) return SPECIFIC_BRAND_COLORS[clean]
+
+  const lower = clean.toLowerCase()
+
+  if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '#00B4D8'
+  if (lower.includes('pulsar') || lower.includes('bajaj')) return '#7C3AED'
+  if (lower.includes('yamaha') || lower.includes('fz')) return '#FF5A00'
+  if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
+  if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
+
+  // Deterministic hash so a brand always gets the same color everywhere
+  return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]
+}
+
 interface BrandData {
   name: string
   count: number
@@ -92,7 +148,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
       }
       const res = await issuesApi.analysis(params)
       const rawIssues: IssueData[] = res.data.data || []
-      
+
       // Dynamically extract all brands from the dataset to ensure no columns are missing
       const extractedBrands = new Set<string>(res.data.brands || [])
       rawIssues.forEach(issue => {
@@ -107,7 +163,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
         })
       })
       const apiBrands = Array.from(extractedBrands).sort()
-      
+
       setIssues(rawIssues)
       setBrands(apiBrands)
       setSummary(res.data.summary || {})
@@ -163,7 +219,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
           { label: 'Most Common', value: (summary.most_common_issue as string) || 'N/A', color: '#FFD93D' },
           { label: 'Least Common', value: (summary.least_common_issue as string) || 'N/A', color: '#FF6584' },
         ].map((s) => (
-          <Grid size={{xs: 12, sm: 6, md: 3}} key={s.label}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={s.label}>
             <Card sx={{ background: `${s.color}12`, border: `1px solid ${s.color}30` }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="caption" sx={{ color: c.textSecondary, display: 'block' }}>
@@ -181,7 +237,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
       {/* Charts Row */}
       {filtered.length > 0 && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid size={{xs: 12, md: 8}}>
+          <Grid size={{ xs: 12, md: 8 }}>
             <Card>
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
@@ -204,7 +260,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
             </Card>
           </Grid>
 
-          <Grid size={{xs: 12, md: 4}}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, color: c.textPrimary }}>
@@ -230,6 +286,8 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                         ))}
                       </Pie>
                       <Tooltip
+                        contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }}
+                        labelStyle={{ color: c.textPrimary }}
                         formatter={(value: number) => [`${value.toLocaleString()} complaints`, 'Count']}
                       />
                       <Legend
@@ -307,7 +365,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
               ) : (
                 <Grid container spacing={3}>
                   {/* LEFT SIDE: TABLE */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Complaint Breakdown by Brand
                     </Typography>
@@ -318,11 +376,25 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                             <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Sub-Issue</TableCell>
                             <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Follow-up Question</TableCell>
                             <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Answer</TableCell>
-                            {brands.map((brandName) => (
-                              <TableCell key={brandName} align="right" sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                                {brandName}
-                              </TableCell>
-                            ))}
+                            {brands.map((brandName, index) => {
+                              const bColor = getBrandColor(brandName, index)
+                              return (
+                                <TableCell
+                                  key={brandName}
+                                  align="right"
+                                  sx={{
+                                    fontWeight: 700,
+                                    background: `${bColor}18`,        // soft tint (works in light & dark)
+                                    color: bColor,                    // brand color text
+                                    fontSize: '0.75rem',
+                                    textTransform: 'uppercase',
+                                    borderBottom: `2px solid ${bColor}`,
+                                  }}
+                                >
+                                  {brandName}
+                                </TableCell>
+                              )
+                            })}
                             <TableCell align="right" sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Total</TableCell>
                           </TableRow>
                         </TableHead>
@@ -419,8 +491,8 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                                             )}
                                             <TableCell sx={{ color: c.textPrimary, fontSize: '0.75rem' }}>
                                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                {ans.answer.startsWith('"') && ans.answer.endsWith('"') 
-                                                  ? ans.answer 
+                                                {ans.answer.startsWith('"') && ans.answer.endsWith('"')
+                                                  ? ans.answer
                                                   : `"${ans.answer}"`}
                                                 {ans.is_split && <span title="Split answer">🟡</span>}
                                               </Box>
@@ -429,7 +501,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                                               const brandObj = ans.brands.find((b) => b.name === brandName)
                                               const count = brandObj?.count || 0
                                               const percentage = brandObj?.percentage
-                                              
+
                                               return (
                                                 <TableCell
                                                   key={brandName}
@@ -491,7 +563,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                   </Grid>
 
                   {/* RIGHT SIDE: CHART */}
-                  <Grid size={{xs: 12, lg: 6}}>
+                  <Grid size={{ xs: 12, lg: 6 }}>
                     <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Distribution by Sub-Issue
                     </Typography>
@@ -512,13 +584,13 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                             <CartesianGrid strokeDasharray="3 3" stroke={c.chartGrid} horizontal={true} vertical={false} />
                             <XAxis dataKey="name" tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 600 }} />
                             <YAxis tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 500 }} />
-                            <Tooltip />
+                            <Tooltip contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }} labelStyle={{ color: c.textPrimary }} />
                             <Legend wrapperStyle={{ fontSize: '10px', paddingTop: 10 }} />
                             {brands.map((brandName, index) => (
                               <Bar
                                 key={brandName}
                                 dataKey={brandName}
-                                fill={ISSUE_COLORS[index % ISSUE_COLORS.length]}
+                                fill={getBrandColor(brandName, index)}
                                 radius={[4, 4, 0, 0]}
                               />
                             ))}

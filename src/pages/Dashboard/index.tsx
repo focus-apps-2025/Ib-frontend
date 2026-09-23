@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Box, Card, CardContent, Typography, Tabs, Tab, Grid,
   TextField, Select, MenuItem, FormControl, InputLabel,
@@ -7,7 +7,7 @@ import {
 import {
   Refresh, FileDownload, FilterList, ClearAll,
   TrendingUp, People, LocationOn, Speed, DirectionsCar, CalendarMonth,
-  DownloadForOffline,
+  DownloadForOffline, Cancel,
 } from '@mui/icons-material'
 import { AgGridReact } from 'ag-grid-react'
 import { ModuleRegistry, AllCommunityModule, InfiniteRowModelModule } from 'ag-grid-community'
@@ -109,8 +109,21 @@ export default function DashboardPage() {
   const [totalRows, setTotalRows] = useState(0)
 
   const [pptGenerating, setPptGenerating] = useState(false)
-  const [pptProgress, setPptProgress] = useState('')
+  const [pptProgress, setPptProgressRaw] = useState('')
   const [pptData, setPptData] = useState<any>(null)
+
+  // ─── PPT cancellation support ─────────────────────────────────────────────
+  // Generation runs long synchronous blocks between awaits, so a plain React
+  // state flag would read stale values inside them. A ref is used instead, and
+  // every progress checkout aborts generation when the cancel flag is raised.
+  const PPT_CANCELLED = 'PPT_CANCELLED'
+  const pptCancelRef = useRef(false)
+  const setPptProgress = (msg: string) => {
+    setPptProgressRaw(msg)
+    if (pptCancelRef.current) {
+      throw new Error(PPT_CANCELLED)
+    }
+  }
 
   const [toastMessage, setToastMessage] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
@@ -259,6 +272,7 @@ export default function DashboardPage() {
   }
 
   const handleDownloadServicePPT = async () => {
+    pptCancelRef.current = false
     setPptGenerating(true)
     setPptProgress('Initializing & fetching Service Dashboard data...')
 
@@ -328,31 +342,27 @@ export default function DashboardPage() {
       const LIGHT_COLORS_LIST = ['B3E5FC', 'D1C4E9', 'FFE0B2', 'D1FAE5', 'FEE2E2', 'DBEAFE', 'EDE9FE', 'FCE7F3', 'FEF3C7', 'CFFAFE']
 
       const SPECIFIC_BRAND_COLORS: Record<string, string> = {
-        'TVS Raider': '00B4D8',
-        'TVS Apache': '00B4D8',
-        'TVS': '00B4D8',
-        'Bajaj Pulsar': '7C3AED',
-        'Bajaj': '7C3AED',
-        'Yamaha FZ': 'F59E0B',
-        'Yamaha': 'F59E0B',
-        'Honda CB': '7C3AED',
-        'Honda': '7C3AED',
-        'Suzuki Gixxer': '7C3AED',
-        'Suzuki': '7C3AED',
-      }
+        // TVS — cyan
+        'TVS Raider': '00B4D8', 'TVS Apache': '00B4D8', 'TVS': '00B4D8',
 
+        // Bajaj — purple
+        'Bajaj Pulsar': '7C3AED', 'Bajaj': '7C3AED',
+
+        // Yamaha — orange
+        'Yamaha FZ': 'FF5A00', 'Yamaha': 'FF5A00',
+
+        // Honda — navy
+        'Honda CB': '1E3A8A', 'Honda': '1E3A8A',
+
+        // Suzuki — teal
+        'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
+      }
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
-        'TVS Raider': 'B3E5FC',
-        'TVS Apache': 'B3E5FC',
-        'TVS': 'B3E5FC',
-        'Bajaj Pulsar': 'D1C4E9',
-        'Bajaj': 'D1C4E9',
-        'Yamaha FZ': 'FEF3C7',
-        'Yamaha': 'FEF3C7',
-        'Honda CB': 'D1C4E9',
-        'Honda': 'D1C4E9',
-        'Suzuki Gixxer': 'D1C4E9',
-        'Suzuki': 'D1C4E9',
+        'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
+        'Bajaj Pulsar': 'D1C4E9', 'Bajaj': 'D1C4E9',
+        'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
+        'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
+        'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
       }
 
       const hashBrand = (str: string): number => {
@@ -386,7 +396,6 @@ export default function DashboardPage() {
         return [...tvsBrands, ...otherBrands]
       }
 
-      // Dynamic brand color palette assignment
       const getBrandColor = (brandName: string): string => {
         if (!brandName) return '475569'
         const clean = String(brandName).trim()
@@ -394,11 +403,12 @@ export default function DashboardPage() {
           return SPECIFIC_BRAND_COLORS[clean]
         }
         const lower = clean.toLowerCase()
+
         if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '00B4D8'
         if (lower.includes('pulsar') || lower.includes('bajaj')) return '7C3AED'
-        if (lower.includes('honda') || lower.includes('cb')) return '7C3AED'
-        if (lower.includes('gixxer') || lower.includes('suzuki')) return '7C3AED'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'F59E0B'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FF5A00'
+        if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -412,16 +422,16 @@ export default function DashboardPage() {
           return SPECIFIC_LIGHT_COLORS[clean]
         }
         const lower = clean.toLowerCase()
+
         if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return 'B3E5FC'
         if (lower.includes('pulsar') || lower.includes('bajaj')) return 'D1C4E9'
-        if (lower.includes('honda') || lower.includes('cb')) return 'D1C4E9'
-        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1C4E9'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'FEF3C7'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FFE0CC'
+        if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
       }
-
       const getBrandHeaderOptions = (brandName: string) => ({
         bold: true,
         fill: getBrandColor(brandName),
@@ -837,6 +847,285 @@ export default function DashboardPage() {
       tocSlide.background = { fill: 'FFFFFF' }
       // ─── DIVIDER 1: Demography ───
       addDividerSlide('Demography')
+
+      setPptProgress('Generating Slide: Location & Model wise Sample Sizes...')
+      const slideSample = pptx.addSlide()
+      slideSample.background = { fill: 'FFFFFF' }
+      addSlideTitle(slideSample, 'Location & Model wise Sample Sizes', 'Sample sizes across cities, brand models, and duration of usage')
+
+      try {
+        const sampleData = analytics.location_model_sample_size || {}
+        const rawSampleBrands = sampleData.brands || ['TVS HLX125', 'Bajaj BM 125 / Bajaj CT 125']
+
+        const sampleBrands = getOrderedBrands(rawSampleBrands).sort((a: string, b: string) => {
+          const aIsTvs = a.toUpperCase().includes('TVS') ? 0 : 1
+          const bIsTvs = b.toUpperCase().includes('TVS') ? 0 : 1
+          return aIsTvs - bIsTvs
+        })
+
+        const sampleTenures = sampleData.tenures || ['3-6 months', '6-12 months']
+        const sampleTable = sampleData.table || []
+
+        if (sampleTable.length > 0) {
+          const citiesRows = sampleTable.filter((r: any) => r.city !== 'Grand Total')
+          const grandTotalRow = sampleTable.find((r: any) => r.city === 'Grand Total') || {}
+
+          const lightBlueBg = 'B3E5FC'
+          const lightGrayBg = 'E2E8F0'
+
+          // ── Row 1 Header ── brand cells now BLANK (text added as overlay below)
+          const headerRow1: any[] = [
+            {
+              text: 'City',
+              options: {
+                fill: lightBlueBg,
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                fontFace: 'Arial',
+                border: [
+                  { color: '000000', pt: 1 },   // top — solid black
+                  { color: '000000', pt: 1 },   // right
+                  { color: lightBlueBg, pt: 1 },// bottom — invisible (row2 draws its own top)
+                  { color: '000000', pt: 1 },   // left
+                ],
+              },
+            },
+          ]
+
+          sampleBrands.forEach((brand: string) => {
+            const bgColor = getBrandColor(brand)
+
+            headerRow1.push({
+              text: brand,
+              options: {
+                colspan: sampleTenures.length,
+                fill: bgColor,
+                color: 'FFFFFF',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                fontFace: 'Arial',
+                wrap: true,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: bgColor, pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: bgColor, pt: 1 },
+                ],
+              },
+            })
+
+            headerRow1.push({
+              text: `${brand} Total`,
+              options: {
+                fill: lightGrayBg,
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
+            })
+          })
+
+          headerRow1.push({
+            text: 'Grand Total',
+            options: {
+              fill: lightGrayBg,
+              color: '000000',
+              bold: true,
+              align: 'center',
+              valign: 'middle',
+              fontSize: 8,
+              border: [
+                { color: '000000', pt: 1 },   // top — solid black
+                { color: '000000', pt: 1 },   // right
+                { color: lightGrayBg, pt: 1 },// bottom — invisible (row2 draws its own top)
+                { color: '000000', pt: 1 },   // left
+              ],
+            },
+          })
+          // ── Row 2 Sub-headers ──
+          const headerRow2: any[] = [
+            {
+              text: '',
+              options: {
+                fill: lightBlueBg,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
+            },
+          ]
+
+
+          sampleBrands.forEach((brand: string) => {
+            sampleTenures.forEach((tenure: string) => {
+              headerRow2.push({
+                text: tenure,
+                options: {
+                  fill: lightBlueBg,
+                  color: '000000',
+                  bold: true,
+                  align: 'center',
+                  valign: 'middle',
+                  fontSize: 8,
+                  border: [
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                    { color: '000000', pt: 1 },
+                  ],
+                },
+              })
+            })
+            headerRow2.push({
+              text: 'Total',
+              options: {
+                fill: lightGrayBg,
+                color: '000000',
+                bold: true,
+                align: 'center',
+                valign: 'middle',
+                fontSize: 8,
+                border: [
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                  { color: '000000', pt: 1 },
+                ],
+              },
+            })
+          })
+
+          headerRow2.push({
+            text: '',
+            options: {
+              fill: lightGrayBg,
+              border: [
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+                { color: '000000', pt: 1 },
+              ],
+            },
+          })
+
+          const allRows: any[][] = [headerRow1, headerRow2]
+
+          citiesRows.forEach((row: any) => {
+            const dataRow: any[] = [
+              { text: String(row.city || ''), options: { align: 'center', bold: true, fontSize: 8 } }
+            ]
+
+            sampleBrands.forEach((brand: string) => {
+              const brandTotKey = `${brand}_total`
+              const brandTotalVal = row[brandTotKey] ?? row[`${brand.split('/')[0].trim()}_total`] ?? 0
+
+              sampleTenures.forEach((tenure: string) => {
+                const key = `${brand}_${tenure}`
+                const val = row[key] ?? row[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
+                dataRow.push({ text: String(val), options: { align: 'center', fontSize: 8 } })
+              })
+
+              dataRow.push({ text: String(brandTotalVal), options: { align: 'center', bold: true, fill: 'F8FAFC', fontSize: 8 } })
+            })
+
+            const gTotal = row.grand_total ?? row.grandTotal ?? 0
+            dataRow.push({ text: String(gTotal), options: { align: 'center', bold: true, fill: 'F8FAFC', fontSize: 8 } })
+
+            allRows.push(dataRow)
+          })
+
+          const gtRow: any[] = [
+            { text: 'Grand Total', options: { align: 'center', bold: true, fill: lightBlueBg, fontSize: 8 } }
+          ]
+
+          sampleBrands.forEach((brand: string) => {
+            const brandTotKey = `${brand}_total`
+            const brandTotalVal = grandTotalRow[brandTotKey] ?? grandTotalRow[`${brand.split('/')[0].trim()}_total`] ?? 0
+
+            sampleTenures.forEach((tenure: string) => {
+              const key = `${brand}_${tenure}`
+              const val = grandTotalRow[key] ?? grandTotalRow[`${brand}_${tenure.replace(/\s+/g, '')}`] ?? 0
+              gtRow.push({ text: String(val), options: { align: 'center', bold: true, fill: lightBlueBg, fontSize: 8 } })
+            })
+
+            gtRow.push({ text: String(brandTotalVal), options: { align: 'center', bold: true, fill: lightBlueBg, fontSize: 8 } })
+          })
+
+          const overallGrand = grandTotalRow.grand_total ?? grandTotalRow.grandTotal ?? 0
+          gtRow.push({ text: String(overallGrand), options: { align: 'center', bold: true, fill: lightBlueBg, fontSize: 8 } })
+
+          allRows.push(gtRow)
+
+          // ── Proportional colW (fits slide regardless of brand count) ──
+          const targetTableWidth = 9.4
+          const cityRatio = 0.85
+          const tenureRatio = 0.72
+          const brandTotalRatio = 0.95
+          const grandTotalRatio = 1.3
+
+          const rawTotal = cityRatio
+            + sampleBrands.length * (sampleTenures.length * tenureRatio + brandTotalRatio)
+            + grandTotalRatio
+
+          const scale = targetTableWidth / rawTotal
+
+          const cityColW = +(cityRatio * scale).toFixed(3)
+          const tenureColW = +(tenureRatio * scale).toFixed(3)
+          const brandTotalColW = +(brandTotalRatio * scale).toFixed(3)
+          const grandTotalColW = +(grandTotalRatio * scale).toFixed(3)
+
+          const colW = [
+            cityColW,
+            ...sampleBrands.flatMap(() => [
+              ...sampleTenures.map(() => tenureColW),
+              brandTotalColW
+            ]),
+            grandTotalColW
+          ]
+
+          const tableWidth = colW.reduce((a, b) => a + b, 0)
+
+          // ── Explicit row heights so we can precisely overlay text on row 1 ──
+          const headerRowH = 0.4   // taller to comfortably fit 2-line brand names
+          const subHeaderRowH = 0.3
+          const dataRowH = 0.25
+          const rowH = [headerRowH, subHeaderRowH, ...citiesRows.map(() => dataRowH), dataRowH]
+
+          const tableX = 0.3
+          const tableY = 1.2
+
+          slideSample.addTable(allRows, {
+            x: tableX, y: tableY, w: tableWidth,
+            border: { type: 'solid', color: '000000', size: 1 },
+            fontSize: 8,
+            fontFace: 'Arial',
+            colW: colW,
+            rowH: rowH,
+            align: 'center',
+          })
+
+          // ── Overlay brand name text boxes, centered over each merged block ──
+
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE LOCATION SAMPLE ERROR:', e)
+      }
 
       // ─── SLIDE 2: Age Group Distribution & City Cross-tabulation ──
       setPptProgress('Generating Slide 2: Age Group Distribution & City Cross-tabulation...')
@@ -1857,7 +2146,7 @@ export default function DashboardPage() {
             const filled = bd?.filled_count ?? bd?.base_count ?? 0
             const yes = bd?.yes_count ?? 0
             rowCells.push({
-              text: `${filled} (${yes} Yes)`,
+              text: String(yes),
               options: { bold: false, color: '1E293B', align: 'center', fontSize: 7, valign: 'middle' }
             })
           })
@@ -1946,14 +2235,16 @@ export default function DashboardPage() {
         })
 
         // ─── Chart inside the box (drawn after box + title) ───
+        const chartMetrics = [...slideMetrics].reverse()   // 5E, 5D, 5C, 5B, 5A  → renders as 5A at top
+
         const chartSeries = orderedSatBrands.map((bName: string) => {
-          const values = slideMetrics.map((m: any) => {
+          const values = chartMetrics.map((m: any) => {
             const bd = (m.brand_data || []).find((item: any) => item.brand === bName)
             return bd ? Math.round(bd.yes_pct || 0) : 0
           })
           return {
             name: bName,
-            labels: slideMetrics.map((m: any) => m.key),
+            labels: chartMetrics.map((m: any) => shortQuestionLabel(m)),
             values: values,
           }
         })
@@ -1969,8 +2260,8 @@ export default function DashboardPage() {
             showTitle: false,
             showLegend: true,
             legendPos: 't',
-            legendFontSize: 7.5,
-            catAxisLabelFontSize: 8,
+            legendFontSize: 7,
+            catAxisLabelFontSize: 7,          // ← was 8; smaller so long labels fit
             catAxisLabelColor: '333333',
             catAxisLineShow: true,
             catAxisLineColor: 'CBD5E1',
@@ -1991,6 +2282,12 @@ export default function DashboardPage() {
             fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle',
           })
         }
+      }
+      const shortQuestionLabel = (m: any): string => {
+        const q = String(m.question || m.key || '').trim()
+        // strip leading "5A) ", "5A. ", "5A - ", etc.
+        const stripped = q.replace(/^\s*\d+[A-Za-z]?\s*[\).\-:]\s*/, '')
+        return stripped || String(m.key || '')
       }
 
       // Generate Slide for 5A to 5E
@@ -2042,15 +2339,17 @@ export default function DashboardPage() {
         tableRows.push(headerRow)
 
         // Yes Row
+        // Yes Row
         const yesRow: any[] = [
           { text: 'Yes', options: { bold: true, color: '10B981', align: 'left', fontSize: 8, valign: 'middle' } }
         ]
         orderedSecBrands.forEach((b: string) => {
           const bd = secData.find((d: any) => d.brand === b)
           const yesCount = bd?.yes_count ?? 0
-          const yesPct = bd?.yes_pct ?? 0
+
+          // ✅ count only, no percentage
           yesRow.push({
-            text: `${yesCount} (${yesPct}%)`,
+            text: String(yesCount),
             options: { bold: false, color: '1E293B', align: 'center', fontSize: 8, valign: 'middle' }
           })
         })
@@ -2063,9 +2362,10 @@ export default function DashboardPage() {
         orderedSecBrands.forEach((b: string) => {
           const bd = secData.find((d: any) => d.brand === b)
           const noCount = bd?.no_count ?? 0
-          const noPct = bd?.no_pct ?? 0
+
+          // ✅ count only, no percentage
           noRow.push({
-            text: `${noCount} (${noPct}%)`,
+            text: String(noCount),
             options: { bold: false, color: '1E293B', align: 'center', fontSize: 8, valign: 'middle' }
           })
         })
@@ -2273,13 +2573,37 @@ export default function DashboardPage() {
         })
 
         // ─── Chart ───
+        const shortSectionLabel = (q: any, fallback: string): string => {
+          const s = String(q || '').trim()
+          const stripped = s.replace(/^\s*\d+\s*[\).\-:]\s*/, '') || fallback
+          return stripped.length > 100 ? stripped.slice(0, 100) + '…' : stripped
+        }
+
+        const label7 = shortSectionLabel(sec7?.question, 'Section 7')
+        const label8 = shortSectionLabel(sec8?.question, 'Section 8')
+
+        // ── Per-brand respondent base (used as denominator) ──
+        const brandBaseMap = new Map<string, number>(
+          satisfactionBrandBases.map((b: any) => [b.brand, b.base_count ?? 0])
+        )
+
         const chartSeries = orderedMergedBrands.map((bName: string) => {
-          const count7 = sec7 ? ((sec7.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
-          const count8 = sec8 ? ((sec8.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0) : 0
+          const count7 = sec7
+            ? ((sec7.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0)
+            : 0
+          const count8 = sec8
+            ? ((sec8.brand_data || []).find((d: any) => d.brand === bName)?.total_count ?? 0)
+            : 0
+
+          // ⬇️ This is the actual fix — divide by the base, multiply by 100.
+          const brandBase = brandBaseMap.get(bName) ?? 0
+          const pct7 = brandBase > 0 ? Math.round((count7 / brandBase) * 100) : 0
+          const pct8 = brandBase > 0 ? Math.round((count8 / brandBase) * 100) : 0
+
           return {
             name: bName,
-            labels: ['Section 7', 'Section 8'],
-            values: [count7, count8],
+            labels: [label8, label7],   // reversed so 7 shows at top
+            values: [pct8, pct7],       // ✅ percentages, not counts
           }
         })
 
@@ -2297,7 +2621,7 @@ export default function DashboardPage() {
             showLegend: true,
             legendPos: 't',
             legendFontSize: 7.5,
-            catAxisLabelFontSize: 8,
+            catAxisLabelFontSize: 7,
             catAxisLabelColor: '333333',
             catAxisLineShow: true,
             catAxisLineColor: 'CBD5E1',
@@ -2305,7 +2629,7 @@ export default function DashboardPage() {
             valAxisHidden: true,
             valGridLine: { style: 'none' },
             showValue: true,
-            dataLabelFormatCode: '0',
+            dataLabelFormatCode: '0"%"',
             dataLabelFontSize: 7.5,
             dataLabelColor: '333333',
             barGapWidthPct: 180,
@@ -3114,15 +3438,41 @@ export default function DashboardPage() {
         }
       )
       setPptProgress('Saving PowerPoint file...')
-      await pptx.writeFile({ fileName: `Service_Dashboard_Report_${today}.pptx` })
+      const serviceCountryIds = Array.isArray(filters.countryId)
+        ? filters.countryId
+        : (filters.countryId ? [filters.countryId] : [])
+      const serviceRegionIds = Array.isArray(filters.regionId)
+        ? filters.regionId
+        : (filters.regionId ? [filters.regionId] : [])
+
+      let serviceCountryName = 'Overall'
+      if (serviceCountryIds.length > 0) {
+        const found = countries.find((c) => c.id === serviceCountryIds[0] || c.name === serviceCountryIds[0])
+        serviceCountryName = found ? found.name : serviceCountryIds[0]
+      } else if (serviceRegionIds.length > 0) {
+        const found = regions.find((r) => r.id === serviceRegionIds[0] || r.name === serviceRegionIds[0])
+        serviceCountryName = found ? found.name : serviceRegionIds[0]
+      }
+      const cleanServiceCountry = serviceCountryName.trim().replace(/[/\\?%*:|"<>]/g, '').replace(/\s+/g, '_') || 'Overall'
+
+      await pptx.writeFile({ fileName: `${cleanServiceCountry}_service_${today}.pptx` })
+
+      if (pptCancelRef.current) {
+        throw new Error(PPT_CANCELLED)
+      }
 
       setToastSeverity('success')
       setToastMessage('Service PPT downloaded successfully!')
       setToastOpen(true)
     } catch (err: any) {
-      console.error('Service PPT Generation Error:', err)
-      setToastSeverity('error')
-      setToastMessage(`Failed to generate Service PPT: ${err.message || err}`)
+      if (err && err.message === PPT_CANCELLED) {
+        setToastSeverity('info')
+        setToastMessage('Service PPT generation cancelled.')
+      } else {
+        console.error('Service PPT Generation Error:', err)
+        setToastSeverity('error')
+        setToastMessage(`Failed to generate Service PPT: ${err.message || err}`)
+      }
       setToastOpen(true)
     } finally {
       setPptGenerating(false)
@@ -3130,6 +3480,7 @@ export default function DashboardPage() {
   }
 
   const handleDownloadPPT = async () => {
+    pptCancelRef.current = false
     setPptGenerating(true)
     setPptProgress('Initializing & fetching data...')
 
@@ -3214,21 +3565,32 @@ export default function DashboardPage() {
       const BRAND_COLORS_LIST = ['00B4D8', '7C3AED', 'F97316', '10B981', 'EF4444', '3B82F6', '8B5CF6', 'EC4899', 'F59E0B', '06B6D4']
       const LIGHT_COLORS_LIST = ['B3E5FC', 'D1C4E9', 'FFE0B2', 'D1FAE5', 'FEE2E2', 'DBEAFE', 'EDE9FE', 'FCE7F3', 'FEF3C7', 'CFFAFE']
 
+
       const SPECIFIC_BRAND_COLORS: Record<string, string> = {
+        // TVS — cyan
         'TVS Raider': '00B4D8', 'TVS Apache': '00B4D8', 'TVS': '00B4D8',
+
+        // Bajaj — purple
         'Bajaj Pulsar': '7C3AED', 'Bajaj': '7C3AED',
-        'Yamaha FZ': 'F59E0B', 'Yamaha': 'F59E0B',
-        'Honda CB': '7C3AED', 'Honda': '7C3AED',
-        'Suzuki Gixxer': '7C3AED', 'Suzuki': '7C3AED',
+
+        // Yamaha — orange
+        'Yamaha FZ': 'FF5A00', 'Yamaha': 'FF5A00',
+
+        // Honda — navy
+        'Honda CB': '1E3A8A', 'Honda': '1E3A8A',
+
+        // Suzuki — teal
+        'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
       }
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
         'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
         'Bajaj Pulsar': 'D1C4E9', 'Bajaj': 'D1C4E9',
-        'Yamaha FZ': 'FEF3C7', 'Yamaha': 'FEF3C7',
-        'Honda CB': 'D1C4E9', 'Honda': 'D1C4E9',
-        'Suzuki Gixxer': 'D1C4E9', 'Suzuki': 'D1C4E9',
+        'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
+        'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
+        'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
       }
+
       // ─── Slide counter + TOC tracking (for internal hyperlinks) ───
       let slideCounter = 0
       const _originalAddSlide = pptx.addSlide.bind(pptx)
@@ -3254,7 +3616,6 @@ export default function DashboardPage() {
         return Math.abs(hash)
       }
 
-      // ─── HELPER: Get brand color based on brand name ───
       const getBrandColor = (brandName: string): string => {
         if (!brandName) return '475569'
         const clean = String(brandName).trim()
@@ -3262,16 +3623,16 @@ export default function DashboardPage() {
           return SPECIFIC_BRAND_COLORS[clean]
         }
         const lower = clean.toLowerCase()
+
         if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '00B4D8'
         if (lower.includes('pulsar') || lower.includes('bajaj')) return '7C3AED'
-        if (lower.includes('honda') || lower.includes('cb')) return '7C3AED'
-        if (lower.includes('gixxer') || lower.includes('suzuki')) return '7C3AED'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'F59E0B'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FF5A00'
+        if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
       }
-
       // ─── HELPER: Get light version for age groups ───
       const getAgeGroupLightColor = (brandName: string): string => {
         if (!brandName) return 'ECEFF1'
@@ -3280,16 +3641,16 @@ export default function DashboardPage() {
           return SPECIFIC_LIGHT_COLORS[clean]
         }
         const lower = clean.toLowerCase()
+
         if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return 'B3E5FC'
         if (lower.includes('pulsar') || lower.includes('bajaj')) return 'D1C4E9'
-        if (lower.includes('honda') || lower.includes('cb')) return 'D1C4E9'
-        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1C4E9'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'FEF3C7'
+        if (lower.includes('yamaha') || lower.includes('fz')) return 'FFE0CC'
+        if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
+        if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
       }
-
       // ─── HELPER: Get brand header options ───
       const getBrandHeaderOptions = (brandName: string) => {
         return {
@@ -3816,9 +4177,7 @@ export default function DashboardPage() {
           ]
 
           sampleBrands.forEach((brand: string) => {
-            const isTvs = brand.toUpperCase().includes('TVS')
-            const isBajaj = brand.toUpperCase().includes('BAJAJ')
-            const bgColor = isTvs ? '1871C9' : isBajaj ? '2AE886' : getBrandColor(brand)
+            const bgColor = getBrandColor(brand)
 
             headerRow1.push({
               text: brand,
@@ -5136,14 +5495,37 @@ export default function DashboardPage() {
         setPptProgress('Generating Betterments Next Level slides...')
 
         const cleanBrandStr = (name: string): string => String(name || '').trim().toUpperCase()
+        const formatSubComplaint = (text: string): string => {
+          if (!text) return ''
+          const cleaned = String(cleanIssueName(text) || '').trim()
 
+          // ── Rule 1: "What is the issue in X?" → "X issue" ──
+          const issueMatch = cleaned.match(/^what\s+is\s+the\s+issue\s+in\s+(.+?)\s*\??\s*$/i)
+          if (issueMatch) {
+            const subject = issueMatch[1].trim()
+            if (subject) {
+              // Capitalize first letter of the subject
+              const titled = subject.charAt(0).toUpperCase() + subject.slice(1)
+              return `${titled} issue`
+            }
+          }
+
+          // ── Rule 2: keep full text if it starts with Q- / Q. / Q: ──
+          if (/^Q\s*[-.:]/i.test(cleaned)) {
+            return cleaned
+          }
+
+          // ── Rule 3: otherwise, cut at the first hyphen-like separator ──
+          const raw = cleaned.split(/\s*[-–—−]\s*/)[0].trim()
+          return raw || cleaned
+        }
         const formatIssueTitleByBrand = (issueName: string): string => {
           const cleaned = cleanIssueName(issueName)
           const formatted = cleaned.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
           return `${formatted}`
         }
 
-        const SUB_ISSUES_PER_SLIDE = 5
+        const SUB_ISSUES_PER_SLIDE = 10
 
         issues.forEach((issueItem: any) => {
           const subIssues = (issueItem.sub_issues || []).filter(
@@ -5229,7 +5611,7 @@ export default function DashboardPage() {
             chunkSubIssues.forEach((s: any) => {
               const dataRow: any[] = [
                 {
-                  text: cleanIssueName(s.sub_issue),
+                  text: formatSubComplaint(s.sub_issue),
                   options: {
                     bold: false,
                     align: 'left',
@@ -5362,7 +5744,7 @@ export default function DashboardPage() {
               const brandTotal = brandGrandTotals[b] || 0
               return {
                 name: b,
-                labels: reversedChunkSubIssues.map((s: any) => cleanIssueName(s.sub_issue)),
+                labels: reversedChunkSubIssues.map((s: any) => formatSubComplaint(s.sub_issue)),
                 values: reversedChunkSubIssues.map((s: any) => {
                   const match = s.brands?.find(
                     (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
@@ -5725,12 +6107,12 @@ export default function DashboardPage() {
           // Add the table to the slide
           fuSlide.addTable(pageTableRows, {
             x: 0.3,
-            y: 1.1,
+            y: 0.95,
             w: 9.4,
             border: { type: 'solid', color: '000000', size: 1 },
             fontSize: 7.5,
             fontFace: 'Arial',
-            rowH: pageTableRows.map(() => 0.30)
+            rowH: pageTableRows.map(() => 0.22)
           })
         }
       })
@@ -6321,6 +6703,8 @@ export default function DashboardPage() {
             color: BULLET_COLOR,
             fontFace: 'Arial',
             lineSpacingMultiple: LINE_SPACING,
+            paraSpaceBefore: 0,
+            paraSpaceAfter: 0,
           },
         },
         {
@@ -6329,32 +6713,103 @@ export default function DashboardPage() {
             fontSize: INSIGHT_FONT,
             color: TEXT_COLOR,
             fontFace: 'Arial',
-            breakLine: true,          // ← real paragraph break
+            breakLine: true,
             paraSpaceAfter: PARA_GAP,
             lineSpacingMultiple: LINE_SPACING,
+            indentLevel: 0,
           },
         },
       ]
 
+      // ─────────────────────────────────────────────────────────────────
+      // BUILD PER-BRAND INSIGHT BODIES
+      // ─────────────────────────────────────────────────────────────────
+
+      // ─────────────────────────────────────────────────────────────────
+      // PER-BRAND STATS (for all brands)
+      // ─────────────────────────────────────────────────────────────────
+      const brandStats = availableBrands.map((brand: string) => {
+        const stats = getBrandNpsStats(brand)
+        return {
+          brand,
+          nps: stats?.npsScore ?? 0,
+          promoters: stats?.promotersPct ?? 0,
+          passives: stats?.passivesPct ?? 0,
+          detractors: stats?.detractorsPct ?? 0,
+        }
+      })
+
+      // Rank by NPS descending so highest is mentioned first
+      const rankedBrands = [...brandStats].sort((a, b) => b.nps - a.nps)
+
+      const avgPassives = Math.round(
+        brandStats.reduce((s, b) => s + b.passives, 0) / (brandStats.length || 1)
+      )
+      const avgDetractors = Math.round(
+        brandStats.reduce((s, b) => s + b.detractors, 0) / (brandStats.length || 1)
+      )
+
+      // ─────────────────────────────────────────────────────────────────
+      // PARAGRAPH 1 — Overall NPS across all brands
+      // ─────────────────────────────────────────────────────────────────
+      const npsSentences = rankedBrands.map((b, idx) => {
+        if (idx === 0) return `${b.brand} leads with the highest NPS of ${b.nps}%`
+        if (idx === rankedBrands.length - 1) return `${b.brand} trails with the lowest NPS of ${b.nps}%`
+        return `${b.brand} stands at ${b.nps}%`
+      })
+
       const insight1Body =
-        `The NPS of ${primaryBrand} (${primaryNps}%) ${primaryNps >= secondaryNps ? 'is higher than' : 'is lower than'
-        } that of ${secondaryBrand} (${secondaryNps}%). This is mainly because ${primaryBrand} has a ${primaryPassives <= secondaryPassives ? 'lower' : 'higher'
-        } percentage of Passives (${primaryPassives}%) compared to ${secondaryBrand} (${secondaryPassives}%). However, the percentage of Detractors ${primaryBrand} has (${primaryDetractors}%) is ${primaryDetractors >= secondaryDetractors ? 'higher than' : 'lower than'
-        } that of ${secondaryBrand} (${secondaryDetractors}%). Converting passives into promoters and reducing detractors can further improve the NPS of ${primaryBrand}.`
+        `On overall NPS, ${npsSentences.slice(0, -1).join(', ')}` +
+        (npsSentences.length > 1 ? `, while ${npsSentences[npsSentences.length - 1]}.` : '.')
+
+      // ─────────────────────────────────────────────────────────────────
+      // PARAGRAPH 2 — Passives & Detractors comparison across all brands
+      // ─────────────────────────────────────────────────────────────────
+      const passiveDetractorSentences = rankedBrands.map((b) => {
+        const passWord = b.passives <= avgPassives ? 'lower' : 'higher'
+        const detWord = b.detractors >= avgDetractors ? 'higher' : 'lower'
+        return `${b.brand} has ${passWord} Passives (${b.passives}% vs category avg ${avgPassives}%) and ${detWord} Detractors (${b.detractors}% vs category avg ${avgDetractors}%)`
+      })
 
       const insight2Body =
-        `The NPS of ${primaryBrand} ${primaryDurationLater >= primaryDurationInitial ? 'increased' : 'changed'
-        } from ${primaryDurationInitial}% to ${primaryDurationLater}% as vehicle usage duration progressed from ${firstDuration} to ${lastDuration}. In contrast, the NPS of ${secondaryBrand} ${secondaryDurationLater >= secondaryDurationInitial ? 'increased' : 'changed'
-        } from ${secondaryDurationInitial}% to ${secondaryDurationLater}% with usage duration.`
+        `Comparing passives and detractors, ${passiveDetractorSentences.join('; ')}. ` +
+        `Lower passives and lower detractors indicate stronger loyalty and fewer pain points, ` +
+        `while higher passives suggest an opportunity to convert neutral customers into promoters.`
 
-      const insight3Body = `Analysis of negative drivers (areas for improvement) indicates issues related to ${negativeDriverList}.`
+      // ─────────────────────────────────────────────────────────────────
+      // PARAGRAPH 3 — Duration shift across all brands
+      // ─────────────────────────────────────────────────────────────────
+      const durationSentences = rankedBrands.map((b) => {
+        const initial = durationNpsMap[b.brand]?.[firstDuration] ?? 0
+        const later = durationNpsMap[b.brand]?.[lastDuration] ?? 0
+        const delta = later - initial
+        const direction =
+          delta > 0 ? `improved from ${initial}% to ${later}%` :
+            delta < 0 ? `declined from ${initial}% to ${later}%` :
+              `remained flat at ${initial}%`
+        return `${b.brand} ${direction}`
+      })
 
+      const insight3Body =
+        `As vehicle usage duration progressed from ${firstDuration} to ${lastDuration}, ` +
+        `${durationSentences.join(', ')}.`
+
+      // ─────────────────────────────────────────────────────────────────
+      // PARAGRAPH 4 — Negative drivers
+      // ─────────────────────────────────────────────────────────────────
+      const insight4Body =
+        `Analysis of negative drivers (areas for improvement) indicates issues related to ${negativeDriverList}.`
+
+      // ─────────────────────────────────────────────────────────────────
+      // BUILD RUNS — 4 flowing paragraphs
       const kiTextRuns: any[] = [
         ...buildInsightRuns(insight1Body),
         ...buildInsightRuns(insight2Body),
         ...buildInsightRuns(insight3Body),
+        ...buildInsightRuns(insight4Body),
       ]
 
+      // ── Render the insight text on the slide ──
       kiSlide.addText(kiTextRuns, {
         x: 0.6,
         y: 1.2,
@@ -6363,8 +6818,8 @@ export default function DashboardPage() {
         valign: 'top',
         align: 'justify',
         fontFace: 'Arial',
-
       })
+
 
       // ── Diagnostic ──
       console.log('[KEY INSIGHTS]', {
@@ -6525,20 +6980,55 @@ export default function DashboardPage() {
         }
       )
       setPptProgress('Saving PowerPoint file...')
-      await pptx.writeFile({ fileName: `Survey_Analysis_Report_${today}.pptx` })
+      const productCountryIds = Array.isArray(filters.countryId)
+        ? filters.countryId
+        : (filters.countryId ? [filters.countryId] : [])
+      const productRegionIds = Array.isArray(filters.regionId)
+        ? filters.regionId
+        : (filters.regionId ? [filters.regionId] : [])
+
+      let productCountryName = 'Overall'
+      if (productCountryIds.length > 0) {
+        const found = countries.find((c) => c.id === productCountryIds[0] || c.name === productCountryIds[0])
+        productCountryName = found ? found.name : productCountryIds[0]
+      } else if (productRegionIds.length > 0) {
+        const found = regions.find((r) => r.id === productRegionIds[0] || r.name === productRegionIds[0])
+        productCountryName = found ? found.name : productRegionIds[0]
+      }
+      const cleanProductCountry = productCountryName.trim().replace(/[/\\?%*:|"<>]/g, '').replace(/\s+/g, '_') || 'Overall'
+
+      await pptx.writeFile({ fileName: `${cleanProductCountry}_product_${today}.pptx` })
+
+      if (pptCancelRef.current) {
+        throw new Error(PPT_CANCELLED)
+      }
 
       setToastSeverity('success')
       setToastMessage('Report downloaded successfully!')
       setToastOpen(true)
     } catch (err: any) {
-      console.error('PPT Generation Error:', err)
-      setToastSeverity('error')
-      setToastMessage(`Failed to generate PPT: ${err.message || err}`)
+      if (err && err.message === PPT_CANCELLED) {
+        setToastSeverity('info')
+        setToastMessage('PPT generation cancelled.')
+      } else {
+        console.error('PPT Generation Error:', err)
+        setToastSeverity('error')
+        setToastMessage(`Failed to generate PPT: ${err.message || err}`)
+      }
       setToastOpen(true)
     } finally {
       setPptGenerating(false)
       setPptData(null)
     }
+  }
+
+  const handleCancelPPT = () => {
+    pptCancelRef.current = true
+    setPptGenerating(false)
+    setPptData(null)
+    setToastSeverity('info')
+    setToastMessage('Cancelling PPT generation...')
+    setToastOpen(true)
   }
   const [allCountriesList, setAllCountriesList] = useState<{ id: string; name: string; region_id?: string }[]>([])
 
@@ -6767,7 +7257,7 @@ export default function DashboardPage() {
               minWidth={160}
             />
 
-            {regions.length > 1 && (
+            {regions.length > 0 && (
               <MultiSelectFilter
                 id="filter-region"
                 label="Region"
@@ -6782,7 +7272,7 @@ export default function DashboardPage() {
               />
             )}
 
-            {countries.length > 1 && (
+            {countries.length > 0 && (
               <MultiSelectFilter
                 id="filter-country"
                 label="Country"
@@ -6932,10 +7422,39 @@ export default function DashboardPage() {
                     ml: 1
                   }}
                 >
-                  {pptGenerating ? 'Generating...' : isServiceActive ? 'Download Service PPT' : 'Download PPT'}
+                  {pptGenerating ? `Generating: ${pptProgress}` : isServiceActive ? 'Download Service PPT' : 'Download PPT'}
                 </Button>
+
               </span>
+
             </Tooltip>
+            {pptGenerating && (
+              <Button
+                id="cancel-download-ppt-btn"
+                variant="outlined"
+                size="small"
+                color="error"
+                onClick={handleCancelPPT}
+                startIcon={<Cancel />}
+                sx={{
+                  borderColor: '#EF4444',
+                  color: '#EF4444',
+                  '&:hover': {
+                    borderColor: '#F87171',
+                    background: 'rgba(239,68,68,0.04)',
+                  },
+                  ml: 1
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+            {/* PPT progress alert
+            {pptGenerating && (
+              <Alert severity="info" sx={{ mt: 1, display: 'flex', alignItems: 'center', mx: 1 }}>
+                Generating PPT Presentation: {pptProgress}
+              </Alert>
+            )} */}
             <Tooltip title="Reset Filters">
               <IconButton id="reset-filters-btn" size="small" onClick={() => {
                 filters.resetFilters()
@@ -6952,6 +7471,7 @@ export default function DashboardPage() {
                 <ClearAll />
               </IconButton>
             </Tooltip>
+
           </Box>
         </CardContent>
       </Card>
@@ -7075,12 +7595,12 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* PPT progress alert */}
+      {/* PPT progress alert
       {pptGenerating && (
         <Alert severity="info" sx={{ mt: 2, display: 'flex', alignItems: 'center', mx: 2 }}>
           Generating PPT Presentation: {pptProgress}
         </Alert>
-      )}
+      )} */}
 
       {/* Snackbar notification toast */}
       <Snackbar
