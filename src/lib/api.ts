@@ -173,6 +173,8 @@ export const marketFeedbackApi = {
   getAll: () => api.get('/market-feedback'),
   saveRemark: (data: { remark_key: string; remark: string; issue_name?: string; sub_issue_title?: string }) =>
     api.post('/market-feedback/remark', data),
+  saveContent: (data: { remark_key: string; content: string; issue_name?: string; sub_issue_title?: string }) =>
+    api.post('/market-feedback/content', data),
   uploadPhoto: (formData: FormData) =>
     api.post('/market-feedback/photo', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

@@ -567,7 +567,43 @@ export default function DashboardPage() {
 
         if (!Array.isArray(matrix.brands)) return
 
-        const orderedBrands = getOrderedBrands(matrix.brands)
+        // ─── Robust check — a brand is "empty" if it has NO non-zero values ───
+        const brandHasData = (brand: string): boolean => {
+          return matrix.table.some((row: any) => {
+            const directVal = row?.[brand]
+            if (directVal !== undefined && directVal !== null && Number(directVal) > 0) return true
+
+            const countVal = row?.[`${brand}_count`]
+            if (countVal !== undefined && countVal !== null && Number(countVal) > 0) return true
+
+            const totalVal = row?.[`${brand}_total`]
+            if (totalVal !== undefined && totalVal !== null && Number(totalVal) > 0) return true
+
+            const matchingKey = Object.keys(row || {}).find(k =>
+              k.startsWith(brand) && k !== brand
+            )
+            if (matchingKey) {
+              const val = row[matchingKey]
+              if (val !== undefined && val !== null && Number(val) > 0) return true
+            }
+
+            return false
+          })
+        }
+
+        const brandsWithData = matrix.brands.filter((brand: string) => brandHasData(brand))
+
+        if (brandsWithData.length === 0) {
+          slide.addText('No data available', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+          return
+        }
+
+        const orderedBrands = getOrderedBrands(brandsWithData)
 
         const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
         const allAgeGroups = new Set<string>()
@@ -581,28 +617,45 @@ export default function DashboardPage() {
             if (!cityAgeMap[city]) cityAgeMap[city] = {}
             if (!cityAgeMap[city][ageGroup]) cityAgeMap[city][ageGroup] = {}
             orderedBrands.forEach((brand: string) => {
-              cityAgeMap[city][ageGroup][brand] = Number(row?.[brand]) || 0
+              const directVal = row?.[brand]
+              const countVal = row?.[`${brand}_count`]
+              const rawVal = directVal !== undefined ? directVal : countVal
+              cityAgeMap[city][ageGroup][brand] = Number(rawVal) || 0
             })
           }
         })
 
-        const ageGroupOrder = ['20-30', '30-40', '40-50', '50-60', 'Less than 20']
-        const sortedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
         const cities = Object.keys(cityAgeMap)
 
-        const totalDataCols = orderedBrands.length * (sortedAgeGroups.length + 1)
+        // ─── Ordered so "Less than 20" comes FIRST ───
+        const ageGroupOrder = ['Less than 20', '20-30', '30-40', '40-50', '50-60']
+        const orderedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
+
+        // ─── FIX A: Remove age groups that have NO data in ANY city × brand ───
+        //     An age group is kept only if at least one (city, brand) has a value > 0.
+        const sortedAgeGroups = orderedAgeGroups.filter(ageGroup => {
+          return cities.some(city =>
+            orderedBrands.some(brand => (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) > 0)
+          )
+        })
+
+        // Safety: if everything got filtered out (unexpected), fall back to the original
+        const ageGroupsToUse = sortedAgeGroups.length > 0 ? sortedAgeGroups : orderedAgeGroups
+        // ──────────────────────────────────────────────────────────────────────
+
+        const totalDataCols = orderedBrands.length * (ageGroupsToUse.length + 1)
         const totalCols = 1 + totalDataCols
         const isManyCols = totalCols > 15
         const cityColWidth = isManyCols ? 0.85 : 1.0
         const dataColWidth = (w - cityColWidth) / totalDataCols
         const colWidths = [cityColWidth, ...Array(totalDataCols).fill(dataColWidth)]
-        const subColCount = sortedAgeGroups.length + 1
+        const subColCount = ageGroupsToUse.length + 1
         const fontSize = isManyCols ? 5 : 6
         const rowHeight = isManyCols ? 0.22 : 0.25
 
         const brandHeaderH = 0.28
 
-        // City & Age Group header box — addText with fill
+        // City & Age Group header box
         slide.addText('City & Age Group', {
           x, y, w: cityColWidth, h: brandHeaderH,
           fontSize: 6, bold: true, color: 'FFFFFF',
@@ -616,7 +669,6 @@ export default function DashboardPage() {
           const brandW = subColCount * dataColWidth
           const fill = getBrandColor(brand)
 
-          // Brand header box — addText with fill spans the full brand group width
           slide.addText(brand, {
             x: brandX, y, w: brandW, h: brandHeaderH,
             fontSize: 6, bold: true, color: 'FFFFFF',
@@ -634,7 +686,7 @@ export default function DashboardPage() {
         ]
         orderedBrands.forEach((brand: string) => {
           const fill = getAgeGroupLightColor(brand)
-          sortedAgeGroups.forEach((ageGroup: string) => {
+          ageGroupsToUse.forEach((ageGroup: string) => {
             subHeaderRow.push({
               text: ageGroup,
               options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
@@ -652,14 +704,14 @@ export default function DashboardPage() {
           const brandTotals: Record<string, number> = {}
           orderedBrands.forEach((brand: string) => {
             brandTotals[brand] = 0
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
             })
           })
 
           const dataRow: any[] = [{ text: city, options: { align: 'left', fontSize: 6, bold: true } }]
           orderedBrands.forEach((brand: string) => {
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
               const total = brandTotals[brand] || 1
               const pct = total > 0 ? ((value / total) * 100) : 0
@@ -680,12 +732,12 @@ export default function DashboardPage() {
         orderedBrands.forEach((brand: string) => {
           let grandTotal = 0
           cities.forEach((city) => {
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               grandTotal += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
             })
           })
           const totalPerBrand = grandTotal || 1
-          sortedAgeGroups.forEach((ageGroup: string) => {
+          ageGroupsToUse.forEach((ageGroup: string) => {
             let total = 0
             cities.forEach((city) => { total += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) })
             const pct = totalPerBrand > 0 ? ((total / totalPerBrand) * 100) : 0
@@ -820,6 +872,8 @@ export default function DashboardPage() {
             dataLabelColor: '333333',
             dataLabelFontFace: 'Arial',
             dataLabelPosition: 'outEnd',
+            // ✅ ADD THIS: Format data labels with percentage symbol
+            dataLabelFormatCode: type === 'percent' ? '0"%"' : '0',
             barGapWidthPct: 150,
             barOverlapPct: -30,
             valGridLine: { style: 'none' },
@@ -2780,13 +2834,22 @@ export default function DashboardPage() {
       addDividerSlide('Feedback from the market')
       setPptProgress('Generating Feedback from the market slides...')
 
+      // ── Data source: same as ServiceDashboardTab's Feedback tab ──
+      const svcAuthData = serviceBenefitsData?.data?.authorized || {
+        sample_size: 0,
+        overall: { top_issues: [], top_benefits: [], brand_issues: {}, brand_benefits: {} },
+      }
+
+      // ── Remarks + Photos + Contents ──
       let mfRemarks: Record<string, string> = {}
       let mfPhotos: Record<string, any[]> = {}
+      let mfContents: Record<string, string> = {}
       try {
         const mfRes = await marketFeedbackApi.getAll()
         if (mfRes.data?.success && mfRes.data?.data) {
           mfRemarks = mfRes.data.data.remarks || {}
           mfPhotos = mfRes.data.data.photos || {}
+          mfContents = mfRes.data.data.contents || {}
         }
       } catch (err) {
         console.warn('Could not fetch market feedback DB entries for PPT:', err)
@@ -2803,32 +2866,143 @@ export default function DashboardPage() {
         }
       } catch (e) { /* ignore */ }
 
-      let mfIssues: any[] = DEFAULT_TVS_TOP_ISSUES
-      try {
-        const tvsAnalysisRes = await issuesApi.analysis({
-          brand_model: 'TVS',
-          region_id: toParam(filters.regionId),
-          country_id: toParam(filters.countryId),
-          ib_version_id: toParam(filters.ibVersionId),
-          survey_location: toParam(filters.surveyLocation),
-          date_from: filters.dateFrom || undefined,
-          date_to: filters.dateTo || undefined,
-          search: filters.search || undefined,
-        })
-        const apiIssues = tvsAnalysisRes.data?.data
-        if (Array.isArray(apiIssues) && apiIssues.length > 0) {
-          mfIssues = generateFeedbackFromSurveyData(apiIssues, 'TVS')
-        }
-      } catch (err) {
-        console.warn('Using default TVS market feedback baseline for PPT:', err)
+      // ── Helpers ──
+      const isJunkTopicName = (name: string) => {
+        if (!name) return true
+        const s = String(name).trim().toLowerCase()
+        if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
+        if (!isNaN(Number(s))) return true
+        const junkWords = [
+          'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
+          'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
+          'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
+          'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree',
+        ]
+        if (junkWords.includes(s)) return true
+        if (s.startsWith('submitform')) return true
+        return false
       }
 
-      // ─── Group feedback entries: 
-      //     1. Entries WITH photo+remark → each gets its own slide (image + remark only)
-      //     2. Entries WITHOUT photo+remark → grouped 2 sub-issues per slide as bullets
-      // ────────────────────────────────────────────────────────────────────────────
-      const groupedByIssue: Record<string, any[]> = {}
+      const isTvsBrand = (b: string) =>
+        String(b || '').trim().toUpperCase().startsWith('TVS')
 
+      const buildIssueFeedbackBullets = (
+        mainIssue: string,
+        brand: string,
+        valueCounts: { value: string; count: number; percentage: number }[],
+        totalCount: number,
+        parentCategory: string
+      ): string[] => {
+        if (!valueCounts || valueCounts.length === 0) {
+          return [`No specific feedback values captured for ${mainIssue}.`]
+        }
+        const sorted = [...valueCounts].sort((a, b) => b.count - a.count)
+        const top = sorted[0]
+        const rest = sorted.slice(1, 4)
+
+        const OPENER_THRESHOLD = 70
+        const useSignificant = top.percentage >= OPENER_THRESHOLD
+
+        const bullets: string[] = []
+
+        if (useSignificant) {
+          bullets.push(
+            `The significant of ${top.percentage}% user in ${brand} is the highest ` +
+            `percentage of complaints about ${top.value}.`
+          )
+        } else {
+          bullets.push(
+            `A major portion of ${mainIssue} complaints (${top.percentage}%) occur ` +
+            `in ${brand}, with ${top.value} being the most reported concern.`
+          )
+        }
+
+        if (rest.length >= 1) bullets.push(`Similarly, ${rest[0].percentage}% of users reported concerns under ${rest[0].value}.`)
+        if (rest.length >= 2) bullets.push(`${rest[1].percentage}% of users reported concerns under ${rest[1].value}.`)
+        if (rest.length >= 3) bullets.push(`${rest[2].percentage}% of users reported concerns under ${rest[2].value}.`)
+
+        bullets.push(
+          `Overall (${totalCount})(${top.percentage}%) ${brand} users have reported on ` +
+          `${mainIssue} which was the major complaint in ${parentCategory}.`
+        )
+
+        return bullets
+      }
+
+      // ── Build mfIssues from OVERALL segment only ──
+      type FeedbackShape = {
+        id: string
+        issueName: string
+        subIssueTitle: string
+        valueCounts: { value: string; count: number; percentage: number }[]
+        bullets: string[]
+        overallSummary: string
+        totalUsersReported: number
+        remarkKey: string
+      }
+
+      const mfIssues: { issue_name: string; total_complaints: number; feedbacks: FeedbackShape[] }[] = []
+
+      const overallSeg: any = svcAuthData.overall || {}
+      let overallTopIssues: any[] = overallSeg.top_issues || []
+
+      const tvsIssueBrands = Object.keys(overallSeg.brand_issues || {}).filter(isTvsBrand)
+      if (tvsIssueBrands.length > 0) {
+        overallTopIssues = tvsIssueBrands.flatMap((b) => overallSeg.brand_issues?.[b] || [])
+      }
+      overallTopIssues = overallTopIssues.filter((i: any) => !isJunkTopicName(i.topic))
+
+      const overallFeedbacks: FeedbackShape[] = []
+      let counter = 1
+
+      overallTopIssues.slice(0, 10).forEach((item: any) => {
+        const valueCounts: { value: string; count: number; percentage: number }[] =
+          (item.value_counts || []).filter((vc: any) => !isJunkTopicName(vc.value))
+
+        if (valueCounts.length === 0) return
+
+        // ✅ Prefer user-edited content from UI, fall back to auto-generated bullets
+        const contentKey = `service_content_issue_${item.topic}`
+        const customContent = mfContents[contentKey] || ''
+
+        let bullets: string[]
+        if (customContent.trim()) {
+          bullets = customContent
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+        } else {
+          bullets = buildIssueFeedbackBullets(
+            item.topic,
+            'Authorized Workshop',
+            valueCounts,
+            item.count || 0,
+            'Authorized Service Workshop Betterments'
+          )
+        }
+
+        overallFeedbacks.push({
+          id: `svc-overall-${counter++}`,
+          issueName: item.topic,
+          subIssueTitle: item.topic,
+          valueCounts,
+          bullets,
+          overallSummary: bullets[bullets.length - 1] || '',
+          totalUsersReported: item.count || 0,
+          remarkKey: `service_issue_${item.topic}`,
+        })
+      })
+
+      if (overallFeedbacks.length > 0) {
+        mfIssues.push({
+          issue_name: 'Feedback from the Market (Service) — Overall',
+          total_complaints: overallFeedbacks.reduce((s, f) => s + f.totalUsersReported, 0),
+          feedbacks: overallFeedbacks,
+        })
+      }
+
+      // ── Group ──
+      const groupedByIssue: Record<string, any[]> = {}
       mfIssues.forEach((issueCategory: any) => {
         const issueName = issueCategory.issue_name || 'Issues'
         if (!groupedByIssue[issueName]) groupedByIssue[issueName] = []
@@ -2838,12 +3012,11 @@ export default function DashboardPage() {
       })
 
       Object.entries(groupedByIssue).forEach(([issueName, entries]) => {
-        // ── Split entries into "with media" (photo or remark) and "text-only" ──
         const withMedia: any[] = []
         const textOnly: any[] = []
 
         entries.forEach((entry) => {
-          const remarkKey = `${entry.issueName}_${entry.feedback.subIssueTitle}`
+          const remarkKey = entry.feedback.remarkKey
           const remark = mfRemarks[remarkKey] || ''
           const photos = mfPhotos[remarkKey] || []
           if (photos.length > 0 || remark) {
@@ -2853,36 +3026,34 @@ export default function DashboardPage() {
           }
         })
 
-        // ── SLIDES: entries WITH media (image + remark, NO bullet contents) ──
+        // ═══════════════════════════════════════════════════════════════
+        // ── SLIDES: entries WITH media (photo LEFT, remark RIGHT) ──
+        // ═══════════════════════════════════════════════════════════════
         withMedia.forEach(({ issueName: iss, feedback, remark, photos }) => {
           const mfSlide = pptx.addSlide()
           mfSlide.background = { fill: 'FFFFFF' }
 
-          // ── Title (Issue name only) ──
           mfSlide.addText(iss, {
             x: 0.3, y: 0.2, w: 8.0, h: 0.45,
             fontSize: 22, bold: true, color: '#1F2A6B', fontFace: 'Arial',
           })
 
-          // ── Divider line under title ──
           mfSlide.addShape(pptx.ShapeType.line, {
             x: 0.3, y: 0.75, w: 9.4, h: 0,
             line: { color: '3B82F6', width: 2 },
           })
 
-          // ── Logo ──
           mfSlide.addImage({
             path: '/assets/logo.png',
             x: 8.72, y: 0.15, w: 1.0, h: 0.52,
           })
 
-          // ── Sub-heading (sub-issue name only) ──
-          mfSlide.addText(feedback.subIssueTitle, {
+          mfSlide.addText(feedback.issueName, {
             x: 0.3, y: 0.9, w: 9.4, h: 0.35,
             fontSize: 14, bold: true, color: '1E293B', fontFace: 'Arial',
           })
 
-          // ── Image + Remark only (no bullet contents) ──
+          // LEFT: PHOTO(S)
           if (photos.length > 0) {
             const firstPhotoUrl = getPhotoUrl(photos[0].url)
             if (photos.length === 1) {
@@ -2904,9 +3075,11 @@ export default function DashboardPage() {
                 sizing: { type: 'contain', w: 2.6, h: 3.9 },
               })
             }
+          }
 
-            // Right side: only the Field Remark
-            if (remark) {
+          // RIGHT: REMARK
+          if (remark) {
+            if (photos.length > 0) {
               mfSlide.addText(
                 [
                   { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
@@ -2917,70 +3090,56 @@ export default function DashboardPage() {
                   align: 'justify', valign: 'middle', fontFace: 'Arial',
                 }
               )
+            } else {
+              mfSlide.addText(
+                [
+                  { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
+                  { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
+                ],
+                {
+                  x: 0.8, y: 1.35, w: 8.4, h: 3.9,
+                  align: 'justify', valign: 'middle', fontFace: 'Arial',
+                }
+              )
             }
-          } else if (remark) {
-            // Remark only (no photos)
-            mfSlide.addText(
-              [
-                { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
-                { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
-              ],
-              {
-                x: 0.8, y: 1.35, w: 8.4, h: 3.9,
-                align: 'justify', valign: 'middle', fontFace: 'Arial',
-              }
-            )
           }
         })
 
-        const buildBulletRuns = (feedback: any) => {
+        const buildBulletRuns = (feedback: FeedbackShape) => {
           const runs: any[] = []
-          const sortedKm = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
-
-          const BULLET_FONT = 9
+          const BULLET_FONT = 11
           const BULLET_COLOR = '334155'
-          const BULLET_SPACE_AFTER = 8          // ← space between bullets (paragraphs)
-          const LINE_SPACING = 1.0              // ← space inside a wrapped bullet
+          const LINE_SPACING = 1.4
 
-          // ── Regular bullets ──
-          sortedKm.forEach((item: any) => {
-            runs.push({
-              text: `• ${item.description}`,
-              options: {
-                fontSize: BULLET_FONT,
-                color: BULLET_COLOR,
-                fontFace: 'Arial',
-                breakLine: true,                // ← end this paragraph
-                paraSpaceAfter: BULLET_SPACE_AFTER,
-                lineSpacingMultiple: LINE_SPACING,
-              },
-            })
-          })
+          const GAP_AFTER_PARA_1 = 10
+          const GAP_BETWEEN_OTHER = 5
+          const GAP_AFTER_LAST_BULLET = 8
 
-          // ── Overall summary — same paragraph style, only highlight numbers ──
-          if (feedback.overallSummary) {
-            const summary: string = String(feedback.overallSummary)
+          // Hanging-indent measurements (in inches)
+          const BULLET_INDENT = 0.20      // where the • glyph sits
+          const TEXT_INDENT = 0.40        // where wrapped text starts
+
+          const bullets: string[] = Array.isArray(feedback.bullets) && feedback.bullets.length > 0
+            ? feedback.bullets
+            : ['No specific feedback values captured.']
+
+          bullets.forEach((text, idx) => {
+            const isLast = idx === bullets.length - 1
+            const spaceAfter = isLast
+              ? GAP_AFTER_LAST_BULLET
+              : (idx === 0 ? GAP_AFTER_PARA_1 : GAP_BETWEEN_OTHER)
+
             const highlightRegex = /(\(\s*\d+\s*\)|\(\s*\d+\s*%\s*\)|\d+\s*%)/g
 
-            // Bullet prefix starts a NEW paragraph
-            runs.push({
-              text: '• ',
-              options: {
-                fontSize: BULLET_FONT,
-                color: BULLET_COLOR,
-                fontFace: 'Arial',  // ← gap before summary paragraph
-                paraSpaceAfter: BULLET_SPACE_AFTER,
-                lineSpacingMultiple: LINE_SPACING,
-              },
-            })
-
+            // ── Split text into highlight / non-highlight fragments ──
+            const fragmentRuns: any[] = []
             let lastIndex = 0
             let match: RegExpExecArray | null
 
-            while ((match = highlightRegex.exec(summary)) !== null) {
-              const before = summary.slice(lastIndex, match.index)
+            while ((match = highlightRegex.exec(text)) !== null) {
+              const before = text.slice(lastIndex, match.index)
               if (before) {
-                runs.push({
+                fragmentRuns.push({
                   text: before,
                   options: {
                     fontSize: BULLET_FONT,
@@ -2990,9 +3149,7 @@ export default function DashboardPage() {
                   },
                 })
               }
-
-              // Highlighted number — green + bold
-              runs.push({
+              fragmentRuns.push({
                 text: match[0],
                 options: {
                   fontSize: BULLET_FONT,
@@ -3002,66 +3159,82 @@ export default function DashboardPage() {
                   lineSpacingMultiple: LINE_SPACING,
                 },
               })
-
               lastIndex = match.index + match[0].length
             }
 
-            const after = summary.slice(lastIndex)
+            const after = text.slice(lastIndex)
             if (after) {
-              runs.push({
+              fragmentRuns.push({
                 text: after,
                 options: {
                   fontSize: BULLET_FONT,
                   color: BULLET_COLOR,
                   fontFace: 'Arial',
                   lineSpacingMultiple: LINE_SPACING,
-                  // Last run of the summary = end paragraph
-                  breakLine: true,
                 },
               })
-            } else {
-              // If summary ended exactly on a highlight, force a paragraph break
-              runs[runs.length - 1].options.breakLine = true
             }
-          }
+
+            if (fragmentRuns.length === 0) {
+              fragmentRuns.push({
+                text,
+                options: {
+                  fontSize: BULLET_FONT,
+                  color: BULLET_COLOR,
+                  fontFace: 'Arial',
+                  lineSpacingMultiple: LINE_SPACING,
+                },
+              })
+            }
+
+            // ── Attach the bullet + hanging indent to the FIRST fragment ──
+            const firstFragment = fragmentRuns[0]
+            firstFragment.options = {
+              ...firstFragment.options,
+              bullet: { code: '2022' },     // • Unicode
+              indentLevel: 0,
+              // PptxGenJS uses `indent` (in points) — 1 inch = 72 pt
+              indent: Math.round((TEXT_INDENT - BULLET_INDENT) * 72),  // ~14 pt
+              // marL (left margin of the paragraph) is what controls the hanging indent
+              // In PptxGenJS this maps to `indent`, and the outer text box x sets the base.
+            }
+
+            // ✅ Last fragment ends the paragraph
+            const lastFragment = fragmentRuns[fragmentRuns.length - 1]
+            lastFragment.options.breakLine = true
+            lastFragment.options.paraSpaceAfter = spaceAfter
+
+            fragmentRuns.forEach((fr) => runs.push(fr))
+          })
 
           return runs
         }
 
-        // Group textOnly into slide chunks:
-        //  - if all entries are "light", fit 4 per slide
-        //  - if mixed, fit 3 per slide
-        //  - if any is "heavy", fit 2 per slide
-        const LIGHT_THRESHOLD = 60   // <= this weight → light
-        const HEAVY_THRESHOLD = 110  // >= this weight → heavy
-
-
-
+        // ═══════════════════════════════════════════════════════════════
+        // ── Estimate entry height (line-based, plus extra gap after para 1) ──
+        // ═══════════════════════════════════════════════════════════════
         const estimateEntryLines = (entry: any): number => {
-          const fb = entry.feedback
-
-          const titleLen = (fb.subIssueTitle || '').length
+          const fb: FeedbackShape = entry.feedback
+          const titleLen = (fb.issueName || '').length
           const titleLines = Math.max(1, Math.ceil(titleLen / 70))
 
           let bulletLines = 0
-            ; (fb.kmBreakdown || []).forEach((b: any) => {
-              const len = String(b.description || '').length
-              bulletLines += Math.max(1, Math.ceil(len / 95))
+            ; (fb.bullets || []).forEach((b, i) => {
+              const lineCount = Math.max(1, Math.ceil(String(b).length / 95))
+              // First paragraph gets an extra "line" to account for the larger gap
+              bulletLines += lineCount + (i === 0 ? 1 : 0)
             })
 
-          const summaryLen = (fb.overallSummary || '').length
-          const summaryLines = summaryLen > 0 ? Math.max(1, Math.ceil(summaryLen / 95)) : 0
-
-          // Compressed spacing means bullets + summary occupy ~half a normal line
-          const compressedBody = Math.ceil((bulletLines + summaryLines) * 0.5)
-
-          // Title stays 1 unit per line (it's not compressed)
-          return titleLines + compressedBody + 1   // +1 = padding/margin
+          const compressedBody = Math.ceil(bulletLines * 0.5)
+          return titleLines + compressedBody + 1
         }
-        // ── Pack text-only entries into slides ──
+
+        // ═══════════════════════════════════════════════════════════════
+        // ── Pack text-only entries into slides — MAX 3 issues per slide ──
+        // ═══════════════════════════════════════════════════════════════
         const MAX_LINES_PER_SLIDE = 22
-        const MAX_LINES_PER_SLIDE_3PLUS = 15   // stricter cap when 3+ topics land on one slide
-        const MAX_TOPICS_PER_SLIDE = 3         // ← hard cap: never more than 3 topics per slide
+        const MAX_LINES_PER_SLIDE_3PLUS = 15
+        const MAX_TOPICS_PER_SLIDE = 3           // ← hard cap of 3
 
         const textChunks: any[][] = []
         {
@@ -3070,24 +3243,16 @@ export default function DashboardPage() {
 
           textOnly.forEach((entry) => {
             const lines = estimateEntryLines(entry)
-
-            // 1) Hard cap: if already 3 topics on this slide → flush
             const reachedTopicCap = currentChunk.length >= MAX_TOPICS_PER_SLIDE
-
-            // 2) Base cap: adding this entry exceeds total line budget
             const wouldExceedBase = currentLines + lines > MAX_LINES_PER_SLIDE
-
-            // 3) Stricter cap once 2 topics already present
             const wouldExceed3Plus =
-              currentChunk.length >= 2 &&
-              currentLines + lines > MAX_LINES_PER_SLIDE_3PLUS
+              currentChunk.length >= 2 && currentLines + lines > MAX_LINES_PER_SLIDE_3PLUS
 
             if (currentChunk.length > 0 && (reachedTopicCap || wouldExceedBase || wouldExceed3Plus)) {
               textChunks.push(currentChunk)
               currentChunk = []
               currentLines = 0
             }
-
             currentChunk.push(entry)
             currentLines += lines
           })
@@ -3095,81 +3260,82 @@ export default function DashboardPage() {
           if (currentChunk.length > 0) textChunks.push(currentChunk)
         }
 
+        // ═══════════════════════════════════════════════════════════════
         // ── Render each packed chunk ──
+        // ═══════════════════════════════════════════════════════════════
         textChunks.forEach((chunk) => {
           const mfSlide = pptx.addSlide()
           mfSlide.background = { fill: 'FFFFFF' }
 
-          // Title
           mfSlide.addText(issueName, {
             x: 0.3, y: 0.2, w: 8.0, h: 0.45,
             fontSize: 22, bold: true, color: '#1F2A6B', fontFace: 'Arial',
           })
 
-          // Divider
           mfSlide.addShape(pptx.ShapeType.line, {
             x: 0.3, y: 0.75, w: 9.4, h: 0,
             line: { color: '3B82F6', width: 2 },
           })
 
-          // Logo
           mfSlide.addImage({
             path: '/assets/logo.png',
             x: 8.72, y: 0.15, w: 1.0, h: 0.52,
           })
 
-          // ── Distribute chunk blocks by their estimated weight ──
           const contentTopY = 0.95
-          const contentBottomY = 5.45
-          const usableH = contentBottomY - contentTopY
-          const gap = 0.15
+          const allRuns: any[] = []
 
-          const totalLines = chunk.reduce((s, e) => s + estimateEntryLines(e), 0)
-          const totalGap = gap * (chunk.length - 1)
-          const distributableH = usableH - totalGap
-
-          let cursorY = contentTopY
-
-          chunk.forEach((entry) => {
+          chunk.forEach((entry, idx) => {
             const { feedback } = entry
-            const lines = estimateEntryLines(entry)
-            const blockH = (lines / totalLines) * distributableH
 
-            // ── Combine sub-heading + bullets into ONE addText call ──
-            //    PptxGenJS stacks them naturally, so the gap after the title is always correct.
-            const titleRun = {
-              text: (feedback.subIssueTitle || '') + '\n',
+            // Gap between topics (skip for the first one)
+            if (idx > 0) {
+              allRuns.push({
+                text: '',
+                options: {
+                  fontSize: 4,
+                  breakLine: true,
+                  paraSpaceBefore: 12,
+                  paraSpaceAfter: 0,
+                  lineSpacingMultiple: 0.3,
+                },
+              })
+            }
+
+            // Sub-heading (issue topic)
+            allRuns.push({
+              text: feedback.issueName || '',
               options: {
-                fontSize: 12,
+                fontSize: 11,
                 bold: true,
                 color: '1E293B',
                 fontFace: 'Arial',
                 breakLine: true,
-                paraSpaceAfter: 0,       // ← was 1, now 0 = no gap after title
+                paraSpaceAfter: 5,
                 paraSpaceBefore: 0,
-                lineSpacingMultiple: 0.7, // ← was 0.9, now 0.7 = tighter line
+                lineSpacingMultiple: 0.75,
               },
-            }
+            })
+
+            // Bullets
             const bulletRuns = buildBulletRuns(feedback)
-            const combinedRuns = [titleRun, ...bulletRuns]
-
-            if (combinedRuns.length > 0) {
-              mfSlide.addText(combinedRuns, {
-                x: 0.4,
-                y: cursorY,
-                w: 9.2,
-                h: blockH - 0.05,
-                valign: 'top',
-                fontFace: 'Arial',
-                wrap: true,
-              })
-            }
-
-            cursorY += blockH + gap
+            bulletRuns.forEach((r) => allRuns.push(r))
           })
+
+          if (allRuns.length > 0) {
+            mfSlide.addText(allRuns, {
+              x: 0.4,
+              y: contentTopY,
+              w: 9.2,
+              h: 4.5,
+              valign: 'top',
+              fontFace: 'Arial',
+              wrap: true,
+              align: 'justify'
+            })
+          }
         })
       })
-
       // ─── DIVIDER: Key Insights ───
       addDividerSlide('Key Insights')
 
@@ -3810,7 +3976,6 @@ export default function DashboardPage() {
         })
       }
 
-      // ─── HELPER: Add Age Group by City & Brand Table ───
       const addAgeCityTableFullWidth = (slide: any, matrix: any, x: number, y: number, w: number, h: number) => {
         if (!matrix || !Array.isArray(matrix.table) || matrix.table.length === 0) {
           slide.addText('No data available', {
@@ -3824,7 +3989,43 @@ export default function DashboardPage() {
 
         if (!Array.isArray(matrix.brands)) return
 
-        const orderedBrands = getOrderedBrands(matrix.brands)
+        // ─── Robust check — a brand is "empty" if it has NO non-zero values ───
+        const brandHasData = (brand: string): boolean => {
+          return matrix.table.some((row: any) => {
+            const directVal = row?.[brand]
+            if (directVal !== undefined && directVal !== null && Number(directVal) > 0) return true
+
+            const countVal = row?.[`${brand}_count`]
+            if (countVal !== undefined && countVal !== null && Number(countVal) > 0) return true
+
+            const totalVal = row?.[`${brand}_total`]
+            if (totalVal !== undefined && totalVal !== null && Number(totalVal) > 0) return true
+
+            const matchingKey = Object.keys(row || {}).find(k =>
+              k.startsWith(brand) && k !== brand
+            )
+            if (matchingKey) {
+              const val = row[matchingKey]
+              if (val !== undefined && val !== null && Number(val) > 0) return true
+            }
+
+            return false
+          })
+        }
+
+        const brandsWithData = matrix.brands.filter((brand: string) => brandHasData(brand))
+
+        if (brandsWithData.length === 0) {
+          slide.addText('No data available', {
+            x, y, w, h,
+            fontSize: 12,
+            color: '999999',
+            align: 'center',
+          })
+          return
+        }
+
+        const orderedBrands = getOrderedBrands(brandsWithData)
 
         const cityAgeMap: Record<string, Record<string, Record<string, number>>> = {}
         const allAgeGroups = new Set<string>()
@@ -3838,28 +4039,45 @@ export default function DashboardPage() {
             if (!cityAgeMap[city]) cityAgeMap[city] = {}
             if (!cityAgeMap[city][ageGroup]) cityAgeMap[city][ageGroup] = {}
             orderedBrands.forEach((brand: string) => {
-              cityAgeMap[city][ageGroup][brand] = Number(row?.[brand]) || 0
+              const directVal = row?.[brand]
+              const countVal = row?.[`${brand}_count`]
+              const rawVal = directVal !== undefined ? directVal : countVal
+              cityAgeMap[city][ageGroup][brand] = Number(rawVal) || 0
             })
           }
         })
 
-        const ageGroupOrder = ['20-30', '30-40', '40-50', '50-60', 'Less than 20']
-        const sortedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
         const cities = Object.keys(cityAgeMap)
 
-        const totalDataCols = orderedBrands.length * (sortedAgeGroups.length + 1)
+        // ─── Ordered so "Less than 20" comes FIRST ───
+        const ageGroupOrder = ['Less than 20', '20-30', '30-40', '40-50', '50-60']
+        const orderedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
+
+        // ─── FIX A: Remove age groups that have NO data in ANY city × brand ───
+        //     An age group is kept only if at least one (city, brand) has a value > 0.
+        const sortedAgeGroups = orderedAgeGroups.filter(ageGroup => {
+          return cities.some(city =>
+            orderedBrands.some(brand => (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) > 0)
+          )
+        })
+
+        // Safety: if everything got filtered out (unexpected), fall back to the original
+        const ageGroupsToUse = sortedAgeGroups.length > 0 ? sortedAgeGroups : orderedAgeGroups
+        // ──────────────────────────────────────────────────────────────────────
+
+        const totalDataCols = orderedBrands.length * (ageGroupsToUse.length + 1)
         const totalCols = 1 + totalDataCols
         const isManyCols = totalCols > 15
         const cityColWidth = isManyCols ? 0.85 : 1.0
         const dataColWidth = (w - cityColWidth) / totalDataCols
         const colWidths = [cityColWidth, ...Array(totalDataCols).fill(dataColWidth)]
-        const subColCount = sortedAgeGroups.length + 1
+        const subColCount = ageGroupsToUse.length + 1
         const fontSize = isManyCols ? 5 : 6
         const rowHeight = isManyCols ? 0.22 : 0.25
 
         const brandHeaderH = 0.28
 
-        // City & Age Group header box — addText with fill (avoids addShape 'rect' which crashes PptxGenJS)
+        // City & Age Group header box
         slide.addText('City & Age Group', {
           x, y, w: cityColWidth, h: brandHeaderH,
           fontSize: 6, bold: true, color: 'FFFFFF',
@@ -3873,7 +4091,6 @@ export default function DashboardPage() {
           const brandW = subColCount * dataColWidth
           const fill = getBrandColor(brand)
 
-          // Brand header box — addText with fill spans the full brand group width
           slide.addText(brand, {
             x: brandX, y, w: brandW, h: brandHeaderH,
             fontSize: 6, bold: true, color: 'FFFFFF',
@@ -3891,7 +4108,7 @@ export default function DashboardPage() {
         ]
         orderedBrands.forEach((brand: string) => {
           const fill = getAgeGroupLightColor(brand)
-          sortedAgeGroups.forEach((ageGroup: string) => {
+          ageGroupsToUse.forEach((ageGroup: string) => {
             subHeaderRow.push({
               text: ageGroup,
               options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
@@ -3909,14 +4126,14 @@ export default function DashboardPage() {
           const brandTotals: Record<string, number> = {}
           orderedBrands.forEach((brand: string) => {
             brandTotals[brand] = 0
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
             })
           })
 
           const dataRow: any[] = [{ text: city, options: { align: 'left', fontSize: 6, bold: true } }]
           orderedBrands.forEach((brand: string) => {
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
               const total = brandTotals[brand] || 1
               const pct = total > 0 ? ((value / total) * 100) : 0
@@ -3937,12 +4154,12 @@ export default function DashboardPage() {
         orderedBrands.forEach((brand: string) => {
           let grandTotal = 0
           cities.forEach((city) => {
-            sortedAgeGroups.forEach((ageGroup: string) => {
+            ageGroupsToUse.forEach((ageGroup: string) => {
               grandTotal += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
             })
           })
           const totalPerBrand = grandTotal || 1
-          sortedAgeGroups.forEach((ageGroup: string) => {
+          ageGroupsToUse.forEach((ageGroup: string) => {
             let total = 0
             cities.forEach((city) => { total += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) })
             const pct = totalPerBrand > 0 ? ((total / totalPerBrand) * 100) : 0
@@ -4067,7 +4284,7 @@ export default function DashboardPage() {
           }
         } else if (Array.isArray(matrixOrData)) {
           chartData = matrixOrData
-          resolvedColors = colors && colors.length > 0 ? colors : ['1871C9', '2AE886', 'E8903D', 'A731AB']
+          resolvedColors = colors && colors.length > 0 ? colors : ['00B4D8', '7C3AED', 'F59E0B', '10B981']
         }
 
         if (!chartData || chartData.length === 0) {
@@ -4101,6 +4318,8 @@ export default function DashboardPage() {
             dataLabelColor: '333333',
             dataLabelFontFace: 'Arial',
             dataLabelPosition: 'outEnd',
+            // ✅ ADD THIS: Format data labels with percentage symbol
+            dataLabelFormatCode: type === 'percent' ? '0"%"' : '0',
             barGapWidthPct: 150,
             barOverlapPct: -30,
             valGridLine: { style: 'none' },
@@ -6143,11 +6362,13 @@ export default function DashboardPage() {
 
       let mfRemarks: Record<string, string> = {}
       let mfPhotos: Record<string, any[]> = {}
+      let mfContents: Record<string, string> = {}
       try {
         const mfRes = await marketFeedbackApi.getAll()
         if (mfRes.data?.success && mfRes.data?.data) {
           mfRemarks = mfRes.data.data.remarks || {}
           mfPhotos = mfRes.data.data.photos || {}
+          mfContents = mfRes.data.data.contents || {}
         }
       } catch (err) {
         console.warn('Could not fetch market feedback DB entries for PPT:', err)
@@ -6162,6 +6383,10 @@ export default function DashboardPage() {
           const localPho = localStorage.getItem('tvs_market_feedback_photos_v4')
           if (localPho) mfPhotos = JSON.parse(localPho)
         }
+        if (Object.keys(mfContents).length === 0) {                                     // ← ADD
+          const localCon = localStorage.getItem('tvs_market_feedback_contents_v4')      // ← ADD
+          if (localCon) mfContents = JSON.parse(localCon)                               // ← ADD
+        }                                                                               // ← ADD
       } catch (e) { /* ignore */ }
 
       let mfIssues: any[] = DEFAULT_TVS_TOP_ISSUES
@@ -6204,9 +6429,13 @@ export default function DashboardPage() {
         const textOnly: any[] = []
 
         entries.forEach((entry) => {
+          // Try the Service-tab key first, then fall back to the legacy composite key
+          // Product Market Feedback tab saves media under:
+          //   `${issue_name}_${subIssueTitle}`
           const remarkKey = `${entry.issueName}_${entry.feedback.subIssueTitle}`
           const remark = mfRemarks[remarkKey] || ''
           const photos = mfPhotos[remarkKey] || []
+
           if (photos.length > 0 || remark) {
             withMedia.push({ ...entry, remark, photos })
           } else {
@@ -6296,14 +6525,97 @@ export default function DashboardPage() {
 
         const buildBulletRuns = (feedback: any) => {
           const runs: any[] = []
-          const sortedKm = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
-
           const BULLET_FONT = 9
           const BULLET_COLOR = '334155'
-          const BULLET_SPACE_AFTER = 8          // ← space between bullets (paragraphs)
-          const LINE_SPACING = 1.0              // ← space inside a wrapped bullet
+          const BULLET_SPACE_AFTER = 8
+          const LINE_SPACING = 1.0
 
-          // ── Regular bullets ──
+          // Product Market Feedback tab saves content under:
+          //   `market_content_${feedback.id}`
+          const productContentKey = `market_content_${feedback.id}`
+          const serviceContentKey = `service_content_issue_${feedback.issueName}`
+
+          const customContent =
+            mfContents[productContentKey] ||
+            mfContents[serviceContentKey] ||
+            ''
+
+          // ── Case A: user-edited content exists → use it ──
+          if (customContent.trim()) {
+            const lines = customContent
+              .split('\n')
+              .map((l) => l.trim())
+              .filter((l) => l.length > 0)
+
+            lines.forEach((line, idx) => {
+              const isLast = idx === lines.length - 1
+              const highlightRegex = /(\(\s*\d+\s*\)|\(\s*\d+\s*%\s*\)|\d+\s*%)/g
+
+              runs.push({
+                text: '• ',
+                options: {
+                  fontSize: BULLET_FONT,
+                  color: BULLET_COLOR,
+                  fontFace: 'Arial',
+                  paraSpaceAfter: isLast ? 0 : BULLET_SPACE_AFTER,
+                  lineSpacingMultiple: LINE_SPACING,
+                },
+              })
+
+              let lastIndex = 0
+              let match: RegExpExecArray | null
+              while ((match = highlightRegex.exec(line)) !== null) {
+                const before = line.slice(lastIndex, match.index)
+                if (before) {
+                  runs.push({
+                    text: before,
+                    options: {
+                      fontSize: BULLET_FONT,
+                      color: BULLET_COLOR,
+                      fontFace: 'Arial',
+                      lineSpacingMultiple: LINE_SPACING,
+                    },
+                  })
+                }
+                runs.push({
+                  text: match[0],
+                  options: {
+                    fontSize: BULLET_FONT,
+                    color: '166534',
+                    bold: true,
+                    fontFace: 'Arial',
+                    lineSpacingMultiple: LINE_SPACING,
+                  },
+                })
+                lastIndex = match.index + match[0].length
+              }
+
+              const after = line.slice(lastIndex)
+              if (after) {
+                runs.push({
+                  text: after,
+                  options: {
+                    fontSize: BULLET_FONT,
+                    color: BULLET_COLOR,
+                    fontFace: 'Arial',
+                    lineSpacingMultiple: LINE_SPACING,
+                    breakLine: true,
+                    paraSpaceAfter: isLast ? 0 : BULLET_SPACE_AFTER,
+                  },
+                })
+              } else {
+                const last = runs[runs.length - 1]
+                last.options.breakLine = true
+                last.options.paraSpaceAfter = isLast ? 0 : BULLET_SPACE_AFTER
+              }
+            })
+
+            return runs
+          }
+
+          // ── Case B: no custom content → fall back to auto-generated km bullets ──
+          const sortedKm = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
+
           sortedKm.forEach((item: any) => {
             runs.push({
               text: `• ${item.description}`,
@@ -6311,25 +6623,24 @@ export default function DashboardPage() {
                 fontSize: BULLET_FONT,
                 color: BULLET_COLOR,
                 fontFace: 'Arial',
-                breakLine: true,                // ← end this paragraph
+                breakLine: true,
                 paraSpaceAfter: BULLET_SPACE_AFTER,
                 lineSpacingMultiple: LINE_SPACING,
               },
             })
           })
 
-          // ── Overall summary — same paragraph style, only highlight numbers ──
+          // Overall summary — same behaviour as before
           if (feedback.overallSummary) {
             const summary: string = String(feedback.overallSummary)
             const highlightRegex = /(\(\s*\d+\s*\)|\(\s*\d+\s*%\s*\)|\d+\s*%)/g
 
-            // Bullet prefix starts a NEW paragraph
             runs.push({
               text: '• ',
               options: {
                 fontSize: BULLET_FONT,
                 color: BULLET_COLOR,
-                fontFace: 'Arial',  // ← gap before summary paragraph
+                fontFace: 'Arial',
                 paraSpaceAfter: BULLET_SPACE_AFTER,
                 lineSpacingMultiple: LINE_SPACING,
               },
@@ -6337,7 +6648,6 @@ export default function DashboardPage() {
 
             let lastIndex = 0
             let match: RegExpExecArray | null
-
             while ((match = highlightRegex.exec(summary)) !== null) {
               const before = summary.slice(lastIndex, match.index)
               if (before) {
@@ -6351,8 +6661,6 @@ export default function DashboardPage() {
                   },
                 })
               }
-
-              // Highlighted number — green + bold
               runs.push({
                 text: match[0],
                 options: {
@@ -6363,7 +6671,6 @@ export default function DashboardPage() {
                   lineSpacingMultiple: LINE_SPACING,
                 },
               })
-
               lastIndex = match.index + match[0].length
             }
 
@@ -6376,12 +6683,10 @@ export default function DashboardPage() {
                   color: BULLET_COLOR,
                   fontFace: 'Arial',
                   lineSpacingMultiple: LINE_SPACING,
-                  // Last run of the summary = end paragraph
                   breakLine: true,
                 },
               })
             } else {
-              // If summary ended exactly on a highlight, force a paragraph break
               runs[runs.length - 1].options.breakLine = true
             }
           }
@@ -6537,7 +6842,6 @@ export default function DashboardPage() {
           }
         })
       })
-
 
       // ─── DIVIDER: Key Insights ───
       addDividerSlide('Key Insights')
@@ -6728,6 +7032,9 @@ export default function DashboardPage() {
       // ─────────────────────────────────────────────────────────────────
       // PER-BRAND STATS (for all brands)
       // ─────────────────────────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────────────────
+      // PER-BRAND STATS (for all brands)
+      // ─────────────────────────────────────────────────────────────────
       const brandStats = availableBrands.map((brand: string) => {
         const stats = getBrandNpsStats(brand)
         return {
@@ -6739,76 +7046,67 @@ export default function DashboardPage() {
         }
       })
 
-      // Rank by NPS descending so highest is mentioned first
-      const rankedBrands = [...brandStats].sort((a, b) => b.nps - a.nps)
+      const getStat = (brand: string) =>
+        brandStats.find((b) => b.brand === brand) || {
+          brand, nps: 0, promoters: 0, passives: 0, detractors: 0,
+        }
 
-      const avgPassives = Math.round(
-        brandStats.reduce((s, b) => s + b.passives, 0) / (brandStats.length || 1)
-      )
-      const avgDetractors = Math.round(
-        brandStats.reduce((s, b) => s + b.detractors, 0) / (brandStats.length || 1)
-      )
+      const pStat = getStat(primaryBrand)
+      const sStat = getStat(secondaryBrand)
 
       // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 1 — Overall NPS across all brands
+      // PARAGRAPH 1 — NPS head-to-head + Passives / Detractors
       // ─────────────────────────────────────────────────────────────────
-      const npsSentences = rankedBrands.map((b, idx) => {
-        if (idx === 0) return `${b.brand} leads with the highest NPS of ${b.nps}%`
-        if (idx === rankedBrands.length - 1) return `${b.brand} trails with the lowest NPS of ${b.nps}%`
-        return `${b.brand} stands at ${b.nps}%`
-      })
+      const npsGap = pStat.nps - sStat.nps
+      const npsCompareWord = npsGap > 0 ? 'higher' : npsGap < 0 ? 'lower' : 'on par'
+
+      const passivesGap = pStat.passives - sStat.passives
+      const passivesWord = passivesGap < 0 ? 'lower' : passivesGap > 0 ? 'higher' : 'similar'
+
+      const detractorsGap = pStat.detractors - sStat.detractors
+      const detractorsWord = detractorsGap > 0 ? 'higher' : detractorsGap < 0 ? 'lower' : 'similar'
 
       const insight1Body =
-        `On overall NPS, ${npsSentences.slice(0, -1).join(', ')}` +
-        (npsSentences.length > 1 ? `, while ${npsSentences[npsSentences.length - 1]}.` : '.')
+        `The NPS of ${primaryBrand} (${pStat.nps}%) is ${npsCompareWord} than that of ${secondaryBrand} (${sStat.nps}%). ` +
+        `This is mainly because ${primaryBrand} has a ${passivesWord} percentage of Passives (${pStat.passives}%) ` +
+        `compared to ${secondaryBrand} (${sStat.passives}%). ` +
+        `However, the percentage of Detractors ${primaryBrand} has (${pStat.detractors}%) is ${detractorsWord} ` +
+        `than that of ${secondaryBrand} (${sStat.detractors}%). ` +
+        `Converting passives into promoters and reducing detractors can further improve the NPS of ${primaryBrand}.`
 
       // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 2 — Passives & Detractors comparison across all brands
+      // PARAGRAPH 2 — Duration shift (primary + secondary)
       // ─────────────────────────────────────────────────────────────────
-      const passiveDetractorSentences = rankedBrands.map((b) => {
-        const passWord = b.passives <= avgPassives ? 'lower' : 'higher'
-        const detWord = b.detractors >= avgDetractors ? 'higher' : 'lower'
-        return `${b.brand} has ${passWord} Passives (${b.passives}% vs category avg ${avgPassives}%) and ${detWord} Detractors (${b.detractors}% vs category avg ${avgDetractors}%)`
-      })
+      const buildDurationSentence = (brand: string, label: string) => {
+        const initial = durationNpsMap[brand]?.[firstDuration] ?? 0
+        const later = durationNpsMap[brand]?.[lastDuration] ?? 0
+        const delta = later - initial
+        const verb =
+          delta > 0 ? `increased${Math.abs(delta) <= 3 ? ' slightly' : ''} from ${initial}% to ${later}%`
+            : delta < 0 ? `declined from ${initial}% to ${later}%`
+              : `remained flat at ${initial}%`
+        return `${label} ${verb}`
+      }
 
       const insight2Body =
-        `Comparing passives and detractors, ${passiveDetractorSentences.join('; ')}. ` +
-        `Lower passives and lower detractors indicate stronger loyalty and fewer pain points, ` +
-        `while higher passives suggest an opportunity to convert neutral customers into promoters.`
+        `The NPS of ${primaryBrand} ${buildDurationSentence(primaryBrand, '').trim()}. ` +
+        `as the vehicle usage duration from ${firstDuration} to ${lastDuration}. ` +
+        `In contrast, the NPS of ${secondaryBrand} ${buildDurationSentence(secondaryBrand, '').trim()} ` +
+        `with the duration of usage.`
 
       // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 3 — Duration shift across all brands
+      // PARAGRAPH 3 — Negative drivers
       // ─────────────────────────────────────────────────────────────────
-      const durationSentences = rankedBrands.map((b) => {
-        const initial = durationNpsMap[b.brand]?.[firstDuration] ?? 0
-        const later = durationNpsMap[b.brand]?.[lastDuration] ?? 0
-        const delta = later - initial
-        const direction =
-          delta > 0 ? `improved from ${initial}% to ${later}%` :
-            delta < 0 ? `declined from ${initial}% to ${later}%` :
-              `remained flat at ${initial}%`
-        return `${b.brand} ${direction}`
-      })
-
       const insight3Body =
-        `As vehicle usage duration progressed from ${firstDuration} to ${lastDuration}, ` +
-        `${durationSentences.join(', ')}.`
+        `Analysis of negative drivers (areas for improvement) indicates issues related ${negativeDriverList}.`
 
       // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 4 — Negative drivers
-      // ─────────────────────────────────────────────────────────────────
-      const insight4Body =
-        `Analysis of negative drivers (areas for improvement) indicates issues related to ${negativeDriverList}.`
-
-      // ─────────────────────────────────────────────────────────────────
-      // BUILD RUNS — 4 flowing paragraphs
+      // BUILD RUNS — 3 flowing paragraphs
       const kiTextRuns: any[] = [
         ...buildInsightRuns(insight1Body),
         ...buildInsightRuns(insight2Body),
         ...buildInsightRuns(insight3Body),
-        ...buildInsightRuns(insight4Body),
       ]
-
       // ── Render the insight text on the slide ──
       kiSlide.addText(kiTextRuns, {
         x: 0.6,
@@ -7305,9 +7603,9 @@ export default function DashboardPage() {
                 onChange={(next) => filters.setFilter('brandModel', next)}
                 minWidth={160}
                 searchable
+                nestedBrandMode   // ← add this
               />
             )}
-
             {cities.length > 1 && (
               <MultiSelectFilter
                 id="filter-city"

@@ -1,17 +1,36 @@
-import React, { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Box, Card, CardContent, Typography, CircularProgress, Alert, Grid,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Button,
-  Tabs, Tab, Divider
+  Tabs, Tab, Divider, TextField, InputAdornment, LinearProgress, FormControl, Select, MenuItem,
+  Avatar, Dialog, DialogTitle, DialogContent, IconButton
 } from '@mui/material'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LabelList,
   PieChart, Pie, Cell, Label
 } from 'recharts'
-import { Speed, AccessTime, BuildCircle, DownloadForOffline, Star, ThumbUp, Handyman, VerifiedUser, Assessment } from '@mui/icons-material'
-import { dashboardApi } from '../../lib/api'
+import {
+  Speed, AccessTime, BuildCircle, DownloadForOffline, Star, ThumbUp, Handyman, VerifiedUser, Assessment, ExpandMore, Search,
+  Comment, Save, AddPhotoAlternate, CloudUpload, Visibility, Delete, Close
+} from '@mui/icons-material'
+import { dashboardApi, marketFeedbackApi } from '../../lib/api'
 import { useFilterStore, toParam } from '../../store'
 import { useThemeColors } from '../../utils/colors'
+
+interface PhotoItem {
+  id: string
+  url: string
+  name: string
+  date?: string
+}
+
+const getPhotoUrl = (url?: string) => {
+  if (!url) return ''
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) return url
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+  const origin = apiBase.replace(/\/api\/?$/, '')
+  return `${origin}${url.startsWith('/') ? '' : '/'}${url}`
+}
 
 
 const BRAND_COLORS = [
@@ -127,6 +146,156 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
   const [authSubSegment, setAuthSubSegment] = useState<string>('overall')
   const [pgmSubSegment, setPgmSubSegment] = useState<string>('overall')
+
+  const [marketSegment, setMarketSegment] = useState<string>('overall')
+  const [marketSearchText, setMarketSearchText] = useState<string>('')
+  const [marketBrandFilter, setMarketBrandFilter] = useState<string>('all')
+  const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({})
+
+  // Remark, Content and Photo Option state for Service Market Feedback
+  const [remarks, setRemarks] = useState<Record<string, string>>({})
+  const [contents, setContents] = useState<Record<string, string>>({})
+  const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>({})
+  const [editingRemarkKey, setEditingRemarkKey] = useState<string | null>(null)
+  const [tempRemarkText, setTempRemarkText] = useState<string>('')
+  const [editingContentKey, setEditingContentKey] = useState<string | null>(null)
+  const [tempContentText, setTempContentText] = useState<string>('')
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null)
+  const [lightboxImg, setLightboxImg] = useState<{ url: string; title: string } | null>(null)
+
+  // Initial load of saved remarks, custom content and photos from backend MongoDB
+  useEffect(() => {
+    const fetchMarketFeedback = async () => {
+      try {
+        const res = await marketFeedbackApi.getAll()
+        if (res.data?.success && res.data?.data) {
+          const { remarks: dbRemarks, photos: dbPhotos, contents: dbContents } = res.data.data
+          if (dbRemarks && Object.keys(dbRemarks).length > 0) {
+            setRemarks((prev) => ({ ...prev, ...dbRemarks }))
+          }
+          if (dbContents && Object.keys(dbContents).length > 0) {
+            setContents((prev) => ({ ...prev, ...dbContents }))
+          }
+          if (dbPhotos && Object.keys(dbPhotos).length > 0) {
+            setPhotos((prev) => ({ ...prev, ...dbPhotos }))
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch market feedback from DB, using cached local data:', err)
+      }
+    }
+    fetchMarketFeedback()
+  }, [])
+
+  // Save Remark to DB
+  const handleSaveRemark = async (key: string, issueName?: string, subIssueTitle?: string) => {
+    const textToSave = tempRemarkText
+    setRemarks((prev) => ({
+      ...prev,
+      [key]: textToSave,
+    }))
+    setEditingRemarkKey(null)
+
+    try {
+      await marketFeedbackApi.saveRemark({
+        remark_key: key,
+        remark: textToSave,
+        issue_name: issueName,
+        sub_issue_title: subIssueTitle,
+      })
+    } catch (err) {
+      console.error('Failed to save remark to database:', err)
+    }
+  }
+
+  // Save Custom Summary Content to DB
+  const handleSaveContent = async (key: string, issueName?: string, subIssueTitle?: string) => {
+    const textToSave = tempContentText
+    setContents((prev) => ({
+      ...prev,
+      [key]: textToSave,
+    }))
+    setEditingContentKey(null)
+
+    try {
+      await marketFeedbackApi.saveContent({
+        remark_key: key,
+        content: textToSave,
+        issue_name: issueName,
+        sub_issue_title: subIssueTitle,
+      })
+    } catch (err) {
+      console.error('Failed to save content to database:', err)
+    }
+  }
+
+  // Upload Photo to AWS S3 & DB
+  const handlePhotoUpload = async (
+    key: string,
+    event: React.ChangeEvent<HTMLInputElement>,
+    issueName?: string,
+    subIssueTitle?: string
+  ) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    setUploadingKey(key)
+    const fileList = Array.from(files)
+
+    for (const file of fileList) {
+      try {
+        const formData = new FormData()
+        formData.append('remark_key', key)
+        if (issueName) formData.append('issue_name', issueName)
+        if (subIssueTitle) formData.append('sub_issue_title', subIssueTitle)
+        formData.append('file', file)
+
+        const res = await marketFeedbackApi.uploadPhoto(formData)
+        if (res.data?.success && res.data?.data) {
+          const { photo: uploadedPhoto, photos: keyPhotos } = res.data.data
+          setPhotos((prev) => ({
+            ...prev,
+            [key]: keyPhotos || [...(prev[key] || []), uploadedPhoto],
+          }))
+        }
+      } catch (err) {
+        console.error('Failed to upload photo:', err)
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const resultUrl = e.target?.result as string
+          if (resultUrl) {
+            const newPhoto: PhotoItem = {
+              id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              url: resultUrl,
+              name: file.name,
+              date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            }
+            setPhotos((prev) => ({
+              ...prev,
+              [key]: [...(prev[key] || []), newPhoto],
+            }))
+          }
+        }
+        reader.readAsDataURL(file)
+      }
+    }
+    setUploadingKey(null)
+    event.target.value = ''
+  }
+
+  // Delete Photo from DB & S3
+  const handleDeletePhoto = async (key: string, photoId: string) => {
+    setPhotos((prev) => ({
+      ...prev,
+      [key]: (prev[key] || []).filter((p) => p.id !== photoId),
+    }))
+
+    try {
+      await marketFeedbackApi.deletePhoto(key, photoId)
+    } catch (err) {
+      console.error('Failed to delete photo from database/S3:', err)
+    }
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -696,7 +865,6 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
   }
 
   // ─── Benefits & Betterments Section Renderer ────────────────────────────────
-  // ─── Benefits & Betterments Section Renderer ────────────────────────────────
   const renderSectionBenefitsBetterments = (
     sectionTitle: string,
     sectionSubtitle: string,
@@ -796,7 +964,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#10B981', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ThumbUp sx={{ fontSize: 20 }} /> Top 10 Benefits (Passive/Feedback) - Columns OI to OU
+                  <ThumbUp sx={{ fontSize: 20 }} /> Top 10 Benefits (Passive/Feedback)
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
@@ -882,7 +1050,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             <Grid size={{ xs: 12, md: 6 }}>
               <Paper elevation={0} sx={{ p: 2.5, border: `1px solid ${c.border}`, borderRadius: 2, backgroundColor: c.cardBg, height: '100%' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#EF4444', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <BuildCircle sx={{ fontSize: 20 }} /> Top 10 Issues (Betterments) - Columns OV to PJ
+                  <BuildCircle sx={{ fontSize: 20 }} /> Top 10 Issues (Betterments)
                 </Typography>
                 <Grid container spacing={2}>
                   {/* Left: Table */}
@@ -1038,6 +1206,66 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
         </CardContent>
       </Card>
     )
+  }
+
+
+
+  const buildIssueFeedbackText = (
+    mainIssue: string,
+    brand: string,
+    valueCounts: { value: string; count: number; percentage: number }[],
+    totalCount: number,
+    parentCategory: string
+  ): string[] => {                         // ← MUST return string[]
+    if (!valueCounts || valueCounts.length === 0) {
+      return [`No specific feedback values captured for ${mainIssue}.`]
+    }
+
+    const sorted = [...valueCounts].sort((a, b) => b.count - a.count)
+    const top = sorted[0]
+    const rest = sorted.slice(1, 4)
+
+    const OPENER_THRESHOLD = 70
+    const useSignificant = top.percentage >= OPENER_THRESHOLD
+
+    const bullets: string[] = []           // ← ARRAY, not string
+
+    if (useSignificant) {
+      bullets.push(
+        `The significant of ${top.percentage}% user in ${brand} is the highest ` +
+        `percentage of complaints about ${top.value}.`
+      )
+    } else {
+      bullets.push(
+        `A major portion of ${mainIssue} complaints (${top.percentage}%) occur ` +
+        `in ${brand}, with ${top.value} being the most reported concern.`
+      )
+    }
+
+    if (rest.length >= 1) {
+      bullets.push(
+        `Similarly, ${rest[0].percentage}% of users reported concerns under ${rest[0].value}.`
+      )
+    }
+
+    if (rest.length >= 2) {
+      bullets.push(
+        `${rest[1].percentage}% of users reported concerns under ${rest[1].value}.`
+      )
+    }
+
+    if (rest.length >= 3) {
+      bullets.push(
+        `${rest[2].percentage}% of users reported concerns under ${rest[2].value}.`
+      )
+    }
+
+    bullets.push(
+      `Overall (${totalCount})(${top.percentage}%) ${brand} users have reported on ` +
+      `${mainIssue} which was the major complaint in ${parentCategory}.`
+    )
+
+    return bullets                          // ← returns ARRAY
   }
 
   // ─── Service Satisfaction Rendering ─────────────────────────────────────
@@ -1741,7 +1969,6 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
                     </Box>
                   </Grid>
 
-                  {/* RIGHT SIDE: Larger Pie Charts */}
                   {/* RIGHT SIDE: Larger Pie Charts — Fixed Card Width */}
                   <Grid size={{ xs: 12, md: 7 }}>
                     <Grid container spacing={3}>
@@ -1892,6 +2119,1180 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
     )
   }
 
+  // ─── Feedback from Market (Service) Tab Renderer ─────────────────────────
+  const renderMarketFeedbackServiceTab = () => {
+    const authData = benefitsData?.data?.authorized || { sample_size: 0 }
+    const sampleSize = authData.sample_size || 0
+
+    const currentAnalysis = authData[marketSegment] || {
+      top_benefits: [],
+      top_issues: [],
+      brand_benefits: {},
+      brand_issues: {},
+    }
+
+    // Filter by selected brand if any
+    // ─── Brand filter: only allow TVS-prefixed brands ─────────────────
+    const isTvsBrand = (name: string) =>
+      String(name || '').trim().toUpperCase().startsWith('TVS')
+
+    // Filter by selected brand if any — but ONLY TVS brands are allowed
+    let topIssues = currentAnalysis.top_issues || []
+    let topBenefits = currentAnalysis.top_benefits || []
+
+    if (marketBrandFilter !== 'all') {
+      // Only apply if the selected brand is a TVS brand
+      if (isTvsBrand(marketBrandFilter)) {
+        topIssues = currentAnalysis.brand_issues?.[marketBrandFilter] || []
+        topBenefits = currentAnalysis.brand_benefits?.[marketBrandFilter] || []
+      } else {
+        // If a non-TVS brand is somehow selected, fall back to empty
+        topIssues = []
+        topBenefits = []
+      }
+    } else {
+      // "All brands" → keep only TVS-prefixed brands by merging their entries
+      const tvsIssueBrands = Object.keys(currentAnalysis.brand_issues || {}).filter(isTvsBrand)
+      const tvsBenefitBrands = Object.keys(currentAnalysis.brand_benefits || {}).filter(isTvsBrand)
+
+      // Merge all TVS-brand issue entries into one flat list
+      topIssues = tvsIssueBrands.flatMap((b) => currentAnalysis.brand_issues?.[b] || [])
+      topBenefits = tvsBenefitBrands.flatMap((b) => currentAnalysis.brand_benefits?.[b] || [])
+
+      // If no TVS brand entries exist, fall back to the overall list
+      if (topIssues.length === 0) topIssues = currentAnalysis.top_issues || []
+      if (topBenefits.length === 0) topBenefits = currentAnalysis.top_benefits || []
+    }
+    // Filter out junk topic names
+    const isJunk = (name: string) => {
+      if (!name) return true
+      const s = String(name).trim().toLowerCase()
+      return ['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s) || !isNaN(Number(s))
+    }
+
+    topIssues = topIssues.filter((i: any) => !isJunk(i.topic))
+    topBenefits = topBenefits.filter((b: any) => !isJunk(b.topic))
+
+    // Search filter across topics or value_counts text
+    if (marketSearchText.trim()) {
+      const q = marketSearchText.trim().toLowerCase()
+      topIssues = topIssues.filter((item: any) => {
+        if (item.topic?.toLowerCase().includes(q)) return true
+        return item.value_counts?.some((vc: any) => vc.value?.toLowerCase().includes(q))
+      })
+      topBenefits = topBenefits.filter((item: any) => {
+        if (item.topic?.toLowerCase().includes(q)) return true
+        return item.value_counts?.some((vc: any) => vc.value?.toLowerCase().includes(q))
+      })
+    }
+
+    const allBrands = Array.from(
+      new Set([
+        ...Object.keys(currentAnalysis.brand_benefits || {}),
+        ...Object.keys(currentAnalysis.brand_issues || {}),
+      ])
+    )
+      .filter((b) => String(b || '').trim().toUpperCase().startsWith('TVS'))
+      .sort()
+    // Calculate total filled responses count across all issue/benefit topics
+    const totalIssueFilled = topIssues.reduce((acc: number, item: any) => acc + (item.count || 0), 0)
+    const totalBenefitFilled = topBenefits.reduce((acc: number, item: any) => acc + (item.count || 0), 0)
+
+    const toggleAccordion = (key: string) => {
+      setExpandedAccordions((prev) => ({ ...prev, [key]: !prev[key] }))
+    }
+
+    const expandAll = () => {
+      const newExp: Record<string, boolean> = {}
+      topIssues.forEach((i: any) => (newExp[`issue-${i.topic}`] = true))
+      topBenefits.forEach((b: any) => (newExp[`benefit-${b.topic}`] = true))
+      setExpandedAccordions(newExp)
+    }
+
+    const collapseAll = () => {
+      setExpandedAccordions({})
+    }
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* Header Banner */}
+        <Card elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 3, backgroundColor: c.cardBg }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ p: 1.2, borderRadius: 2, backgroundColor: 'rgba(8, 169, 221, 0.12)', color: '#08A9DD', display: 'flex' }}>
+                  <Handyman sx={{ fontSize: 26 }} />
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: c.textPrimary }}>
+                    Feedback from market(Service)
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                    Authorized Service Workshop — Detailed Topic & Value-Wise Counts Analysis with Field Remarks & Photos
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                <Chip
+                  label={`Base: ${sampleSize} responses`}
+                  size="small"
+                  sx={{ fontWeight: 700, backgroundColor: 'rgba(8, 169, 221, 0.15)', color: '#08A9DD' }}
+                />
+                <Chip
+                  label={`Total Filled Issues: ${totalIssueFilled}`}
+                  size="small"
+                  sx={{ fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' }}
+                />
+                <Chip
+                  label={`Total Filled Benefits: ${totalBenefitFilled}`}
+                  size="small"
+                  sx={{ fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10B981' }}
+                />
+              </Box>
+            </Box>
+
+            {/* Filter and Control Bar */}
+            <Grid container spacing={2} sx={{ mb: 2, alignItems: 'center' }}>
+              {/* Search input */}
+              <Grid size={{ xs: 12, md: 5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Search feedback topics or filled values (e.g. Resolution of Problem)..."
+                  value={marketSearchText}
+                  onChange={(e) => setMarketSearchText(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search sx={{ color: c.textSecondary, fontSize: 20 }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      backgroundColor: c.cardBg,
+                      fontSize: 13,
+                    }
+                  }}
+                />
+              </Grid>
+
+              {/* Brand Selector */}
+              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                <FormControl fullWidth size="small">
+                  <Select
+                    value={marketBrandFilter}
+                    onChange={(e) => setMarketBrandFilter(e.target.value)}
+                    sx={{ borderRadius: 2, fontSize: 13, backgroundColor: c.cardBg }}
+                  >
+                    <MenuItem value="all">All Models / Brands</MenuItem>
+                    {allBrands.map((b) => (
+                      <MenuItem key={b} value={b}>
+                        {b}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Accordion Controls */}
+              <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                <Button size="small" variant="outlined" onClick={expandAll} sx={{ textTransform: 'none', fontSize: 12, borderRadius: 1.5 }}>
+                  Expand All
+                </Button>
+                <Button size="small" variant="outlined" onClick={collapseAll} sx={{ textTransform: 'none', fontSize: 12, borderRadius: 1.5 }}>
+                  Collapse All
+                </Button>
+              </Grid>
+            </Grid>
+
+
+          </CardContent>
+        </Card>
+
+        {/* Section 1: Authorized Service Workshop -> Top Issues (Betterments) & Value-Wise Counts */}
+        <Card elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 3, backgroundColor: c.cardBg }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+              <Box sx={{ p: 1, borderRadius: 2, backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#EF4444', display: 'flex' }}>
+                <BuildCircle sx={{ fontSize: 24 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#EF4444' }}>
+                  Authorized Service Workshop — Top Issues & Value-Wise Counts (Betterments)
+                </Typography>
+                <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                  Column-wise filled response value breakdown for negative feedback & betterments
+                </Typography>
+              </Box>
+            </Box>
+
+            {topIssues.length === 0 ? (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                No issue responses or matching values found.
+              </Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {topIssues.map((item: any, idx: number) => {
+                  const accordionKey = `issue-${item.topic}`
+                  const isExpanded = expandedAccordions[accordionKey] ?? true
+                  const valueCounts = item.value_counts || []
+
+                  const remarkKey = `service_issue_${item.topic}`
+                  const currentRemark = remarks[remarkKey] || ''
+                  const currentPhotos = photos[remarkKey] || []
+                  const isEditingRemark = editingRemarkKey === remarkKey
+
+                  const contentKey = `service_content_issue_${item.topic}`
+                  const currentContent = contents[contentKey] || ''
+                  const isEditingContent = editingContentKey === contentKey
+
+                  return (
+                    <Grid size={{ xs: 12 }} key={item.topic}>
+                      <Paper elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 2, overflow: 'hidden' }}>
+                        {/* Category Banner Header */}
+                        <Box
+                          onClick={() => toggleAccordion(accordionKey)}
+                          sx={{
+                            p: 2,
+                            backgroundColor: c.tableHeaderBg,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            userSelect: 'none',
+                            '&:hover': { backgroundColor: `${c.primary}08` }
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar
+                              sx={{
+                                width: 30,
+                                height: 30,
+                                background: 'linear-gradient(135deg, #EF4444, #F87171)',
+                                fontSize: '0.8rem',
+                                fontWeight: 800,
+                              }}
+                            >
+                              #{idx + 1}
+                            </Avatar>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary, fontSize: 14 }}>
+                              {item.topic}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Chip
+                              label={`Total Column Count: ${item.count}`}
+                              size="small"
+                              sx={{ fontWeight: 700, backgroundColor: '#EF444415', color: '#DC2626', fontSize: 11 }}
+                            />
+                            <Chip
+                              label={`${item.percentage}% of Base`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontWeight: 600, fontSize: 11 }}
+                            />
+                            <ExpandMore
+                              sx={{
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s',
+                                color: c.textSecondary,
+                              }}
+                            />
+                          </Box>
+                        </Box>
+
+                        {/* Card Body */}
+                        {isExpanded && (
+                          <Box sx={{ p: 2.5, backgroundColor: c.cardBg }}>
+                            {/* Two-column: Feedback (left) + Table (right) */}
+                            <Grid container spacing={3} sx={{ mb: 2.5 }}>
+                              {/* LEFT: Dynamic Feedback Content */}
+                              <Grid size={{ xs: 12, md: 5 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#FEF2F2',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                  }}
+                                >
+                                  <Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Assessment sx={{ fontSize: 18, color: '#EF4444' }} />
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                          Key Insight & Summary
+                                        </Typography>
+                                      </Box>
+                                      {!isEditingContent && (
+                                        <Button
+                                          size="small"
+                                          variant="text"
+                                          startIcon={<Save sx={{ fontSize: 14 }} />}
+                                          onClick={() => {
+                                            const defaultBullets = buildIssueFeedbackText(
+                                              item.topic,
+                                              marketBrandFilter !== 'all' ? marketBrandFilter : 'Authorized Workshop',
+                                              valueCounts,
+                                              item.count,
+                                              'Authorized Service Workshop Betterments'
+                                            )
+                                            setEditingContentKey(contentKey)
+                                            setTempContentText(currentContent || defaultBullets.join('\n'))
+                                          }}
+                                          sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#EF4444' }}
+                                        >
+                                          {currentContent ? 'Edit Content' : 'Edit Content'}
+                                        </Button>
+                                      )}
+                                    </Box>
+
+                                    {isEditingContent ? (
+                                      <Box sx={{ mt: 1 }}>
+                                        <TextField
+                                          fullWidth
+                                          multiline
+                                          rows={5}
+                                          size="small"
+                                          placeholder="Edit dynamic feedback summary content..."
+                                          value={tempContentText}
+                                          onChange={(e) => setTempContentText(e.target.value)}
+                                          sx={{ mb: 1 }}
+                                        />
+                                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                          <Button size="small" onClick={() => setEditingContentKey(null)} sx={{ textTransform: 'none' }}>
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="contained"
+                                            onClick={() => handleSaveContent(contentKey, 'Authorized Service Workshop', item.topic)}
+                                            sx={{ textTransform: 'none', background: '#EF4444' }}
+                                          >
+                                            Save Content
+                                          </Button>
+                                        </Box>
+                                      </Box>
+                                    ) : currentContent ? (
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          color: c.textPrimary,
+                                          fontSize: 13,
+                                          lineHeight: 1.7,
+                                          whiteSpace: 'pre-line',
+                                        }}
+                                      >
+                                        {currentContent}
+                                      </Typography>
+                                    ) : (
+                                      <Box component="ul" sx={{ pl: 2.5, m: 0 }}>
+                                        {buildIssueFeedbackText(
+                                          item.topic,
+                                          marketBrandFilter !== 'all' ? marketBrandFilter : 'Authorized Workshop',
+                                          valueCounts,
+                                          item.count,
+                                          'Authorized Service Workshop Betterments'
+                                        ).map((bullet, bIdx) => (
+                                          <Box
+                                            component="li"
+                                            key={bIdx}
+                                            sx={{
+                                              fontSize: 13,
+                                              lineHeight: 1.7,
+                                              mb: 0.75,
+                                              color: c.textPrimary,
+                                              fontWeight: 400,
+                                              '&::marker': { color: '#EF4444', fontSize: 14 },
+                                            }}
+                                          >
+                                            {bullet}
+                                          </Box>
+                                        ))}
+                                      </Box>
+                                    )}
+                                  </Box>
+                                </Paper>
+                              </Grid>
+
+                              {/* RIGHT: Value-Wise Breakdown Table */}
+                              <Grid size={{ xs: 12, md: 7 }}>
+                                {valueCounts.length === 0 ? (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      color: c.textSecondary,
+                                      fontStyle: 'italic',
+                                      display: 'block',
+                                      mb: 2,
+                                    }}
+                                  >
+                                    No specific value responses captured for this column.
+                                  </Typography>
+                                ) : (
+                                  <TableContainer
+                                    component={Paper}
+                                    elevation={0}
+                                    sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}
+                                  >
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow sx={{ backgroundColor: c.tableHeaderBg }}>
+                                          <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '45%' }}>
+                                            Filled Response / Feedback Value
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '15%' }}>
+                                            Count
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '15%' }}>
+                                            % of Topic
+                                          </TableCell>
+                                          <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '25%' }}>
+                                            Distribution
+                                          </TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {valueCounts.map((vc: any, vcIdx: number) => (
+                                          <TableRow key={vcIdx} hover>
+                                            <TableCell sx={{ fontWeight: 600, fontSize: 12, color: c.textPrimary }}>
+                                              {vc.value}
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: 12, color: '#EF4444' }}>
+                                              {vc.count}
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontSize: 12, color: c.textSecondary, fontWeight: 600 }}>
+                                              {vc.percentage}%
+                                            </TableCell>
+                                            <TableCell>
+                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <Box sx={{ flexGrow: 1 }}>
+                                                  <LinearProgress
+                                                    variant="determinate"
+                                                    value={Math.min(100, vc.percentage)}
+                                                    sx={{
+                                                      height: 8,
+                                                      borderRadius: 4,
+                                                      backgroundColor: '#EF444420',
+                                                      '& .MuiLinearProgress-bar': { backgroundColor: '#EF4444' },
+                                                    }}
+                                                  />
+                                                </Box>
+                                              </Box>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                )}
+                              </Grid>
+                            </Grid>
+
+                            {/* Interactive Section: Remark & Photo Option */}
+                            <Grid container spacing={2} sx={{ pt: 1, borderTop: `1px dashed ${c.borderMuted}` }}>
+                              {/* Remark Column */}
+                              <Grid size={{ xs: 12, md: 7 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Comment sx={{ fontSize: 18, color: c.primary }} />
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                        Remark Option
+                                      </Typography>
+                                    </Box>
+                                    {!isEditingRemark && (
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        startIcon={<Save sx={{ fontSize: 14 }} />}
+                                        onClick={() => {
+                                          setEditingRemarkKey(remarkKey)
+                                          setTempRemarkText(currentRemark)
+                                        }}
+                                        sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                      >
+                                        {currentRemark ? 'Edit Remark' : '+ Add Remark'}
+                                      </Button>
+                                    )}
+                                  </Box>
+
+                                  {isEditingRemark ? (
+                                    <Box sx={{ mt: 1 }}>
+                                      <TextField
+                                        fullWidth
+                                        multiline
+                                        rows={3}
+                                        size="small"
+                                        placeholder="Enter field remark or observation for this service issue..."
+                                        value={tempRemarkText}
+                                        onChange={(e) => setTempRemarkText(e.target.value)}
+                                        sx={{ mb: 1 }}
+                                      />
+                                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                        <Button size="small" onClick={() => setEditingRemarkKey(null)} sx={{ textTransform: 'none' }}>
+                                          Cancel
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="contained"
+                                          onClick={() => handleSaveRemark(remarkKey, 'Authorized Service Workshop', item.topic)}
+                                          sx={{ textTransform: 'none', background: '#6C63FF' }}
+                                        >
+                                          Save Remark
+                                        </Button>
+                                      </Box>
+                                    </Box>
+                                  ) : (
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: currentRemark ? c.textPrimary : c.textMuted,
+                                        fontStyle: currentRemark ? 'normal' : 'italic',
+                                        whiteSpace: 'pre-line',
+                                      }}
+                                    >
+                                      {currentRemark || 'No field remarks added yet. Click "+ Add Remark" to add notes for this issue.'}
+                                    </Typography>
+                                  )}
+                                </Paper>
+                              </Grid>
+
+                              {/* Photo Option Column */}
+                              <Grid size={{ xs: 12, md: 5 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <AddPhotoAlternate sx={{ fontSize: 18, color: c.primary }} />
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                        Photo Option ({currentPhotos.length})
+                                      </Typography>
+                                    </Box>
+                                    <Button
+                                      component="label"
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={uploadingKey === remarkKey}
+                                      startIcon={uploadingKey === remarkKey ? <CircularProgress size={14} color="inherit" /> : <CloudUpload sx={{ fontSize: 14 }} />}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', borderColor: c.primary }}
+                                    >
+                                      {uploadingKey === remarkKey ? 'Uploading...' : 'Upload Photo'}
+                                      <input
+                                        type="file"
+                                        hidden
+                                        accept="image/*"
+                                        multiple
+                                        disabled={uploadingKey === remarkKey}
+                                        onChange={(e) => handlePhotoUpload(remarkKey, e, 'Authorized Service Workshop', item.topic)}
+                                      />
+                                    </Button>
+                                  </Box>
+
+                                  {currentPhotos.length > 0 ? (
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                      {currentPhotos.map((photo) => {
+                                        const fullUrl = getPhotoUrl(photo.url)
+                                        return (
+                                          <Box
+                                            key={photo.id}
+                                            onClick={(e) => {
+                                              if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                              setLightboxImg({ url: fullUrl, title: `${item.topic} - ${photo.name}` })
+                                            }}
+                                            sx={{
+                                              position: 'relative',
+                                              width: 64,
+                                              height: 64,
+                                              borderRadius: 1.5,
+                                              overflow: 'hidden',
+                                              border: `1px solid ${c.border}`,
+                                              cursor: 'pointer',
+                                              '&:hover .photo-overlay': { opacity: 1 },
+                                            }}
+                                          >
+                                            <img src={fullUrl} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <Box
+                                              className="photo-overlay"
+                                              sx={{
+                                                position: 'absolute',
+                                                inset: 0,
+                                                background: 'rgba(0,0,0,0.6)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 0.5,
+                                                opacity: 0,
+                                                transition: 'opacity 0.2s ease',
+                                              }}
+                                            >
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e?.stopPropagation?.()
+                                                  if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                                  setLightboxImg({ url: fullUrl, title: `${item.topic} - ${photo.name}` })
+                                                }}
+                                                sx={{ color: '#fff', p: 0.3 }}
+                                              >
+                                                <Visibility sx={{ fontSize: 16 }} />
+                                              </IconButton>
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e?.stopPropagation?.()
+                                                  handleDeletePhoto(remarkKey, photo.id)
+                                                }}
+                                                sx={{ color: '#FF6584', p: 0.3 }}
+                                              >
+                                                <Delete sx={{ fontSize: 16 }} />
+                                              </IconButton>
+                                            </Box>
+                                          </Box>
+                                        )
+                                      })}
+                                    </Box>
+                                  ) : (
+                                    <Typography variant="caption" sx={{ color: c.textMuted, fontStyle: 'italic', display: 'block', mt: 1 }}>
+                                      No photos attached. Click Upload Photo to attach part defect pictures.
+                                    </Typography>
+                                  )}
+                                </Paper>
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        )}
+                      </Paper>
+                    </Grid>
+                  )
+                })}
+              </Grid>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Section 2: Authorized Service Workshop -> Top Benefits (Positive Feedback) & Value-Wise Counts */}
+        <Card elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 3, backgroundColor: c.cardBg }}>
+          <CardContent sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+              <Box sx={{ p: 1, borderRadius: 2, backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10B981', display: 'flex' }}>
+                <ThumbUp sx={{ fontSize: 24 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: '#10B981' }}>
+                  Authorized Service Workshop — Top Benefits & Value-Wise Counts (Positive Points)
+                </Typography>
+                <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                  Column-wise filled response value breakdown for positive feedback (e.g. Resolution of Problem is good)
+                </Typography>
+              </Box>
+            </Box>
+
+            {topBenefits.length === 0 ? (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                No benefit responses or matching values found.
+              </Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {topBenefits.map((item: any, idx: number) => {
+                  const accordionKey = `benefit-${item.topic}`
+                  const isExpanded = expandedAccordions[accordionKey] ?? true
+                  const valueCounts = item.value_counts || []
+
+                  const remarkKey = `service_benefit_${item.topic}`
+                  const currentRemark = remarks[remarkKey] || ''
+                  const currentPhotos = photos[remarkKey] || []
+                  const isEditingRemark = editingRemarkKey === remarkKey
+
+                  const contentKey = `service_content_benefit_${item.topic}`
+                  const currentContent = contents[contentKey] || ''
+                  const isEditingContent = editingContentKey === contentKey
+
+                  return (
+                    <Grid size={{ xs: 12 }} key={item.topic}>
+                      <Paper elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 2, overflow: 'hidden' }}>
+                        {/* Topic Header Bar */}
+                        <Box
+                          onClick={() => toggleAccordion(accordionKey)}
+                          sx={{
+                            p: 2,
+                            backgroundColor: c.tableHeaderBg,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            userSelect: 'none',
+                            '&:hover': { backgroundColor: `${c.primary}08` }
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar
+                              sx={{
+                                width: 30,
+                                height: 30,
+                                background: 'linear-gradient(135deg, #10B981, #34D399)',
+                                fontSize: '0.8rem',
+                                fontWeight: 800,
+                              }}
+                            >
+                              #{idx + 1}
+                            </Avatar>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary, fontSize: 14 }}>
+                              {item.topic}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Chip
+                              label={`Total Column Count: ${item.count}`}
+                              size="small"
+                              sx={{ fontWeight: 700, backgroundColor: '#10B98115', color: '#059669', fontSize: 11 }}
+                            />
+                            <Chip
+                              label={`${item.percentage}% of Base`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ fontWeight: 600, fontSize: 11 }}
+                            />
+                            <ExpandMore
+                              sx={{
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s',
+                                color: c.textSecondary,
+                              }}
+                            />
+                          </Box>
+                        </Box>
+
+                        {/* Card Body */}
+                        {isExpanded && (
+                          <Box sx={{ p: 2.5, backgroundColor: c.cardBg }}>
+                            {/* Two-column: Feedback (left) + Table (right) */}
+                            <Grid container spacing={3} sx={{ mb: 2.5 }}>
+                              {/* LEFT: Dynamic Feedback Content */}
+                              <Grid size={{ xs: 12, md: 5 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F0FDF4',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                  }}
+                                >
+                                  <Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Assessment sx={{ fontSize: 18, color: '#10B981' }} />
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                          Key Insight & Summary
+                                        </Typography>
+                                      </Box>
+                                      {!isEditingContent && (
+                                        <Button
+                                          size="small"
+                                          variant="text"
+                                          startIcon={<Save sx={{ fontSize: 14 }} />}
+                                          onClick={() => {
+                                            const defaultBullets = buildIssueFeedbackText(
+                                              item.topic,
+                                              marketBrandFilter !== 'all' ? marketBrandFilter : 'Authorized Workshop',
+                                              valueCounts,
+                                              item.count,
+                                              'Authorized Service Workshop Positive Feedback'
+                                            )
+                                            setEditingContentKey(contentKey)
+                                            setTempContentText(currentContent || defaultBullets.join('\n'))
+                                          }}
+                                          sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#10B981' }}
+                                        >
+                                          {currentContent ? 'Edit Content' : 'Edit Content'}
+                                        </Button>
+                                      )}
+                                    </Box>
+
+                                    {isEditingContent ? (
+                                      <Box sx={{ mt: 1 }}>
+                                        <TextField
+                                          fullWidth
+                                          multiline
+                                          rows={5}
+                                          size="small"
+                                          placeholder="Edit dynamic feedback summary content..."
+                                          value={tempContentText}
+                                          onChange={(e) => setTempContentText(e.target.value)}
+                                          sx={{ mb: 1 }}
+                                        />
+                                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                          <Button size="small" onClick={() => setEditingContentKey(null)} sx={{ textTransform: 'none' }}>
+                                            Cancel
+                                          </Button>
+                                          <Button
+                                            size="small"
+                                            variant="contained"
+                                            onClick={() => handleSaveContent(contentKey, 'Authorized Service Workshop', item.topic)}
+                                            sx={{ textTransform: 'none', background: '#10B981' }}
+                                          >
+                                            Save Content
+                                          </Button>
+                                        </Box>
+                                      </Box>
+                                    ) : currentContent ? (
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          color: c.textPrimary,
+                                          fontSize: 13,
+                                          lineHeight: 1.7,
+                                          whiteSpace: 'pre-line',
+                                        }}
+                                      >
+                                        {currentContent}
+                                      </Typography>
+                                    ) : (
+                                      <Box component="ul" sx={{ pl: 2.5, m: 0 }}>
+                                        {buildIssueFeedbackText(
+                                          item.topic,
+                                          marketBrandFilter !== 'all' ? marketBrandFilter : 'Authorized Workshop',
+                                          valueCounts,
+                                          item.count,
+                                          'Authorized Service Workshop Positive Feedback'
+                                        ).map((bullet, bIdx) => (
+                                          <Box
+                                            component="li"
+                                            key={bIdx}
+                                            sx={{
+                                              fontSize: 13,
+                                              lineHeight: 1.7,
+                                              mb: 0.75,
+                                              color: c.textPrimary,
+                                              fontWeight: 400,
+                                              '&::marker': { color: '#10B981', fontSize: 14 },
+                                            }}
+                                          >
+                                            {bullet}
+                                          </Box>
+                                        ))}
+                                      </Box>
+                                    )}
+                                  </Box>
+                                </Paper>
+                              </Grid>
+
+                              {/* RIGHT: Value-Wise Breakdown Table */}
+                              <Grid size={{ xs: 12, md: 7 }}>
+                                {valueCounts.length === 0 ? (
+                                  <Typography variant="caption" sx={{ color: c.textSecondary, fontStyle: 'italic', display: 'block', mb: 2 }}>
+                                    No specific value responses captured for this column.
+                                  </Typography>
+                                ) : (
+                                  <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 1.5 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow sx={{ backgroundColor: c.tableHeaderBg }}>
+                                          <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '45%' }}>
+                                            Filled Response / Feedback Value
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '15%' }}>
+                                            Count
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '15%' }}>
+                                            % of Topic
+                                          </TableCell>
+                                          <TableCell sx={{ fontWeight: 700, fontSize: 11, color: c.textPrimary, width: '25%' }}>
+                                            Distribution
+                                          </TableCell>
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {valueCounts.map((vc: any, vcIdx: number) => (
+                                          <TableRow key={vcIdx} hover>
+                                            <TableCell sx={{ fontWeight: 600, fontSize: 12, color: c.textPrimary }}>
+                                              {vc.value}
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: 12, color: '#10B981' }}>
+                                              {vc.count}
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontSize: 12, color: c.textSecondary, fontWeight: 600 }}>
+                                              {vc.percentage}%
+                                            </TableCell>
+                                            <TableCell>
+                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <Box sx={{ flexGrow: 1 }}>
+                                                  <LinearProgress
+                                                    variant="determinate"
+                                                    value={Math.min(100, vc.percentage)}
+                                                    sx={{
+                                                      height: 8,
+                                                      borderRadius: 4,
+                                                      backgroundColor: '#10B98120',
+                                                      '& .MuiLinearProgress-bar': { backgroundColor: '#10B981' }
+                                                    }}
+                                                  />
+                                                </Box>
+                                              </Box>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                )}
+                              </Grid>
+                            </Grid>
+
+                            {/* Interactive Section: Remark & Photo Option */}
+                            <Grid container spacing={2} sx={{ pt: 1, borderTop: `1px dashed ${c.borderMuted}` }}>
+                              {/* Remark Column */}
+                              <Grid size={{ xs: 12, md: 7 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Comment sx={{ fontSize: 18, color: c.primary }} />
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                        Remark Option
+                                      </Typography>
+                                    </Box>
+                                    {!isEditingRemark && (
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        startIcon={<Save sx={{ fontSize: 14 }} />}
+                                        onClick={() => {
+                                          setEditingRemarkKey(remarkKey)
+                                          setTempRemarkText(currentRemark)
+                                        }}
+                                        sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                      >
+                                        {currentRemark ? 'Edit Remark' : '+ Add Remark'}
+                                      </Button>
+                                    )}
+                                  </Box>
+
+                                  {isEditingRemark ? (
+                                    <Box sx={{ mt: 1 }}>
+                                      <TextField
+                                        fullWidth
+                                        multiline
+                                        rows={3}
+                                        size="small"
+                                        placeholder="Enter field remark or observation for this service benefit..."
+                                        value={tempRemarkText}
+                                        onChange={(e) => setTempRemarkText(e.target.value)}
+                                        sx={{ mb: 1 }}
+                                      />
+                                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                        <Button size="small" onClick={() => setEditingRemarkKey(null)} sx={{ textTransform: 'none' }}>
+                                          Cancel
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="contained"
+                                          onClick={() => handleSaveRemark(remarkKey, 'Authorized Service Workshop', item.topic)}
+                                          sx={{ textTransform: 'none', background: '#6C63FF' }}
+                                        >
+                                          Save Remark
+                                        </Button>
+                                      </Box>
+                                    </Box>
+                                  ) : (
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        color: currentRemark ? c.textPrimary : c.textMuted,
+                                        fontStyle: currentRemark ? 'normal' : 'italic',
+                                        whiteSpace: 'pre-line',
+                                      }}
+                                    >
+                                      {currentRemark || 'No field remarks added yet. Click "+ Add Remark" to add notes for this benefit.'}
+                                    </Typography>
+                                  )}
+                                </Paper>
+                              </Grid>
+
+                              {/* Photo Option Column */}
+                              <Grid size={{ xs: 12, md: 5 }}>
+                                <Paper
+                                  elevation={0}
+                                  sx={{
+                                    p: 2,
+                                    borderRadius: 2,
+                                    background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                    border: `1px solid ${c.borderMuted}`,
+                                    height: '100%',
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <AddPhotoAlternate sx={{ fontSize: 18, color: c.primary }} />
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                        Photo Option ({currentPhotos.length})
+                                      </Typography>
+                                    </Box>
+                                    <Button
+                                      component="label"
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={uploadingKey === remarkKey}
+                                      startIcon={uploadingKey === remarkKey ? <CircularProgress size={14} color="inherit" /> : <CloudUpload sx={{ fontSize: 14 }} />}
+                                      sx={{ textTransform: 'none', fontSize: '0.75rem', borderColor: c.primary }}
+                                    >
+                                      {uploadingKey === remarkKey ? 'Uploading...' : 'Upload Photo'}
+                                      <input
+                                        type="file"
+                                        hidden
+                                        accept="image/*"
+                                        multiple
+                                        disabled={uploadingKey === remarkKey}
+                                        onChange={(e) => handlePhotoUpload(remarkKey, e, 'Authorized Service Workshop', item.topic)}
+                                      />
+                                    </Button>
+                                  </Box>
+
+                                  {currentPhotos.length > 0 ? (
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                      {currentPhotos.map((photo) => {
+                                        const fullUrl = getPhotoUrl(photo.url)
+                                        return (
+                                          <Box
+                                            key={photo.id}
+                                            onClick={(e) => {
+                                              if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                              setLightboxImg({ url: fullUrl, title: `${item.topic} - ${photo.name}` })
+                                            }}
+                                            sx={{
+                                              position: 'relative',
+                                              width: 64,
+                                              height: 64,
+                                              borderRadius: 1.5,
+                                              overflow: 'hidden',
+                                              border: `1px solid ${c.border}`,
+                                              cursor: 'pointer',
+                                              '&:hover .photo-overlay': { opacity: 1 },
+                                            }}
+                                          >
+                                            <img src={fullUrl} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <Box
+                                              className="photo-overlay"
+                                              sx={{
+                                                position: 'absolute',
+                                                inset: 0,
+                                                background: 'rgba(0,0,0,0.6)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 0.5,
+                                                opacity: 0,
+                                                transition: 'opacity 0.2s ease',
+                                              }}
+                                            >
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e?.stopPropagation?.()
+                                                  if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                                  setLightboxImg({ url: fullUrl, title: `${item.topic} - ${photo.name}` })
+                                                }}
+                                                sx={{ color: '#fff', p: 0.3 }}
+                                              >
+                                                <Visibility sx={{ fontSize: 16 }} />
+                                              </IconButton>
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e?.stopPropagation?.()
+                                                  handleDeletePhoto(remarkKey, photo.id)
+                                                }}
+                                                sx={{ color: '#FF6584', p: 0.3 }}
+                                              >
+                                                <Delete sx={{ fontSize: 16 }} />
+                                              </IconButton>
+                                            </Box>
+                                          </Box>
+                                        )
+                                      })}
+                                    </Box>
+                                  ) : (
+                                    <Typography variant="caption" sx={{ color: c.textMuted, fontStyle: 'italic', display: 'block', mt: 1 }}>
+                                      No photos attached. Click Upload Photo to attach part pictures.
+                                    </Typography>
+                                  )}
+                                </Paper>
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        )}
+                      </Paper>
+                    </Grid >
+                  )
+                })}
+              </Grid >
+            )}
+          </CardContent >
+        </Card >
+
+        {/* Lightbox Dialog */}
+        {/* <Dialog open={Boolean(lightboxImg)} onClose={() => setLightboxImg(null)} maxWidth="md" fullWidth>
+          <DialogTitle component="div" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2 }}>
+            <Typography component="span" variant="subtitle1" sx={{ fontWeight: 700 }}>
+              {lightboxImg?.title}
+            </Typography>
+            <IconButton onClick={() => setLightboxImg(null)} size="small">
+              <Close />
+            </IconButton>
+          </DialogTitle>
+
+          <DialogContent sx={{ p: 2, display: 'flex', justifyContent: 'center', background: '#000' }}>
+            {lightboxImg && (
+              <img
+                src={getPhotoUrl(lightboxImg.url)}
+                alt="Defect detail"
+                style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
+              />
+            )}
+          </DialogContent>
+        </Dialog> */}
+      </Box >
+    )
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Header Bar */}
@@ -1917,6 +3318,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           <Tab icon={<ThumbUp sx={{ fontSize: 20 }} />} iconPosition="start" label="Benefits & Betterments" />
           <Tab icon={<VerifiedUser sx={{ fontSize: 20 }} />} iconPosition="start" label="Service Satisfaction" />
           <Tab icon={<Assessment sx={{ fontSize: 20 }} />} iconPosition="start" label="Customer Perception Score" />
+          <Tab icon={<Handyman sx={{ fontSize: 20 }} />} iconPosition="start" label="Feedback from market(Service)" />
         </Tabs>
       </Box>
 
@@ -2252,6 +3654,9 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
       {/* Tab 4: Customer Perception Score */}
       {activeTab === 4 && renderServiceCpsTab()}
+
+      {/* Tab 5: Feedback from market(Service) */}
+      {activeTab === 5 && renderMarketFeedbackServiceTab()}
     </Box>
   )
 } 

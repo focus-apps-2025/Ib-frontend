@@ -202,6 +202,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
         const accentColor = brandColor || '#1871c9ff'
         const accentLight = alpha(accentColor, 0.08)
         // Compute all brands present in either matrix.brands or table data
+        // Compute all brands present in either matrix.brands or table data
         const tableBrands = (matrix?.table && matrix.table.length > 0)
             ? Object.keys(matrix.table[0]).filter(k => {
                 return k !== 'category' && k !== 'total' && !k.endsWith('_pct') && !k.endsWith('_count')
@@ -209,6 +210,31 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
             : []
         const allBrands = Array.from(new Set([...(matrix?.brands || []), ...tableBrands]))
 
+        // ─── NEW: Filter out brands whose column is entirely empty (all zeros) ───
+        const brandHasAnyValue = (brand: string): boolean => {
+            if (!matrix?.table || matrix.table.length === 0) return true
+            return matrix.table.some((row: any) => {
+                // Skip the Grand Total row — it's a summary, not real data
+                if (row.category === 'Grand Total') return false
+
+                // Try all possible key formats
+                const direct = row[brand]
+                const cnt = row[`${brand}_count`]
+                const pct = row[`${brand}_pct`]
+
+                const directNum = typeof direct === 'number' ? direct : parseFloat(direct)
+                const cntNum = typeof cnt === 'number' ? cnt : parseFloat(cnt)
+                const pctNum = typeof pct === 'number' ? pct : parseFloat(pct)
+
+                return (directNum > 0) || (cntNum > 0) || (pctNum > 0)
+            })
+        }
+
+        const activeBrands = allBrands.filter(brandHasAnyValue)
+
+        // Fallback: if every brand got filtered (unexpected), keep them all
+        const brandsToRender = activeBrands.length > 0 ? activeBrands : allBrands
+        // ──────────────────────────────────────────────────────────────────────────
         // Special rendering for Age Group by City & Brand
         let sortedAgeGroups: string[] = [];
         let cities: string[] = []
@@ -229,8 +255,24 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 }
             })
 
-            sortedAgeGroups = Array.from(allAgeGroups).sort()
+            // ─── FIX 1: "Less than 20" comes FIRST ───
+            const ageGroupOrder = ['Less than 20', '20-30', '30-40', '40-50', '50-60']
+            const orderedAgeGroups = ageGroupOrder.filter(ag => allAgeGroups.has(ag))
+
             cities = Object.keys(cityAgeMap)
+
+            // ─── FIX 2: Remove age groups whose column is entirely empty ───
+            // An age group is "empty" if every city × every brand has 0 for it.
+            const ageGroupsWithData = orderedAgeGroups.filter(ageGroup => {
+                return cities.some(city =>
+                    allBrands.some(brand => (cityAgeMap[city]?.[ageGroup]?.[brand] || 0) > 0)
+                )
+            })
+            sortedAgeGroups = ageGroupsWithData
+            // ──────────────────────────────────────────────────────────────
+
+            const activeBrands = allBrands
+
 
             return (
                 <Card
@@ -287,7 +329,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         >
                                             {matrix.category_header || 'City'}
                                         </TableCell>
-                                        {allBrands.map((brand) => (
+                                        {activeBrands.map((brand) => (
                                             <TableCell
                                                 key={brand}
                                                 colSpan={sortedAgeGroups.length + 1}
@@ -317,8 +359,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         ))}
                                     </TableRow>
                                     <TableRow>
-                                        {allBrands.map((brand) => (
-                                            <>
+                                        {activeBrands.map((brand) => (
+                                            <React.Fragment key={`brand-subhdr-${brand}`}>
                                                 {sortedAgeGroups.map((ageGroup) => (
                                                     <TableCell
                                                         key={`${brand}-${ageGroup}`}
@@ -352,14 +394,14 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                 >
                                                     Total
                                                 </TableCell>
-                                            </>
+                                            </React.Fragment>
                                         ))}
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {cities.map((city) => {
                                         const brandTotals: Record<string, number> = {}
-                                        allBrands.forEach(brand => {
+                                        activeBrands.forEach(brand => {
                                             brandTotals[brand] = 0
                                             sortedAgeGroups.forEach(ageGroup => {
                                                 brandTotals[brand] += (cityAgeMap[city]?.[ageGroup]?.[brand] || 0)
@@ -381,8 +423,8 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                 }}>
                                                     {city}
                                                 </TableCell>
-                                                {allBrands.map((brand) => (
-                                                    <>
+                                                {activeBrands.map((brand) => (
+                                                    <React.Fragment key={`row-${city}-${brand}`}>
                                                         {sortedAgeGroups.map((ageGroup) => {
                                                             const value = cityAgeMap[city]?.[ageGroup]?.[brand] || 0
                                                             const total = brandTotals[brand] || 1
@@ -412,7 +454,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                         >
                                                             {brandTotals[brand] > 0 ? '100%' : '—'}
                                                         </TableCell>
-                                                    </>
+                                                    </React.Fragment>
                                                 ))}
                                             </TableRow>
                                         )
@@ -430,7 +472,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         }}>
                                             Grand Total
                                         </TableCell>
-                                        {allBrands.map((brand) => {
+                                        {activeBrands.map((brand) => {
                                             let grandTotal = 0
                                             cities.forEach(city => {
                                                 sortedAgeGroups.forEach(ageGroup => {
@@ -440,7 +482,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             const totalPerBrand = grandTotal || 1
 
                                             return (
-                                                <>
+                                                <React.Fragment key={`grand-${brand}`}>
                                                     {sortedAgeGroups.map((ageGroup) => {
                                                         let total = 0
                                                         cities.forEach(city => {
@@ -472,7 +514,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                     >
                                                         100%
                                                     </TableCell>
-                                                </>
+                                                </React.Fragment>
                                             )
                                         })}
                                     </TableRow>
@@ -509,9 +551,12 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         labelFormatter={(label) => String(label).replace('|', ' / ')}
                                         formatter={(value, name) => {
                                             const key = String(name)
-                                            const brandIdx = allBrands.findIndex((b) => key.includes(b))
-                                            const brand = allBrands[brandIdx]
-                                            return [`${Number(value).toFixed(1)}%`, brand || key]
+                                            const brandIdx = brandsToRender.findIndex((b) => key.includes(b))
+                                            const brand = brandsToRender[brandIdx]
+                                            const displayVal = chartValueType === 'percent'
+                                                ? `${Number(value).toFixed(1)}%`
+                                                : Number(value).toLocaleString()
+                                            return [displayVal, brand || key]   // ✅ Must return a tuple
                                         }}
                                     />
                                     <Legend
@@ -523,7 +568,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                         iconType="circle"
                                     />
                                     <ReferenceLine y={0} stroke={c.borderMuted} />
-                                    {allBrands.map((b) => {
+                                    {activeBrands.map((b) => {
                                         const valueKey = `${b}_pct`
                                         const labelKey = `${b}_pct`
                                         const labelFormatter = (val: number) => `${Number(val).toFixed(1)}%`
@@ -586,7 +631,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                 <CardContent sx={{ p: 3.5 }}>
                     <CardHeader title={title} icon={icon} subtitle={subtitle} color={accentColor} />
 
-                    {!matrix || allBrands.length === 0 || matrix.categories.length === 0 ? (
+                    {!matrix || brandsToRender.length === 0 || matrix.categories.length === 0 ? (
                         <Alert severity="info" sx={{ borderRadius: 2 }}>
                             No data available.
                         </Alert>
@@ -616,7 +661,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             }}>
                                                 {matrix.category_header || 'Category'}
                                             </TableCell>
-                                            {allBrands.map((brand) => (
+                                            {brandsToRender.map((brand) => (
                                                 <TableCell
                                                     key={brand}
                                                     align="center"
@@ -681,7 +726,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                                     }}>
                                                         {String(row.category)}
                                                     </TableCell>
-                                                    {allBrands.map((b) => {
+                                                    {brandsToRender.map((b) => {
                                                         const cnt = row[b]
                                                         const pct = row[`${b}_pct`]
                                                         let displayValue = ''
@@ -781,7 +826,7 @@ export default function DashboardAnalytics({ filters }: { filters: FilterState }
                                             iconType="circle"
                                         />
                                         <ReferenceLine y={0} stroke={c.borderMuted} />
-                                        {matrix.brands.map((b) => {
+                                        {brandsToRender.map((b) => {
                                             const valueKey = chartValueType === 'percent' ? `${b}_pct` : `${b}_count`
                                             const labelKey = chartLabelType === 'percent' ? `${b}_pct` : `${b}_count`
                                             const labelFormatter = (val: number) => {

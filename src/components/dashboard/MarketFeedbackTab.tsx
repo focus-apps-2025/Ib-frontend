@@ -818,6 +818,9 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   const [lightboxImg, setLightboxImg] = useState<{ url: string; title: string } | null>(null)
   const [editingRemarkKey, setEditingRemarkKey] = useState<string | null>(null)
   const [tempRemarkText, setTempRemarkText] = useState<string>('')
+  const [contents, setContents] = useState<Record<string, string>>({})
+  const [editingContentKey, setEditingContentKey] = useState<string | null>(null)
+  const [tempContentText, setTempContentText] = useState<string>('')
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
 
   // Save remarks to LocalStorage
@@ -865,15 +868,18 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     checkData()
   }, [filters])
 
-  // Initial load of saved remarks and photos from backend MongoDB
+  // Initial load of saved remarks, custom contents, and photos from backend MongoDB
   useEffect(() => {
     const fetchMarketFeedback = async () => {
       try {
         const res = await marketFeedbackApi.getAll()
         if (res.data?.success && res.data?.data) {
-          const { remarks: dbRemarks, photos: dbPhotos } = res.data.data
+          const { remarks: dbRemarks, photos: dbPhotos, contents: dbContents } = res.data.data
           if (dbRemarks && Object.keys(dbRemarks).length > 0) {
             setRemarks((prev) => ({ ...prev, ...dbRemarks }))
+          }
+          if (dbContents && Object.keys(dbContents).length > 0) {
+            setContents((prev) => ({ ...prev, ...dbContents }))
           }
           if (dbPhotos && Object.keys(dbPhotos).length > 0) {
             setPhotos((prev) => ({ ...prev, ...dbPhotos }))
@@ -938,6 +944,27 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
       })
     } catch (err) {
       console.error('Failed to save remark to database:', err)
+    }
+  }
+
+  // Save Custom Summary Content to DB
+  const handleSaveContent = async (key: string, issueName?: string, subIssueTitle?: string) => {
+    const textToSave = tempContentText
+    setContents((prev) => ({
+      ...prev,
+      [key]: textToSave,
+    }))
+    setEditingContentKey(null)
+
+    try {
+      await marketFeedbackApi.saveContent({
+        remark_key: key,
+        content: textToSave,
+        issue_name: issueName,
+        sub_issue_title: subIssueTitle,
+      })
+    } catch (err) {
+      console.error('Failed to save content to database:', err)
     }
   }
 
@@ -1196,6 +1223,10 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
                   const currentPhotos = photos[remarkKey] || []
                   const isEditingRemark = editingRemarkKey === remarkKey
 
+                  const contentKey = `market_content_${feedback.id}`
+                  const currentCustomContent = contents[contentKey] || ''
+                  const isEditingContent = editingContentKey === contentKey
+
                   // Ensure kmBreakdown is ALWAYS sorted strictly by percentage DESCENDING (highest % first)
                   const sortedKmBreakdown = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
 
@@ -1210,51 +1241,108 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
                         '&:last-child': { borderBottom: 'none' },
                       }}
                     >
-                      {/* Sub-issue Title */}
-                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#6C63FF', mb: 1.5 }}>
-                        📌 {feedback.subIssueTitle}
-                      </Typography>
-
-                      {/* KM Breakdown Text Paragraphs (Guaranteed Sorted by % Descending) */}
-                      <Box sx={{ pl: 2, mb: 2, borderLeft: '3px solid #6C63FF' }}>
-                        {sortedKmBreakdown.map((item, idx) => (
-                          <Box key={idx} sx={{ mb: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                            <Box
-                              sx={{
-                                minWidth: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background:
-                                  idx === 0
-                                    ? '#FF6584'
-                                    : idx === 1
-                                      ? '#FFD93D'
-                                      : '#4ECCA3',
-                                mt: 0.8,
-                              }}
-                            />
-                            <Typography variant="body2" sx={{ color: c.textPrimary, lineHeight: 1.6, fontSize: '0.92rem' }}>
-                              {item.description}
-                            </Typography>
-                          </Box>
-                        ))}
-
-                        {/* Overall Summary sentence */}
-                        <Paper
-                          elevation={0}
-                          sx={{
-                            mt: 2,
-                            p: 1.5,
-                            background: c.isDarkTheme ? 'rgba(78,204,163,0.1)' : '#F0FDF4',
-                            border: `1px solid ${c.isDarkTheme ? 'rgba(78,204,163,0.3)' : '#BBF7D0'}`,
-                            borderRadius: 2,
-                          }}
-                        >
-                          <Typography variant="body2" sx={{ fontWeight: 700, color: c.isDarkTheme ? '#4ECCA3' : '#15803D' }}>
-                            💡 {feedback.overallSummary}
-                          </Typography>
-                        </Paper>
+                      {/* Sub-issue Title & Edit Content Action */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#6C63FF' }}>
+                          📌 {feedback.subIssueTitle}
+                        </Typography>
+                        {!isEditingContent && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            startIcon={<Save sx={{ fontSize: 14 }} />}
+                            onClick={() => {
+                              const defaultText = [
+                                ...sortedKmBreakdown.map((b) => b.description),
+                                feedback.overallSummary ? `Overall: ${feedback.overallSummary}` : ''
+                              ].filter(Boolean).join('\n')
+                              setEditingContentKey(contentKey)
+                              setTempContentText(currentCustomContent || defaultText)
+                            }}
+                            sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#6C63FF' }}
+                          >
+                            {currentCustomContent ? 'Edit Content' : 'Edit Content'}
+                          </Button>
+                        )}
                       </Box>
+
+                      {/* Feedback Summary / KM Breakdown Block */}
+                      {isEditingContent ? (
+                        <Paper elevation={0} sx={{ p: 2, mb: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: c.textPrimary }}>
+                            Edit Market Feedback Content / Summary
+                          </Typography>
+                          <TextField
+                            fullWidth
+                            multiline
+                            rows={4}
+                            size="small"
+                            placeholder="Enter custom summary content for this sub-issue..."
+                            value={tempContentText}
+                            onChange={(e) => setTempContentText(e.target.value)}
+                            sx={{ mb: 1.5 }}
+                          />
+                          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                            <Button size="small" onClick={() => setEditingContentKey(null)} sx={{ textTransform: 'none' }}>
+                              Cancel
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => handleSaveContent(contentKey, issueCategory.issue_name, feedback.subIssueTitle)}
+                              sx={{ textTransform: 'none', background: '#6C63FF' }}
+                            >
+                              Save Content
+                            </Button>
+                          </Box>
+                        </Paper>
+                      ) : currentCustomContent ? (
+                        <Box sx={{ pl: 2, mb: 2, borderLeft: '3px solid #6C63FF' }}>
+                          <Typography variant="body2" sx={{ color: c.textPrimary, lineHeight: 1.7, fontSize: '0.92rem', whiteSpace: 'pre-line' }}>
+                            {currentCustomContent}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Box sx={{ pl: 2, mb: 2, borderLeft: '3px solid #6C63FF' }}>
+                          {sortedKmBreakdown.map((item, idx) => (
+                            <Box key={idx} sx={{ mb: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                              <Box
+                                sx={{
+                                  minWidth: 8,
+                                  height: 8,
+                                  borderRadius: '50%',
+                                  background:
+                                    idx === 0
+                                      ? '#FF6584'
+                                      : idx === 1
+                                        ? '#FFD93D'
+                                        : '#4ECCA3',
+                                  mt: 0.8,
+                                }}
+                              />
+                              <Typography variant="body2" sx={{ color: c.textPrimary, lineHeight: 1.6, fontSize: '0.92rem' }}>
+                                {item.description}
+                              </Typography>
+                            </Box>
+                          ))}
+
+                          {/* Overall Summary sentence */}
+                          <Paper
+                            elevation={0}
+                            sx={{
+                              mt: 2,
+                              p: 1.5,
+                              background: c.isDarkTheme ? 'rgba(78,204,163,0.1)' : '#F0FDF4',
+                              border: `1px solid ${c.isDarkTheme ? 'rgba(78,204,163,0.3)' : '#BBF7D0'}`,
+                              borderRadius: 2,
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: c.isDarkTheme ? '#4ECCA3' : '#15803D' }}>
+                              💡 {feedback.overallSummary}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )}
 
                       {/* Interactive Section: Remark & Photo Upload */}
                       <Grid container spacing={2} sx={{ mt: 1 }}>

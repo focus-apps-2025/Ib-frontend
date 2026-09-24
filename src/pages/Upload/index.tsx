@@ -7,12 +7,14 @@ import {
 } from '@mui/material'
 import {
   CloudUpload, CheckCircle, Cancel, HourglassEmpty, Delete,
-  Refresh, FolderOpen,
+  Refresh, FolderOpen, FileDownload,
 } from '@mui/icons-material'
 import { useDropzone } from 'react-dropzone'
 import { regionsApi, countriesApi, ibVersionsApi, uploadApi, usersApi } from '../../lib/api'
 import { useThemeColors } from '../../utils/colors'
 import { useAuthStore } from '../../store'
+import * as XLSX from 'xlsx-js-style'
+import { UPLOAD_TEMPLATE_HEADERS } from '../../utils/templateHeaders'
 
 interface Region { id: string; name: string }
 interface Country { id: string; name: string }
@@ -161,6 +163,57 @@ export default function UploadPage() {
       loadHistory()
     } catch { /* ignore */ }
   }
+
+  const handleDownloadTemplate = () => {
+    try {
+      console.log('xlsx module =', XLSX)
+      console.log('headers =', UPLOAD_TEMPLATE_HEADERS.length)
+
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.aoa_to_sheet([UPLOAD_TEMPLATE_HEADERS])
+
+      // Style header cells
+      UPLOAD_TEMPLATE_HEADERS.forEach((header, idx) => {
+        if (!header) return
+        const ref = XLSX.utils.encode_cell({ r: 0, c: idx })
+        const cell = (ws as any)[ref]
+        if (!cell) {
+          console.warn('missing cell for', header)
+          return
+        }
+
+        cell.s = {
+          fill: { patternType: 'solid', fgColor: { rgb: 'FF7C3AED' } },
+
+          font: { name: 'Arial', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: '4B4B8F' } },
+            bottom: { style: 'thin', color: { rgb: '4B4B8F' } },
+            left: { style: 'thin', color: { rgb: '4B4B8F' } },
+            right: { style: 'thin', color: { rgb: '4B4B8F' } },
+          },
+        }
+      })
+
+        ; (ws as any)['!cols'] = UPLOAD_TEMPLATE_HEADERS.map((h) => ({
+          wch: Math.min(40, Math.max(14, (h || '').length + 2)),
+        }))
+        ; (ws as any)['!rows'] = [{ hpt: 45 }]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+      XLSX.writeFile(
+        wb,
+        `Template_${new Date().toISOString().split('T')[0]}.xlsx`
+      )
+
+      console.log('template written')
+    } catch (err) {
+      console.error('Failed to generate template:', err)
+      setUploadError('Could not generate the Excel template. Please try again.')
+    }
+  }
+
 
   const canProceed = (stepIndex: number) => {
     if (user?.role === 'super_admin' && stepIndex === 0) return true
@@ -357,7 +410,8 @@ export default function UploadPage() {
                     <Typography variant="caption" sx={{ color: c.textMuted }}>
                       {uploadedFile
                         ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB`
-                        : 'Max 100MB • Must have exactly 422 columns'}
+                        : `Max 100MB • Must have exactly ${UPLOAD_TEMPLATE_HEADERS.length} columns`}
+
                     </Typography>
                   </Box>
 
@@ -365,8 +419,29 @@ export default function UploadPage() {
                     <Alert severity="error" sx={{ mb: 2 }}>{uploadError}</Alert>
                   )}
 
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>Back</Button>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button size="small" onClick={() => setActiveStep(activeStep - 1)}>
+                      Back
+                    </Button>
+
+                    <Button
+                      id="download-template-btn"
+                      size="small"
+                      variant="outlined"
+                      onClick={handleDownloadTemplate}
+                      startIcon={<FileDownload />}
+                      sx={{
+                        borderColor: '#4ECCA3',
+                        color: '#4ECCA3',
+                        '&:hover': {
+                          borderColor: '#26C6DA',
+                          background: 'rgba(78,204,163,0.06)',
+                        },
+                      }}
+                    >
+                      Download Template
+                    </Button>
+
                     <Button
                       id="upload-submit-btn"
                       variant="contained"
