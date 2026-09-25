@@ -55,26 +55,22 @@ export const getPhotoUrl = (rawUrl?: string): string => {
   if (!rawUrl) return ''
   let cleaned = rawUrl.trim()
 
-  // Clean double folder fragments if present
+  // Fix double folder fragments only
   while (cleaned.includes('/market_feedback/market_feedback/')) {
     cleaned = cleaned.replace('/market_feedback/market_feedback/', '/market_feedback/')
   }
 
-  // Backward compatibility: If URL contains legacy /market_feedback/, strip it since CloudFront Origin Path is /market_feedback
-  if (cleaned.includes('d2g4t5wus9jxkn.cloudfront.net/market_feedback/')) {
-    cleaned = cleaned.replace('d2g4t5wus9jxkn.cloudfront.net/market_feedback/', 'd2g4t5wus9jxkn.cloudfront.net/')
-  }
-
+  // If it's already a full URL, return as-is
   if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
     return cleaned
   }
 
   const cleanPath = cleaned.startsWith('/') ? cleaned.slice(1) : cleaned
-  const filename = cleanPath.startsWith('market_feedback/')
-    ? cleanPath.slice('market_feedback/'.length)
-    : cleanPath
+  const fullPath = cleanPath.startsWith('market_feedback/')
+    ? cleanPath
+    : `market_feedback/${cleanPath}`
 
-  return `https://d2g4t5wus9jxkn.cloudfront.net/${filename}`
+  return `https://d2g4t5wus9jxkn.cloudfront.net/${fullPath}`
 }
 
 // Baseline Top 10 TVS Issues with kmBreakdown strictly pre-sorted by percentage descending (highest % first)
@@ -1055,11 +1051,11 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   }, [issuesData, searchQuery, selectedIssue])
 
   if (!loading && (filteredIssues.length === 0 || isEmpty)) {
-      return (
-          <Box sx={{ p: { xs: 2, md: 4 } }}>
-              <EmptyState title="No Market Feedback Data" message="There is no data available for the current selection." />
-          </Box>
-      )
+    return (
+      <Box sx={{ p: { xs: 2, md: 4 } }}>
+        <EmptyState title="No Market Feedback Data" message="There is no data available for the current selection." />
+      </Box>
+    )
   }
 
   return (
