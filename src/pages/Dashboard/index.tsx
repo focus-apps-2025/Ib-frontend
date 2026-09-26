@@ -33,7 +33,7 @@ import DashboardAnalytics from '../../components/dashboard/DashboardAnalytics'
 import ComparisonTab from '../../components/dashboard/ComparisonTab'
 import NpsTab from '../../components/dashboard/NpsTab'
 import ServiceDashboardTab from '../../components/dashboard/ServiceDashboardTab'
-import MarketFeedbackTab, { DEFAULT_TVS_TOP_ISSUES, getSortedFormattedKmBreakdown, generateFeedbackFromSurveyData, getPhotoUrl } from '../../components/dashboard/MarketFeedbackTab'
+import MarketFeedbackTab, { DEFAULT_TVS_TOP_ISSUES, getSortedFormattedKmBreakdown, generateFeedbackFromSurveyData, getPhotoUrl, fetchImageAsBase64 } from '../../components/dashboard/MarketFeedbackTab'
 import MultiSelectFilter from '../../components/dashboard/MultiSelectFilter'
 
 import { getColumnHeader } from '../../utils/columnHeaders'
@@ -3011,7 +3011,7 @@ export default function DashboardPage() {
           })
       })
 
-      Object.entries(groupedByIssue).forEach(([issueName, entries]) => {
+      for (const [issueName, entries] of Object.entries(groupedByIssue)) {
         const withMedia: any[] = []
         const textOnly: any[] = []
 
@@ -3026,10 +3026,24 @@ export default function DashboardPage() {
           }
         })
 
+        // Pre-fetch photo base64 strings safely
+        for (const item of withMedia) {
+          item.photoBase64s = []
+          if (item.photos && item.photos.length > 0) {
+            for (const photo of item.photos) {
+              const photoUrl = getPhotoUrl(photo.url)
+              const b64 = await fetchImageAsBase64(photoUrl)
+              if (b64) {
+                item.photoBase64s.push(b64)
+              }
+            }
+          }
+        }
+
         // ═══════════════════════════════════════════════════════════════
         // ── SLIDES: entries WITH media (photo LEFT, remark RIGHT) ──
         // ═══════════════════════════════════════════════════════════════
-        withMedia.forEach(({ issueName: iss, feedback, remark, photos }) => {
+        withMedia.forEach(({ issueName: iss, feedback, remark, photoBase64s = [] }) => {
           const mfSlide = pptx.addSlide()
           mfSlide.background = { fill: 'FFFFFF' }
 
@@ -3054,23 +3068,22 @@ export default function DashboardPage() {
           })
 
           // LEFT: PHOTO(S)
-          if (photos.length > 0) {
-            const firstPhotoUrl = getPhotoUrl(photos[0].url)
-            if (photos.length === 1) {
+          const hasPhotos = photoBase64s.length > 0
+          if (hasPhotos) {
+            if (photoBase64s.length === 1) {
               mfSlide.addImage({
-                path: firstPhotoUrl,
+                data: photoBase64s[0],
                 x: 0.3, y: 1.35, w: 5.4, h: 3.9,
                 sizing: { type: 'contain', w: 5.4, h: 3.9 },
               })
             } else {
-              const secondPhotoUrl = getPhotoUrl(photos[1].url)
               mfSlide.addImage({
-                path: firstPhotoUrl,
+                data: photoBase64s[0],
                 x: 0.3, y: 1.35, w: 2.6, h: 3.9,
                 sizing: { type: 'contain', w: 2.6, h: 3.9 },
               })
               mfSlide.addImage({
-                path: secondPhotoUrl,
+                data: photoBase64s[1],
                 x: 3.1, y: 1.35, w: 2.6, h: 3.9,
                 sizing: { type: 'contain', w: 2.6, h: 3.9 },
               })
@@ -3079,7 +3092,7 @@ export default function DashboardPage() {
 
           // RIGHT: REMARK
           if (remark) {
-            if (photos.length > 0) {
+            if (hasPhotos) {
               mfSlide.addText(
                 [
                   { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
@@ -3335,7 +3348,7 @@ export default function DashboardPage() {
             })
           }
         })
-      })
+      }
       // ─── DIVIDER: Key Insights ───
       addDividerSlide('Key Insights')
 
@@ -6423,7 +6436,7 @@ export default function DashboardPage() {
           })
       })
 
-      Object.entries(groupedByIssue).forEach(([issueName, entries]) => {
+      for (const [issueName, entries] of Object.entries(groupedByIssue)) {
         // ── Split entries into "with media" (photo or remark) and "text-only" ──
         const withMedia: any[] = []
         const textOnly: any[] = []
@@ -6443,8 +6456,22 @@ export default function DashboardPage() {
           }
         })
 
+        // Pre-fetch photo base64 strings safely
+        for (const item of withMedia) {
+          item.photoBase64s = []
+          if (item.photos && item.photos.length > 0) {
+            for (const photo of item.photos) {
+              const photoUrl = getPhotoUrl(photo.url)
+              const b64 = await fetchImageAsBase64(photoUrl)
+              if (b64) {
+                item.photoBase64s.push(b64)
+              }
+            }
+          }
+        }
+
         // ── SLIDES: entries WITH media (image + remark, NO bullet contents) ──
-        withMedia.forEach(({ issueName: iss, feedback, remark, photos }) => {
+        withMedia.forEach(({ issueName: iss, feedback, remark, photoBase64s = [] }) => {
           const mfSlide = pptx.addSlide()
           mfSlide.background = { fill: 'FFFFFF' }
 
@@ -6473,30 +6500,31 @@ export default function DashboardPage() {
           })
 
           // ── Image + Remark only (no bullet contents) ──
-          if (photos.length > 0) {
-            const firstPhotoUrl = getPhotoUrl(photos[0].url)
-            if (photos.length === 1) {
+          const hasPhotos = photoBase64s.length > 0
+          if (hasPhotos) {
+            if (photoBase64s.length === 1) {
               mfSlide.addImage({
-                path: firstPhotoUrl,
+                data: photoBase64s[0],
                 x: 0.3, y: 1.35, w: 5.4, h: 3.9,
                 sizing: { type: 'contain', w: 5.4, h: 3.9 },
               })
             } else {
-              const secondPhotoUrl = getPhotoUrl(photos[1].url)
               mfSlide.addImage({
-                path: firstPhotoUrl,
+                data: photoBase64s[0],
                 x: 0.3, y: 1.35, w: 2.6, h: 3.9,
                 sizing: { type: 'contain', w: 2.6, h: 3.9 },
               })
               mfSlide.addImage({
-                path: secondPhotoUrl,
+                data: photoBase64s[1],
                 x: 3.1, y: 1.35, w: 2.6, h: 3.9,
                 sizing: { type: 'contain', w: 2.6, h: 3.9 },
               })
             }
+          }
 
-            // Right side: only the Field Remark
-            if (remark) {
+          // Right side: only the Field Remark
+          if (remark) {
+            if (hasPhotos) {
               mfSlide.addText(
                 [
                   { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
@@ -6507,19 +6535,18 @@ export default function DashboardPage() {
                   align: 'justify', valign: 'middle', fontFace: 'Arial',
                 }
               )
+            } else {
+              mfSlide.addText(
+                [
+                  { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
+                  { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
+                ],
+                {
+                  x: 0.8, y: 1.35, w: 8.4, h: 3.9,
+                  align: 'justify', valign: 'middle', fontFace: 'Arial',
+                }
+              )
             }
-          } else if (remark) {
-            // Remark only (no photos)
-            mfSlide.addText(
-              [
-                { text: 'Field Remark:\n', options: { bold: true, fontSize: 10, color: '1E293B' } },
-                { text: remark, options: { fontSize: 9, color: '1E293B', italic: true } },
-              ],
-              {
-                x: 0.8, y: 1.35, w: 8.4, h: 3.9,
-                align: 'justify', valign: 'middle', fontFace: 'Arial',
-              }
-            )
           }
         })
 
@@ -6841,7 +6868,7 @@ export default function DashboardPage() {
             })
           }
         })
-      })
+      }
 
       // ─── DIVIDER: Key Insights ───
       addDividerSlide('Key Insights')

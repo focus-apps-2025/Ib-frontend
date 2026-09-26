@@ -53,24 +53,91 @@ const PHOTOS_STORAGE_KEY = 'tvs_market_feedback_photos_v4'
 
 export const getPhotoUrl = (rawUrl?: string): string => {
   if (!rawUrl) return ''
+
   let cleaned = rawUrl.trim()
 
-  // Fix double folder fragments only
+  // Fix any accidental double folder fragments
   while (cleaned.includes('/market_feedback/market_feedback/')) {
     cleaned = cleaned.replace('/market_feedback/market_feedback/', '/market_feedback/')
   }
 
-  // If it's already a full URL, return as-is
+  // If it's already a full URL, return it untouched
   if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
     return cleaned
   }
 
   const cleanPath = cleaned.startsWith('/') ? cleaned.slice(1) : cleaned
+
+  // Preserve market_feedback/ prefix if present
   const fullPath = cleanPath.startsWith('market_feedback/')
     ? cleanPath
     : `market_feedback/${cleanPath}`
 
   return `https://d2g4t5wus9jxkn.cloudfront.net/${fullPath}`
+}
+
+export const fetchImageAsBase64 = async (rawUrl?: string): Promise<string | null> => {
+  if (!rawUrl) return null
+
+  const cleaned = rawUrl.trim()
+  if (!cleaned) return null
+
+  const targetUrlsToTry: string[] = []
+
+  if (cleaned.startsWith('/assets/')) {
+    targetUrlsToTry.push(cleaned)
+  } else {
+    const proxyUrl = `/api/market-feedback/proxy-image?url=${encodeURIComponent(cleaned)}`
+    targetUrlsToTry.push(proxyUrl)
+    targetUrlsToTry.push(`http://localhost:8000${proxyUrl}`)
+    targetUrlsToTry.push(cleaned)
+  }
+
+  for (const urlToTry of targetUrlsToTry) {
+    try {
+      const res = await fetch(urlToTry)
+      if (res.ok) {
+        const blob = await res.blob()
+        if (blob && blob.size > 0) {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          })
+          if (base64 && base64.startsWith('data:')) {
+            return base64
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch image via ${urlToTry}:`, err)
+    }
+  }
+
+  try {
+    return await new Promise<string | null>((resolve) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth || img.width
+          canvas.height = img.naturalHeight || img.height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return resolve(null)
+          ctx.drawImage(img, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch {
+          resolve(null)
+        }
+      }
+      img.onerror = () => resolve(null)
+      img.src = cleaned
+    })
+  } catch {
+    return null
+  }
 }
 
 // Baseline Top 10 TVS Issues with kmBreakdown strictly pre-sorted by percentage descending (highest % first)

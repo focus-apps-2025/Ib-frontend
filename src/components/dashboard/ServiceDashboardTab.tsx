@@ -2139,6 +2139,10 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
     // Filter by selected brand if any — but ONLY TVS brands are allowed
     let topIssues = currentAnalysis.top_issues || []
     let topBenefits = currentAnalysis.top_benefits || []
+    // 👇 ADD THESE TWO LINES HERE 👇
+    topIssues = [...topIssues].sort((a: any, b: any) => (b.count || 0) - (a.count || 0)).slice(0, 10)
+    topBenefits = [...topBenefits].sort((a: any, b: any) => (b.count || 0) - (a.count || 0)).slice(0, 10)
+    // 👆 ADD THESE TWO LINES HERE 👆
 
     if (marketBrandFilter !== 'all') {
       // Only apply if the selected brand is a TVS brand
