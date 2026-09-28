@@ -134,6 +134,22 @@ export default function DashboardPage() {
     cleaned = cleaned.replace(/\s+issue$/i, '')
     return cleaned || name
   }
+  // ─── Compute TVS-only total per issue ───
+  const isTvsBrandName = (name: string) =>
+    String(name || '').trim().toUpperCase().startsWith('TVS')
+
+  const getTvsTotalForIssue = (issueItem: any): number => {
+    let total = 0
+      ; (issueItem.sub_issues || []).forEach((sub: any) => {
+        if (!Array.isArray(sub.brands)) return
+        sub.brands.forEach((b: any) => {
+          if (isTvsBrandName(b.name)) {
+            total += Number(b.count || 0)
+          }
+        })
+      })
+    return total
+  }
 
   const captureElement = async (id: string): Promise<string> => {
     const el = document.getElementById(id)
@@ -1190,7 +1206,7 @@ export default function DashboardPage() {
 
       try {
         if (analytics.age_group && Array.isArray(analytics.age_group.brands) && analytics.age_group.brands.length > 0) {
-          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8)
+          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8, true)
 
           slide2.addText('Age Group Distribution Chart', {
             x: 5.1, y: 1.2, w: 4.6, h: 0.2,
@@ -1226,7 +1242,7 @@ export default function DashboardPage() {
             x: 0.3, y: 1.3, w: 4.4, h: 0.2,
             fontSize: 10, bold: true, color: '1E293B', align: 'center'
           })
-          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4)
+          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4, true)
 
           slide3.addText('Mode of Purchase Chart', {
             x: 0.3, y: 2.98, w: 4.4, h: 0.18,
@@ -1240,7 +1256,7 @@ export default function DashboardPage() {
             x: 5.3, y: 1.3, w: 4.4, h: 0.2,
             fontSize: 10, bold: true, color: '1E293B', align: 'center'
           })
-          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4)
+          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4, true)
 
           slide3.addText('Ownership Chart', {
             x: 5.3, y: 2.98, w: 4.4, h: 0.18,
@@ -3684,6 +3700,7 @@ export default function DashboardPage() {
         dashboardApi.npsData(filterParams),
         dashboardApi.brandNpsFeedback(filterParams),
       ])
+      const brandFeedback = (brandFeedbackRes.data && brandFeedbackRes.data.brands) || []
       // Dynamic brand ordering directly from DB response (TVS brands placed first)
       const getOrderedBrands = (brands: string[]): string[] => {
         if (!Array.isArray(brands)) return []
@@ -3706,6 +3723,85 @@ export default function DashboardPage() {
         })
         return [...tvsBrands, ...otherBrands]
       }
+      // ─── Rank map built from "Area of Betterments" (TVS only) ───
+      // Source: brandFeedback[].categories.overall.issues[]  — same data that
+      // feeds the "AREAS FOR BETTERMENT" chart in Benefits & Betterments slides.
+      // ─── Rank map built from "Area of Betterments" (TVS only) ───
+      // Source: brandFeedback[].categories.overall.issues[]  — same data that
+      // feeds the "AREAS FOR BETTERMENT" chart in Benefits & Betterments slides.
+      const normalizeIssueKey = (name: string): string =>
+        String(name || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+issues?$/i, '')          // strip trailing "issue"/"issues"
+          .replace(/[^a-z0-9]+/g, ' ')          // punctuation → space
+          .replace(/\s+/g, ' ')                 // collapse whitespace
+          .trim()
+
+      const tvsFeedback = brandFeedback.find((bf: any) =>
+        String(bf.brand || '').toUpperCase().startsWith('TVS')
+      )
+
+      const bettermentRankMap = new Map<string, number>()
+      {
+        const issueCounts = new Map<string, number>()
+        const overallIssues: any[] = tvsFeedback?.categories?.overall?.issues || []
+
+        overallIssues.forEach((it: any) => {
+          const rawName = String(it.issue || it.topic || it.name || '').trim()
+          if (!rawName) return
+          const lower = rawName.toLowerCase()
+          if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(lower)) return
+          if (!isNaN(Number(lower))) return
+          if (lower.startsWith('submitform')) return
+
+          const key = normalizeIssueKey(rawName)
+          if (!key) return
+          issueCounts.set(key, (issueCounts.get(key) || 0) + Number(it.count || 0))
+        })
+
+        Array.from(issueCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([name], idx) => bettermentRankMap.set(name, idx))
+      }
+
+      // Look up the rank for an issue name (unknown → end of list)
+      const getBettermentRank = (issueName: string): number => {
+        const key = normalizeIssueKey(issueName)
+        if (!key) return Number.MAX_SAFE_INTEGER
+
+        // 1) exact normalized match
+        if (bettermentRankMap.has(key)) return bettermentRankMap.get(key)!
+
+        // 2) prefix / substring match — the chart label and the issue name often differ
+        //    by small suffixes ("electrical" vs "electrical short circuit")
+        let bestRank = Number.MAX_SAFE_INTEGER
+        let bestOverlap = 0
+        for (const [chartKey, rank] of bettermentRankMap.entries()) {
+          if (chartKey === key) return rank
+          // prefix either way
+          if (chartKey.startsWith(key) || key.startsWith(chartKey)) {
+            const overlap = Math.min(chartKey.length, key.length)
+            if (overlap > bestOverlap) {
+              bestOverlap = overlap
+              bestRank = rank
+            }
+          }
+        }
+        if (bestOverlap > 0) return bestRank
+
+        // 3) token overlap — share at least one significant word
+        const keyTokens = key.split(' ').filter(t => t.length > 2)
+        for (const [chartKey, rank] of bettermentRankMap.entries()) {
+          const chartTokens = chartKey.split(' ').filter(t => t.length > 2)
+          if (keyTokens.some(t => chartTokens.includes(t))) return rank
+        }
+
+        return Number.MAX_SAFE_INTEGER
+      }  // strip trailing "issue"/"issues"
+
+
+
 
       // SAFETY: Ensure these are always arrays or objects, never undefined
       const analytics = analyticsRes.data || {}
@@ -3714,7 +3810,8 @@ export default function DashboardPage() {
       const comparison = (comparisonRes.data && comparisonRes.data.data) || []
       const topics = (topicsRes.data && topicsRes.data.data) || []
       const nps = npsRes.data || {}
-      const brandFeedback = (brandFeedbackRes.data && brandFeedbackRes.data.brands) || []
+      console.log('[BETTERMENT RANK MAP]', Array.from(bettermentRankMap.entries()))
+      console.log('[ISSUES]', issues.map((i: any) => i.issue_name))
       const orderedNpsBrands = (nps && nps.brands) ? getOrderedBrands(nps.brands) : []
 
       // SAFE CHECK: Using .length is fine now because they are guaranteed to be arrays
@@ -4648,7 +4745,7 @@ export default function DashboardPage() {
 
       try {
         if (analytics.age_group && Array.isArray(analytics.age_group.brands) && analytics.age_group.brands.length > 0) {
-          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8)
+          addMatrixTable(slide2, analytics.age_group, 'Age Group', 0.3, 1.3, 4.6, 1.8, true)
 
           slide2.addText('Age Group Distribution Chart', {
             x: 5.1, y: 1.2, w: 4.6, h: 0.2,
@@ -4685,7 +4782,7 @@ export default function DashboardPage() {
             x: 0.3, y: 1.3, w: 4.4, h: 0.2,
             fontSize: 10, bold: true, color: '1E293B', align: 'center'
           })
-          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4)
+          addMatrixTable(slide3, analytics.mode_of_purchase, 'Mode of Purchase', 0.3, 1.55, 4.4, 1.4, true)
 
           slide3.addText('Mode of Purchase Chart', {
             x: 0.3, y: 2.98, w: 4.4, h: 0.18,
@@ -4699,7 +4796,7 @@ export default function DashboardPage() {
             x: 5.3, y: 1.3, w: 4.4, h: 0.2,
             fontSize: 10, bold: true, color: '1E293B', align: 'center'
           })
-          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4)
+          addMatrixTable(slide3, analytics.ownership, 'Ownership', 5.3, 1.55, 4.4, 1.4, true)
 
           slide3.addText('Ownership Chart', {
             x: 5.3, y: 2.98, w: 4.4, h: 0.18,
@@ -4734,7 +4831,7 @@ export default function DashboardPage() {
             x: 0.3, y: 3.25, w: 9.4, h: 0.2,
             fontSize: 9, bold: true, color: '1E293B', align: 'center'
           })
-          addMatrixTable(slideUsage, analytics.vehicle_usage, 'Vehicle usage', 0.3, 3.48, 9.4, 1.8)
+          addMatrixTable(slideUsage, analytics.vehicle_usage, 'Vehicle usage', 1.0, 3.48, 9.4, 1.8, true)
         }
       } catch (e: any) {
         console.error('[PPT] SLIDE VEHICLE USAGE ERROR:', e)
@@ -5736,7 +5833,6 @@ export default function DashboardPage() {
           if (issueMatch) {
             const subject = issueMatch[1].trim()
             if (subject) {
-              // Capitalize first letter of the subject
               const titled = subject.charAt(0).toUpperCase() + subject.slice(1)
               return `${titled} issue`
             }
@@ -5751,6 +5847,7 @@ export default function DashboardPage() {
           const raw = cleaned.split(/\s*[-–—−]\s*/)[0].trim()
           return raw || cleaned
         }
+
         const formatIssueTitleByBrand = (issueName: string): string => {
           const cleaned = cleanIssueName(issueName)
           const formatted = cleaned.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
@@ -5759,7 +5856,36 @@ export default function DashboardPage() {
 
         const SUB_ISSUES_PER_SLIDE = 10
 
-        issues.forEach((issueItem: any) => {
+
+
+        // ─── Compute total per issue and sort descending ───
+        const issuesWithTotals = issues
+          .map((issueItem: any) => {
+            const subIssues = (issueItem.sub_issues || []).filter(
+              (s: any) => s.sub_issue && s.sub_issue !== 'Blank'
+            )
+            let total = 0
+            subIssues.forEach((s: any) => {
+              if (Array.isArray(s.brands)) {
+                s.brands.forEach((b: any) => {
+                  if (b.name && b.name !== 'Blank') {
+                    total += Number(b.count || 0)
+                  }
+                })
+              }
+            })
+            return {
+              issueItem,
+              total,
+              rank: getBettermentRank(issueItem.issue_name),   // ← rank from Area of Betterments
+            }
+          })
+          .sort((a, b) => {
+            if (a.rank !== b.rank) return a.rank - b.rank   // primary: chart order
+            return b.total - a.total                        // tiebreak: total desc
+          })
+
+        issuesWithTotals.forEach(({ issueItem }: { issueItem: any }) => {
           const subIssues = (issueItem.sub_issues || []).filter(
             (s: any) => s.sub_issue && s.sub_issue !== 'Blank'
           )
@@ -5781,6 +5907,12 @@ export default function DashboardPage() {
           }
           if (currentBrands.length === 0) return
 
+          // ─── Reorder: TVS brands first, then all other brands ───
+          currentBrands = [
+            ...currentBrands.filter((b) => b.trim().toUpperCase().startsWith('TVS')),
+            ...currentBrands.filter((b) => !b.trim().toUpperCase().startsWith('TVS')),
+          ]
+
           // Calculate brand totals across sub-issues for this main issue
           const brandGrandTotals: Record<string, number> = {}
           currentBrands.forEach((b) => { brandGrandTotals[b] = 0 })
@@ -5796,7 +5928,7 @@ export default function DashboardPage() {
 
           const mainTitle = formatIssueTitleByBrand(issueItem.issue_name)
 
-          // Chunk sub-issues into groups of max 5 per slide
+          // Chunk sub-issues into groups of max SUB_ISSUES_PER_SLIDE per slide
           for (let i = 0; i < subIssues.length; i += SUB_ISSUES_PER_SLIDE) {
             const chunkSubIssues = subIssues.slice(i, i + SUB_ISSUES_PER_SLIDE)
 
@@ -5813,7 +5945,7 @@ export default function DashboardPage() {
 
             const tableRows: any[][] = []
 
-            // ─── Header row (centered vertically) ───
+            // ─── Header row ───
             const headerRow: any[] = [
               {
                 text: 'Sub Complaint',
@@ -5822,7 +5954,7 @@ export default function DashboardPage() {
                   fill: NEUTRAL_GREY,
                   color: 'FFFFFF',
                   align: 'left',
-                  valign: 'middle',        // ← ADDED: Vertically center
+                  valign: 'middle',
                   fontSize: 8,
                   fontFace: 'Arial'
                 }
@@ -5833,13 +5965,13 @@ export default function DashboardPage() {
                 text: b,
                 options: {
                   ...getBrandHeaderOptions(b),
-                  valign: 'middle'          // ← ADDED: Vertically center
+                  valign: 'middle'
                 }
               })
             })
             tableRows.push(headerRow)
 
-            // ─── Data rows for chunk sub-issues (centered vertically) ───
+            // ─── Data rows ───
             chunkSubIssues.forEach((s: any) => {
               const dataRow: any[] = [
                 {
@@ -5847,7 +5979,7 @@ export default function DashboardPage() {
                   options: {
                     bold: false,
                     align: 'left',
-                    valign: 'middle',       // ← ADDED: Vertically center
+                    valign: 'middle',
                     fontSize: 7.5,
                     fontFace: 'Arial'
                   }
@@ -5863,7 +5995,7 @@ export default function DashboardPage() {
                   options: {
                     bold: false,
                     align: 'center',
-                    valign: 'middle',       // ← ADDED: Vertically center
+                    valign: 'middle',
                     fontSize: 7.5,
                     fontFace: 'Arial'
                   }
@@ -5872,14 +6004,14 @@ export default function DashboardPage() {
               tableRows.push(dataRow)
             })
 
-            // ─── Grand Total row (centered vertically) ───
+            // ─── Grand Total row ───
             const grandRow: any[] = [
               {
                 text: 'Grand Total',
                 options: {
                   bold: true,
                   align: 'left',
-                  valign: 'middle',         // ← ADDED: Vertically center
+                  valign: 'middle',
                   fontSize: 8,
                   fontFace: 'Arial'
                 }
@@ -5891,7 +6023,7 @@ export default function DashboardPage() {
                 options: {
                   bold: true,
                   align: 'center',
-                  valign: 'middle',         // ← ADDED: Vertically center
+                  valign: 'middle',
                   fontSize: 8,
                   fontFace: 'Arial'
                 }
@@ -5917,7 +6049,6 @@ export default function DashboardPage() {
             const chartW = 4.8
             const chartH = 3.75
 
-            // ─── Chart container box (drawn FIRST so it sits behind legend + chart) ───
             const CHART_BOX_X = chartX - 0.1
             const CHART_BOX_Y = 1.10
             const CHART_BOX_W = chartW + 0.2
@@ -5933,7 +6064,7 @@ export default function DashboardPage() {
               rectRadius: 0.08,
             })
 
-            // ─── Legend INSIDE the box (drawn after the box) ───
+            // ─── Legend ───
             const legendStartY = CHART_BOX_Y + 0.15
             const legendItemWidth = 1.2
             const legendBoxSize = 0.12
@@ -5945,7 +6076,6 @@ export default function DashboardPage() {
               const brandColor = getBrandColor(brand)
               const legendX = legendStartX + idx * legendItemWidth
 
-              // Legend color box
               slideBNL.addShape(pptx.ShapeType.rect, {
                 x: legendX,
                 y: legendStartY,
@@ -5955,7 +6085,6 @@ export default function DashboardPage() {
                 line: { color: brandColor, transparency: 100 },
               })
 
-              // Legend label text
               slideBNL.addText(brand, {
                 x: legendX + legendBoxSize + legendTextGap,
                 y: legendStartY - 0.03,
@@ -5969,10 +6098,15 @@ export default function DashboardPage() {
               })
             })
 
-            // ─── Chart INSIDE the box (drawn last) ───
+            // ─── Chart ───
             const reversedChunkSubIssues = [...chunkSubIssues].reverse()
 
-            const chartDataBNL = currentBrands.map((b) => {
+            // ─── Reverse series order so TVS renders FIRST (top of each cluster) ───
+            // PptxGenJS / PowerPoint render clustered series in REVERSE array order,
+            // so we reverse here to get the visual order we want.
+            const chartBrands = [...currentBrands].reverse()
+
+            const chartDataBNL = chartBrands.map((b) => {
               const brandTotal = brandGrandTotals[b] || 0
               return {
                 name: b,
@@ -5987,7 +6121,7 @@ export default function DashboardPage() {
               }
             })
 
-            const brandColorsBNL = getBrandColorsArray(currentBrands)
+            const brandColorsBNL = getBrandColorsArray(chartBrands)
 
             try {
               slideBNL.addChart(pptx.ChartType.bar, chartDataBNL, {
@@ -6030,6 +6164,7 @@ export default function DashboardPage() {
 
       // ─── Follow-up Questions Slides ──────────────────────────────
       setPptProgress('Generating Follow-up Questions summary slide...')
+      // ─── Build rank map from Overall "Area of Betterments" (TVS only) ───
 
       // Reorder and normalize brand names
       const orderedFuBrands: string[] = []
@@ -6083,8 +6218,35 @@ export default function DashboardPage() {
       }
 
       let generatedAnySlide = false
+      // ─── Compute total per issue and sort descending ───
+      const issuesWithTotals = issues
+        .map((issueItem: any) => {
+          const validSubIssues = (issueItem.sub_issues || []).filter((sub: any) => {
+            if (!sub.has_follow_ups || !sub.follow_ups) return false
+            return sub.follow_ups.some((fu: any) => fu.answers && fu.answers.length > 0)
+          })
 
-      issues.forEach((issue: any) => {
+          let total = 0
+          validSubIssues.forEach((sub: any) => {
+            sub.brands?.forEach((br: any) => {
+              if (br.name && br.name !== 'Blank') {
+                total += Number(br.count || 0)
+              }
+            })
+          })
+
+          return {
+            issueItem,
+            total,
+            rank: getBettermentRank(issueItem.issue_name),
+          }
+        })
+        .sort((a, b) => {
+          if (a.rank !== b.rank) return a.rank - b.rank
+          return b.total - a.total
+        })
+
+      issuesWithTotals.forEach(({ issueItem: issue }: { issueItem: any }) => {
         // Find valid sub-issues that actually contain answers
         const validSubIssues = (issue.sub_issues || []).filter((sub: any) => {
           if (!sub.has_follow_ups || !sub.follow_ups) return false
@@ -6193,7 +6355,7 @@ export default function DashboardPage() {
           // Title formatting
           const formattedTitle = formatMainIssueTitle(issue.issue_name, issueTvsCount)
           const displayTitle = totalSlidesForIssue > 1
-            ? `${formattedTitle} `//? `${formattedTitle} - Slide ${slideIdx + 1}/${totalSlidesForIssue}`
+            ? `${formattedTitle} `
             : formattedTitle
 
           // Slide Title
@@ -6224,8 +6386,6 @@ export default function DashboardPage() {
             const row = chunk[i]
             const rowCells: any[] = []
 
-            // Check if Subtopic group starts on this row inside this chunk
-            // Check if Subtopic group starts on this row inside this chunk
             const isNewSubtopic = (i === 0) || (row.subTopicText !== chunk[i - 1].subTopicText)
             if (isNewSubtopic) {
               let span = 1
@@ -6233,8 +6393,6 @@ export default function DashboardPage() {
                 span++
               }
 
-              // ── S.No cell ──
-              // ── S.No cell — pull from the issue-level map ──
               const subTopicNumber = subTopicNumberMap.get(row.subTopicText) ?? 0
 
               rowCells.push({
@@ -6249,7 +6407,6 @@ export default function DashboardPage() {
                 }
               })
 
-              // ── Sub-topic cell ──
               rowCells.push({
                 text: row.subTopicText,
                 options: {
@@ -6263,7 +6420,6 @@ export default function DashboardPage() {
               })
             }
 
-            // Check if Follow-up group starts on this row inside this chunk
             const isNewFollowup = (i === 0) ||
               (row.subTopicText !== chunk[i - 1].subTopicText) ||
               (row.followUpText !== chunk[i - 1].followUpText)
@@ -6287,7 +6443,6 @@ export default function DashboardPage() {
               })
             }
 
-            // Answer
             rowCells.push({
               text: row.answerText,
               options: {
@@ -6297,7 +6452,6 @@ export default function DashboardPage() {
               }
             })
 
-            // Vehicles
             row.vehicleCells.forEach((vc) => {
               rowCells.push({
                 text: `${vc.cnt} (${vc.pct}%)`,
@@ -6315,7 +6469,7 @@ export default function DashboardPage() {
           // Append Grand Total row on the last slide of the issue
           if (isLastSlideOfIssue) {
             const fuGrandRow: any[] = [
-              { text: '', options: { fill: 'ECEFF1' } },                                        // S.No (empty)
+              { text: '', options: { fill: 'ECEFF1' } },
               { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7.5 } },
               { text: '', options: { fill: 'ECEFF1' } },
               { text: '', options: { fill: 'ECEFF1' } }
@@ -6336,7 +6490,6 @@ export default function DashboardPage() {
             pageTableRows.push(fuGrandRow)
           }
 
-          // Add the table to the slide
           fuSlide.addTable(pageTableRows, {
             x: 0.3,
             y: 0.95,
@@ -7388,15 +7541,15 @@ export default function DashboardPage() {
     setStatsLoading(true)
     try {
       const params = {
-        region_id: (tab === 0 || tab === 1) ? toParam(filters.regionId) : undefined,
-        country_id: (tab === 0 || tab === 1) ? toParam(filters.countryId) : undefined,
-        ib_version_id: (tab === 0 || tab === 1) ? toParam(filters.ibVersionId) : undefined,
+        region_id: toParam(filters.regionId),
+        country_id: toParam(filters.countryId),
+        ib_version_id: toParam(filters.ibVersionId),
       }
       const res = await dashboardApi.stats(params)
       setStats(res.data)
     } catch { /* ignore */ }
     setStatsLoading(false)
-  }, [filters.regionId, filters.countryId, filters.ibVersionId, tab])
+  }, [filters.regionId, filters.countryId, filters.ibVersionId])
 
   useEffect(() => { loadStats() }, [loadStats])
 
@@ -7859,7 +8012,7 @@ export default function DashboardPage() {
 
       {/* Dynamic Tab Content */}
       {activeTabKey === 'service-dashboard' && (
-        <ServiceDashboardTab onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} />
+        <ServiceDashboardTab filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} />
       )}
       {activeTabKey === 'issues' && <IssuesTab filters={filters} />}
       {activeTabKey === 'dashboard' && <DashboardAnalytics filters={filters} />}

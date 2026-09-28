@@ -15,6 +15,7 @@ import {
 } from '@mui/icons-material'
 import { dashboardApi, marketFeedbackApi } from '../../lib/api'
 import { useFilterStore, toParam } from '../../store'
+import type { FilterState } from '../../store'
 import { useThemeColors } from '../../utils/colors'
 
 interface PhotoItem {
@@ -114,6 +115,7 @@ const PIE_NPS_COLORS = {
 interface ServiceDashboardTabProps {
   onDownloadPPT?: () => void
   pptGenerating?: boolean
+  filters?: FilterState
 }
 
 const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
@@ -131,7 +133,10 @@ const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, perc
 }
 
 export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {}) {
-  const filters = useFilterStore()
+  // Prefer the explicit `filters` prop (matching IssuesTab/DashboardAnalytics),
+  // but keep the store subscription as a fallback so it also works standalone.
+  const storeFilters = useFilterStore()
+  const filters = _props.filters || storeFilters
   const c = useThemeColors()
 
   const [activeTab, setActiveTab] = useState<number>(0)
