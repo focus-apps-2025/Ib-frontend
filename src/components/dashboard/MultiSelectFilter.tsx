@@ -2,7 +2,6 @@ import { useMemo, useState, useLayoutEffect, useRef } from 'react'
 import {
   Box,
   Chip,
-  Collapse,
   FormControl,
   InputLabel,
   ListItemText,
@@ -15,22 +14,14 @@ import { ExpandLess, ExpandMore } from '@mui/icons-material'
 export type MultiSelectOption = { id: string; name: string } | string
 
 interface MultiSelectFilterProps {
-  /** HTML id forwarded to the underlying MUI `<Select>` (kept for tests, e.g. `filter-region`). */
   id: string
   label: string
   value: string[]
-  /** Options as `{ id, name }` objects or plain strings. */
   options: MultiSelectOption[]
   onChange: (next: string[]) => void
   minWidth?: number | string
   disabled?: boolean
-  /** Shows a search TextField at the top of the dropdown menu. */
   searchable?: boolean
-  /**
-   * When true, options whose name starts with "TVS" (case-insensitive) are
-   * shown at the top level, while every other option is nested under a
-   * collapsible "Other" group.
-   */
   nestedBrandMode?: boolean
 }
 
@@ -52,6 +43,7 @@ export default function MultiSelectFilter({
 }: MultiSelectFilterProps) {
   const [query, setQuery] = useState('')
   const [otherOpen, setOtherOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const namesById = useMemo(() => {
     const map: Record<string, string> = {}
@@ -65,13 +57,13 @@ export default function MultiSelectFilter({
   const searchBoxRef = useRef<HTMLDivElement>(null)
   const [searchBoxHeight, setSearchBoxHeight] = useState(0)
 
+  // Measure the search box ONLY after the menu opens — otherwise the ref is null.
   useLayoutEffect(() => {
-    if (searchable && searchBoxRef.current) {
+    if (menuOpen && searchable && searchBoxRef.current) {
       setSearchBoxHeight(searchBoxRef.current.getBoundingClientRect().height)
     }
-  }, [searchable])
+  }, [menuOpen, searchable])
 
-  // Split options into TVS (top-level) and Other (nested) when nestedBrandMode is on
   const { tvsOptions, otherOptions } = useMemo(() => {
     if (!nestedBrandMode) {
       return { tvsOptions: options, otherOptions: [] as MultiSelectOption[] }
@@ -99,13 +91,11 @@ export default function MultiSelectFilter({
     return otherOptions.filter((opt) => toOption(opt).name.toLowerCase().includes(q))
   }, [otherOptions, searchable, query])
 
-  // Auto-expand "Other" when searching and a match lives inside it
   const searchActive = searchable && query.trim().length > 0
   const otherExpanded = otherOpen || (searchActive && visibleOther.length > 0)
 
   const remove = (selectedValue: string) => onChange(value.filter((v) => v !== selectedValue))
 
-  // ── Nested "Other" group helpers ──
   const otherIds = useMemo(() => otherOptions.map((o) => toOption(o).id), [otherOptions])
   const selectedOtherIds = value.filter((v) => otherIds.includes(v))
   const allOtherSelected = otherIds.length > 0 && selectedOtherIds.length === otherIds.length
@@ -113,14 +103,13 @@ export default function MultiSelectFilter({
 
   const toggleAllOther = () => {
     if (allOtherSelected) {
-      // uncheck all other brands
       onChange(value.filter((v) => !otherIds.includes(v)))
     } else {
-      // check all other brands (keep existing selections, dedupe)
       const merged = new Set([...value, ...otherIds])
       onChange(Array.from(merged))
     }
   }
+
   const renderOption = (opt: MultiSelectOption) => {
     const { id: optionId, name } = toOption(opt)
     const checked = value.map(String).includes(String(optionId))
@@ -129,9 +118,11 @@ export default function MultiSelectFilter({
       <MenuItem
         key={optionId}
         value={optionId}
-        // ── Handle the toggle ourselves ──
+        // Stop propagation BEFORE the Select/MenuList sees the event.
+        onMouseDown={(e) => {
+          e.stopPropagation()
+        }}
         onClick={(e) => {
-          e.preventDefault()
           e.stopPropagation()
           if (checked) {
             onChange(value.filter((v) => String(v) !== String(optionId)))
@@ -172,7 +163,6 @@ export default function MultiSelectFilter({
   }
 
   return (
-
     <FormControl size="small" sx={{ minWidth }} disabled={disabled}>
       <InputLabel shrink>{label}</InputLabel>
       <Select
@@ -181,13 +171,13 @@ export default function MultiSelectFilter({
         value={value}
         label={label}
         displayEmpty
-        // ── CRITICAL: don't let Select handle the toggle; we do it in each MenuItem ──
-        onChange={() => { /* no-op — handled per MenuItem */ }}
+        onChange={() => { /* handled per MenuItem */ }}
+        onOpen={() => setMenuOpen(true)}
         onClose={() => {
+          setMenuOpen(false)
           setQuery('')
           setOtherOpen(false)
         }}
-
         SelectDisplayProps={{ style: { whiteSpace: 'normal' } }}
         renderValue={(selected) => {
           const sel = (selected as string[] | undefined) || []
@@ -226,13 +216,15 @@ export default function MultiSelectFilter({
           anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
           transformOrigin: { vertical: 'top', horizontal: 'left' },
           slotProps: {
-            list: { sx: { maxHeight: 320, pt: 0 } },
-            paper: { sx: { maxHeight: 400 } },
+            // IMPORTANT: only the Paper gets maxHeight so the list can scroll
+            // as a single container (sticky children work correctly).
+            list: { sx: { pt: 0 } },
+            paper: { sx: { maxHeight: 400, overflowY: 'auto' } },
           },
           autoFocus: false,
         }}
       >
-        {/* ── Search field — a non-interactive header, not a MenuItem ── */}
+        {/* Search box */}
         {searchable && (
           <Box
             ref={searchBoxRef}
@@ -241,10 +233,12 @@ export default function MultiSelectFilter({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
             sx={{
-              px: 1.5, py: 1,
-              position: 'sticky', top: 0,
+              px: 1.5,
+              py: 1,
+              position: 'sticky',
+              top: 0,
               bgcolor: 'background.paper',
-              zIndex: 2,
+              zIndex: 4,
               borderBottom: '1px solid',
               borderColor: 'divider',
             }}
@@ -259,9 +253,7 @@ export default function MultiSelectFilter({
               slotProps={{
                 htmlInput: {
                   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                    // prevent Select's type-ahead from stealing the input
                     e.stopPropagation()
-                    if (e.key !== 'Escape') e.stopPropagation()
                   },
                 },
               }}
@@ -269,93 +261,95 @@ export default function MultiSelectFilter({
           </Box>
         )}
 
-        {/* ── Flat mode ── */}
+        {/* Flat mode */}
         {!nestedBrandMode &&
           (searchable ? [...visibleTvs, ...visibleOther] : options).map(renderOption)}
 
-        {/* ── Nested mode: TVS + Other group ── */}
-        {nestedBrandMode && [
-          ...visibleTvs.map(renderOption),
-          ...(otherOptions.length > 0
-            ? [
+        {/* Nested mode: TVS + Other */}
+        {nestedBrandMode && (
+          <>
+            {visibleTvs.map(renderOption)}
+
+            {otherOptions.length > 0 && (
+              <Box
+                key="other-header"
+                role="presentation"
+                // Only stop propagation on the wrapper. Do NOT preventDefault,
+                // otherwise clicks on children never register.
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOtherOpen((prev) => !prev)
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  px: 1.5,
+                  py: 1,
+                  cursor: 'pointer',
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                  position: 'sticky',
+                  top: searchable ? searchBoxHeight : 0,
+                  zIndex: 3,
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
                 <Box
-                  key="other-header"
-                  role="presentation"
                   onMouseDown={(e) => {
-                    // prevent Select from closing/selecting when clicking this header
+                    // The master checkbox should NOT toggle expand/collapse,
+                    // only select/deselect all "Other" brands.
                     e.preventDefault()
                     e.stopPropagation()
                   }}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    setOtherOpen((prev) => !prev)
+                    toggleAllOther()
                   }}
                   sx={{
+                    width: 18,
+                    height: 18,
+                    flexShrink: 0,
+                    mr: 1,
+                    borderRadius: '3px',
+                    border: '2px solid',
+                    borderColor: allOtherSelected || someOtherSelected ? '#6C63FF' : 'rgba(0,0,0,0.4)',
+                    background: allOtherSelected || someOtherSelected ? '#6C63FF' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
-                    px: 1.5,
-                    py: 1,
+                    justifyContent: 'center',
                     cursor: 'pointer',
-                    borderTop: '1px solid',
-                    borderColor: 'divider',
-                    bgcolor: 'background.paper',
-                    position: 'sticky',
-                    top: searchable ? searchBoxHeight : 0,   // ← measured, not guessed
-                    // below search if searchable
-                    zIndex: 1,
-                    '&:hover': { bgcolor: 'action.hover' },
                   }}
                 >
+                  {allOtherSelected && (
+                    <svg viewBox="0 0 24 24" width="14" height="14" style={{ display: 'block', fill: '#fff' }}>
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                  )}
+                  {!allOtherSelected && someOtherSelected && (
+                    <Box sx={{ width: 10, height: 2, background: '#fff', borderRadius: 1 }} />
+                  )}
+                </Box>
+                <Box sx={{ flex: 1, fontWeight: 600 }}>
+                  Other
                   <Box
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      toggleAllOther()
-                    }}
-                    sx={{
-                      width: 18,
-                      height: 18,
-                      flexShrink: 0,
-                      mr: 1,
-                      borderRadius: '3px',
-                      border: '2px solid',
-                      borderColor: allOtherSelected || someOtherSelected ? '#6C63FF' : 'rgba(0,0,0,0.4)',
-                      background: allOtherSelected || someOtherSelected ? '#6C63FF' : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
+                    component="span"
+                    sx={{ ml: 1, color: 'text.secondary', fontWeight: 400, fontSize: '0.75rem' }}
                   >
-                    {allOtherSelected && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" style={{ display: 'block', fill: '#fff' }}>
-                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                      </svg>
-                    )}
-                    {!allOtherSelected && someOtherSelected && (
-                      <Box sx={{ width: 10, height: 2, background: '#fff', borderRadius: 1 }} />
-                    )}
+                    {selectedOtherIds.length}/{otherIds.length} selected
                   </Box>
-                  <Box sx={{ flex: 1, fontWeight: 600 }}>
-                    Other
-                    <Box
-                      component="span"
-                      sx={{ ml: 1, color: 'text.secondary', fontWeight: 400, fontSize: '0.75rem' }}
-                    >
-                      {selectedOtherIds.length}/{otherIds.length} selected
-                    </Box>
-                  </Box>
-                  {otherExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-                </Box>,
-                ...(otherExpanded ? visibleOther.map(renderOption) : []),
-              ]
-            : []),
-        ]}
+                </Box>
+                {otherExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+              </Box>
+            )}
+
+            {otherExpanded && visibleOther.map(renderOption)}
+          </>
+        )}
       </Select>
     </FormControl>
   )

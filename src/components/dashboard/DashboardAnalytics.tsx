@@ -48,6 +48,7 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
     'Yamaha FZ': '#FF5A00', 'Yamaha': '#FF5A00',
     'Honda CB': '#1E3A8A', 'Honda': '#1E3A8A',
     'Suzuki Gixxer': '#2A9D8F', 'Suzuki': '#2A9D8F',
+    'Haojue': '#B38901', 'Haojue 125': '#B38901'
 }
 
 const BRAND_COLOR_PALETTE = [
@@ -56,7 +57,7 @@ const BRAND_COLOR_PALETTE = [
     '#FF5A00', // Yamaha
     '#1E3A8A', // Honda
     '#2A9D8F', // Suzuki
-    '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6',
+    '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6', '#B38901'
 ]
 
 const hashBrandName = (str: string): number => {
@@ -78,6 +79,7 @@ const getBrandColor = (brand: string): string => {
     if (lower.includes('yamaha') || lower.includes('fz')) return '#FF5A00'
     if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
     if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
+    if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
 
     return BRAND_COLOR_PALETTE[hashBrandName(clean.toUpperCase()) % BRAND_COLOR_PALETTE.length]
 }

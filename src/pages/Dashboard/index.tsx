@@ -387,6 +387,9 @@ export default function DashboardPage() {
 
         // Suzuki — teal
         'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
+
+        //Haojue
+        'Haojue': 'B38901', 'Haojue 125': 'B38901'
       }
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
         'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
@@ -394,6 +397,7 @@ export default function DashboardPage() {
         'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
+        'Haojue': 'B38901', 'Haojue 125': 'B38901'
       }
 
       const hashBrand = (str: string): number => {
@@ -440,6 +444,7 @@ export default function DashboardPage() {
         if (lower.includes('yamaha') || lower.includes('fz')) return 'FF5A00'
         if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
+        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -459,6 +464,7 @@ export default function DashboardPage() {
         if (lower.includes('yamaha') || lower.includes('fz')) return 'FFE0CC'
         if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
+        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
@@ -3733,7 +3739,13 @@ export default function DashboardPage() {
         })
         const tvsBrands = unique.filter((b) => {
           const lower = b.toLowerCase()
-          return lower.includes('tvs') || lower.includes('raider') || lower.includes('apache')
+          return lower.includes('tvs')
+            || lower.includes('raider')
+            || lower.includes('apache')
+            || lower.includes('ntorq')
+            || lower.includes('jupiter')
+            || lower.includes('xl100')
+            || lower.includes('sport')      // only if you truly want this
         })
         const otherBrands = unique.filter((b) => {
           const lower = b.toLowerCase()
@@ -3875,6 +3887,9 @@ export default function DashboardPage() {
 
         // Suzuki — teal
         'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
+
+        //Haojue
+        'Haojue': 'B38901', 'Haojue 125': 'B38901'
       }
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
@@ -3883,6 +3898,7 @@ export default function DashboardPage() {
         'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
+        'Haojue': 'B38901', 'Haojue 125': 'B38901'
       }
 
       // ─── Slide counter + TOC tracking (for internal hyperlinks) ───
@@ -3923,6 +3939,7 @@ export default function DashboardPage() {
         if (lower.includes('yamaha') || lower.includes('fz')) return 'FF5A00'
         if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
+        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -3941,6 +3958,7 @@ export default function DashboardPage() {
         if (lower.includes('yamaha') || lower.includes('fz')) return 'FFE0CC'
         if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
+        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'FCE6C2'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
@@ -6968,27 +6986,37 @@ export default function DashboardPage() {
       setPptProgress('Generating Follow-up Questions summary slide...')
       // ─── Build rank map from Overall "Area of Betterments" (TVS only) ───
 
-      // Reorder and normalize brand names
-      const orderedFuBrands: string[] = []
-      const tvsBrand = issueBrands.find(b => b.toUpperCase().includes('TVS') || b.toUpperCase().includes('NTORQ'))
-      const hondaBrand = issueBrands.find(b => b.toUpperCase().includes('HONDA') || b.toUpperCase().includes('DIO'))
-      const yamahaBrand = issueBrands.find(b => b.toUpperCase().includes('YAMAHA') || b.toUpperCase().includes('ZR'))
+      // ─── Fully dynamic brand ordering ───
+      // Prefer brands that actually appear in the follow-up data first;
+      // fall back to `issueBrands`, then to `orderedNpsBrands`.
+      const fuBrandSet = new Set<string>()
 
-      if (tvsBrand) orderedFuBrands.push(tvsBrand)
-      else orderedFuBrands.push('TVS NTORQ 125 XP FI')
-
-      if (hondaBrand) orderedFuBrands.push(hondaBrand)
-      else orderedFuBrands.push('HONDA DIO 125')
-
-      if (yamahaBrand) orderedFuBrands.push(yamahaBrand)
-      else orderedFuBrands.push('YAMAHA RAY ZR 125 FI')
-
-      // Also add any other brands that might be present
-      issueBrands.forEach(b => {
-        if (!orderedFuBrands.includes(b)) {
-          orderedFuBrands.push(b)
-        }
+      // 1. Brands present in follow-up answers across all issues
+      issues.forEach((issueItem: any) => {
+        (issueItem.sub_issues || []).forEach((sub: any) => {
+          if (!sub.has_follow_ups || !sub.follow_ups) return
+          sub.follow_ups.forEach((fu: any) => {
+            (fu.answers || []).forEach((ans: any) => {
+              (ans.brands || []).forEach((br: any) => {
+                if (br.name && br.name !== 'Blank') fuBrandSet.add(br.name)
+              })
+            })
+          })
+        })
       })
+
+      // 2. Also include any brands from issueBrands
+      issueBrands.forEach((b: string) => {
+        if (b && b !== 'Blank') fuBrandSet.add(b)
+      })
+
+      // 3. Reuse the shared ordered-brand helper (TVS first, then others)
+      let orderedFuBrands = getOrderedBrands(Array.from(fuBrandSet))
+
+      // 4. If nothing found, fall back to NPS brands (which are also dynamic)
+      if (orderedFuBrands.length === 0) {
+        orderedFuBrands = [...orderedNpsBrands]
+      }
 
       // Title Case formatting helper for Main Issue Titles
 
@@ -7850,6 +7878,10 @@ export default function DashboardPage() {
       // DYNAMIC DATA EXTRACTION (correct paths)
       // ─────────────────────────────────────────────────────────────────
 
+      // ─────────────────────────────────────────────────────────────────
+      // DYNAMIC DATA EXTRACTION
+      // ─────────────────────────────────────────────────────────────────
+
       // Brands
       const availableBrands: string[] =
         (nps && Array.isArray(nps.brands) && nps.brands.length > 0)
@@ -7858,18 +7890,29 @@ export default function DashboardPage() {
             ? orderedNpsBrands
             : (Array.isArray(issueBrands) ? issueBrands : [])
 
-      const primaryBrand =
-        availableBrands.find((b: string) => b.toUpperCase().includes('TVS')) ||
-        availableBrands[0] ||
-        'TVS'
+      // ─── Pick up to 3 brands: TVS first, then top two competitors ───
+      const MAX_COMPARE_BRANDS = 3
 
-      const secondaryBrand =
-        availableBrands.find(
-          (b: string) =>
-            b !== primaryBrand && !b.toUpperCase().includes('TVS')
-        ) || availableBrands[1] || 'Competitor'
+      const tvsBrands = availableBrands.filter((b: string) =>
+        b.toUpperCase().includes('TVS')
+      )
+      const otherBrands = availableBrands.filter(
+        (b: string) => !b.toUpperCase().includes('TVS')
+      )
 
-      // ── NPS stats helper (uses recommend_category_bar) ──
+      const comparisonBrands: string[] = [
+        ...tvsBrands,
+        ...otherBrands,
+      ].slice(0, MAX_COMPARE_BRANDS)
+
+      // Guarantee at least one brand exists
+      if (comparisonBrands.length === 0) comparisonBrands.push('TVS')
+
+      const primaryBrand = comparisonBrands[0]
+      const secondaryBrand = comparisonBrands[1] ?? null
+      const tertiaryBrand = comparisonBrands[2] ?? null
+
+      // ── NPS stats helper ──
       const getBrandNpsStats = (brandName: string) => {
         const bd = nps?.recommend_category_bar?.find(
           (d: any) => String(d.brand || '').toUpperCase() === brandName.toUpperCase()
@@ -7886,18 +7929,24 @@ export default function DashboardPage() {
         return { npsScore, promotersPct, passivesPct, detractorsPct, base }
       }
 
-      const primaryStats = getBrandNpsStats(primaryBrand)
-      const secondaryStats = getBrandNpsStats(secondaryBrand)
+      // Per-brand stats for all compared brands
+      const brandStats = comparisonBrands.map((brand: string) => {
+        const stats = getBrandNpsStats(brand)
+        return {
+          brand,
+          nps: stats?.npsScore ?? 0,
+          promoters: stats?.promotersPct ?? 0,
+          passives: stats?.passivesPct ?? 0,
+          detractors: stats?.detractorsPct ?? 0,
+        }
+      })
 
-      const primaryNps = primaryStats?.npsScore ?? 0
-      const secondaryNps = secondaryStats?.npsScore ?? 0
-      const primaryPassives = primaryStats?.passivesPct ?? 0
-      const secondaryPassives = secondaryStats?.passivesPct ?? 0
-      const primaryDetractors = primaryStats?.detractorsPct ?? 0
-      const secondaryDetractors = secondaryStats?.detractorsPct ?? 0
+      const getStat = (brand: string) =>
+        brandStats.find((b) => b.brand === brand) || {
+          brand, nps: 0, promoters: 0, passives: 0, detractors: 0,
+        }
 
-      // ── Duration-based NPS (uses city_duration_segmentation) ──
-      // Aggregate across all cities to find per-brand NPS per duration.
+      // ── Duration-based NPS ──
       const aggregateDurationNps = (): Record<string, Record<string, number>> => {
         const map: Record<string, Record<string, number>> = {}
 
@@ -7906,7 +7955,7 @@ export default function DashboardPage() {
             const durLabel = String(seg.duration || '').trim()
             if (!durLabel) return
 
-            orderedNpsBrands.forEach((brand: string) => {
+            comparisonBrands.forEach((brand: string) => {
               const bd = seg.data?.find((d: any) => d.brand === brand)
               if (!bd) return
               const base = (bd.yes || 0) + (bd.maybe || 0) + (bd.no || 0)
@@ -7916,7 +7965,6 @@ export default function DashboardPage() {
                 Math.round((bd.yes / base) * 100) - Math.round((bd.no / base) * 100)
 
               if (!map[brand]) map[brand] = {}
-              // Simple approach: take the last seen (or average if you prefer)
               if (!map[brand][durLabel]) map[brand][durLabel] = npsVal
               else map[brand][durLabel] = Math.round((map[brand][durLabel] + npsVal) / 2)
             })
@@ -7928,9 +7976,10 @@ export default function DashboardPage() {
 
       const durationNpsMap = aggregateDurationNps()
 
-      // Pick "3-6 months" and "6-12 months" dynamically (sorted)
       const allDurations = new Set<string>()
-      Object.values(durationNpsMap).forEach((m) => Object.keys(m).forEach((d) => allDurations.add(d)))
+      Object.values(durationNpsMap).forEach((m) =>
+        Object.keys(m).forEach((d) => allDurations.add(d))
+      )
 
       const sortedDurations = Array.from(allDurations).sort((a, b) => {
         const na = parseInt(a.match(/\d+/)?.[0] || '0', 10)
@@ -7941,30 +7990,43 @@ export default function DashboardPage() {
       const firstDuration = sortedDurations[0] || '3 – 6 months'
       const lastDuration = sortedDurations[sortedDurations.length - 1] || '6 – 12 months'
 
-      const primaryDurationInitial = durationNpsMap[primaryBrand]?.[firstDuration] ?? 0
-      const primaryDurationLater = durationNpsMap[primaryBrand]?.[lastDuration] ?? 0
-      const secondaryDurationInitial = durationNpsMap[secondaryBrand]?.[firstDuration] ?? 0
-      const secondaryDurationLater = durationNpsMap[secondaryBrand]?.[lastDuration] ?? 0
-
       // ── Negative driver issues list ──
-      const negativeDriverList =
-        Array.isArray(issues) && issues.length > 0
-          ? issues
-            .map((cat: any) => {
-              const raw = String(cat.issue_name || '').trim()
-              if (!raw) return ''
-              // Title-case
-              return raw
-                .split(' ')
-                .map((w: string) =>
-                  w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''
-                )
-                .join(' ')
-            })
-            .filter((n: string) => n.length > 1)
-            .slice(0, 10)
-            .join(', ')
-          : 'None reported'
+      // ── Negative driver issues list (deduplicated, cleaned) ──
+      const negativeDriverList = (() => {
+        if (!Array.isArray(issues) || issues.length === 0) return 'None reported'
+
+        // 1. Clean each issue name: strip trailing "issue"/"issues", title-case it
+        const cleaned = issues
+          .map((cat: any) => {
+            const raw = String(cat.issue_name || '').trim()
+            if (!raw) return ''
+            // Reuse the shared cleaner so "Chain Issue" → "Chain"
+            const withoutSuffix = cleanIssueName(raw)
+            // Title-case
+            return withoutSuffix
+              .split(' ')
+              .map((w: string) =>
+                w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''
+              )
+              .join(' ')
+              .trim()
+          })
+          .filter((n: string) => n.length > 1)
+
+        // 2. Deduplicate case-insensitively (so "Chain" and "chain" collapse)
+        const seen = new Set<string>()
+        const unique: string[] = []
+        for (const name of cleaned) {
+          const key = name.toLowerCase()
+          if (!seen.has(key)) {
+            seen.add(key)
+            unique.push(name)
+          }
+        }
+
+        // 3. Cap at 10 items
+        return unique.slice(0, 10).join(', ') || 'None reported'
+      })()
 
       // ─────────────────────────────────────────────────────────────────
       // BUILD TEXT RUNS
@@ -7975,7 +8037,6 @@ export default function DashboardPage() {
       const PARA_GAP = 12
       const LINE_SPACING = 1.8
 
-      // Helper: build runs for one insight bullet (prefix + text + breakLine)
       const buildInsightRuns = (body: string): any[] => [
         {
           text: '• ',
@@ -8004,87 +8065,147 @@ export default function DashboardPage() {
       ]
 
       // ─────────────────────────────────────────────────────────────────
-      // BUILD PER-BRAND INSIGHT BODIES
+      // HELPERS FOR NATURAL-LANGUAGE COMPARISONS
       // ─────────────────────────────────────────────────────────────────
 
+      // Join array of strings: ["A"] / ["A","B"] / ["A","B","C"]
+      const joinWithAnd = (items: string[]): string => {
+        if (items.length === 0) return ''
+        if (items.length === 1) return items[0]
+        if (items.length === 2) return `${items[0]} and ${items[1]}`
+        return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+      }
+
+      // "X (n%)" for each brand — used in head-to-head lists
+      const formatBrandWithNps = (b: { brand: string; nps: number }) =>
+        `${b.brand} (${b.nps}%)`
+
       // ─────────────────────────────────────────────────────────────────
-      // PER-BRAND STATS (for all brands)
+      // PARAGRAPH 1 — NPS head-to-head across up to 3 brands
       // ─────────────────────────────────────────────────────────────────
-      // ─────────────────────────────────────────────────────────────────
-      // PER-BRAND STATS (for all brands)
-      // ─────────────────────────────────────────────────────────────────
-      const brandStats = availableBrands.map((brand: string) => {
-        const stats = getBrandNpsStats(brand)
-        return {
-          brand,
-          nps: stats?.npsScore ?? 0,
-          promoters: stats?.promotersPct ?? 0,
-          passives: stats?.passivesPct ?? 0,
-          detractors: stats?.detractorsPct ?? 0,
+      const buildHeadToHeadSentence = (): string => {
+        const pStat = getStat(primaryBrand)
+
+        // Only primary brand present
+        if (comparisonBrands.length === 1) {
+          return (
+            `The NPS of ${primaryBrand} stands at ${pStat.nps}%, driven by a ` +
+            `${pStat.promoters}% promoter share, ${pStat.passives}% passives, and ` +
+            `${pStat.detractors}% detractors.`
+          )
         }
-      })
 
-      const getStat = (brand: string) =>
-        brandStats.find((b) => b.brand === brand) || {
-          brand, nps: 0, promoters: 0, passives: 0, detractors: 0,
-        }
+        // Build "A (x%) is higher/lower than B (y%)" for every pair vs primary
+        const restBrands = comparisonBrands.slice(1)
+        const restStats = restBrands.map((b) => getStat(b))
 
-      const pStat = getStat(primaryBrand)
-      const sStat = getStat(secondaryBrand)
+        const comparisons = restStats.map((s) => {
+          const gap = pStat.nps - s.nps
+          const word = gap > 0 ? 'higher' : gap < 0 ? 'lower' : 'on par'
+          return `${word} than ${formatBrandWithNps(s)}`
+        })
+
+        const restJoined = joinWithAnd(comparisons)
+
+        return (
+          `The NPS of ${primaryBrand} (${pStat.nps}%) is ${restJoined}. ` +
+          `This is mainly because ${primaryBrand} has a ${describeLeader(
+            'passive',
+            comparisonBrands,
+            getStat
+          )} percentage of Passives (${pStat.passives}%) and a ${describeLeader(
+            'detractor',
+            comparisonBrands,
+            getStat
+          )} percentage of Detractors (${pStat.detractors}%) among the compared brands. ` +
+          `Converting passives into promoters and reducing detractors can further improve the NPS of ${primaryBrand}.`
+        )
+      }
+
+      // Return "lower" / "similar" / "higher" depending on how `target` ranks on `metric`
+      // metric: 'passives' | 'detractors'
+      const describeLeader = (
+        metric: 'passives' | 'detractors',
+        brands: string[],
+        statFn: (b: string) => { passives: number; detractors: number;[k: string]: any }
+      ): string => {
+        const pVal = statFn(brands[0])[metric]
+        const others = brands.slice(1).map((b) => statFn(b)[metric])
+        if (others.length === 0) return 'notable'
+
+        const minOther = Math.min(...others)
+        const maxOther = Math.max(...others)
+
+        // For passives: lower is "better" (fewer passives to convert)
+        // For detractors: lower is "better" (fewer unhappy customers)
+        // We just describe relative rank for clarity:
+        if (pVal < minOther) return 'lower'
+        if (pVal > maxOther) return 'higher'
+        return 'similar'
+      }
+
+      const insight1Body = buildHeadToHeadSentence()
 
       // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 1 — NPS head-to-head + Passives / Detractors
+      // PARAGRAPH 2 — Duration shift for all 3 brands
       // ─────────────────────────────────────────────────────────────────
-      const npsGap = pStat.nps - sStat.nps
-      const npsCompareWord = npsGap > 0 ? 'higher' : npsGap < 0 ? 'lower' : 'on par'
-
-      const passivesGap = pStat.passives - sStat.passives
-      const passivesWord = passivesGap < 0 ? 'lower' : passivesGap > 0 ? 'higher' : 'similar'
-
-      const detractorsGap = pStat.detractors - sStat.detractors
-      const detractorsWord = detractorsGap > 0 ? 'higher' : detractorsGap < 0 ? 'lower' : 'similar'
-
-      const insight1Body =
-        `The NPS of ${primaryBrand} (${pStat.nps}%) is ${npsCompareWord} than that of ${secondaryBrand} (${sStat.nps}%). ` +
-        `This is mainly because ${primaryBrand} has a ${passivesWord} percentage of Passives (${pStat.passives}%) ` +
-        `compared to ${secondaryBrand} (${sStat.passives}%). ` +
-        `However, the percentage of Detractors ${primaryBrand} has (${pStat.detractors}%) is ${detractorsWord} ` +
-        `than that of ${secondaryBrand} (${sStat.detractors}%). ` +
-        `Converting passives into promoters and reducing detractors can further improve the NPS of ${primaryBrand}.`
-
-      // ─────────────────────────────────────────────────────────────────
-      // PARAGRAPH 2 — Duration shift (primary + secondary)
-      // ─────────────────────────────────────────────────────────────────
-      const buildDurationSentence = (brand: string, label: string) => {
+      const buildDurationSentence = (brand: string) => {
         const initial = durationNpsMap[brand]?.[firstDuration] ?? 0
         const later = durationNpsMap[brand]?.[lastDuration] ?? 0
         const delta = later - initial
         const verb =
-          delta > 0 ? `increased${Math.abs(delta) <= 3 ? ' slightly' : ''} from ${initial}% to ${later}%`
-            : delta < 0 ? `declined from ${initial}% to ${later}%`
+          delta > 0
+            ? `increased${Math.abs(delta) <= 3 ? ' slightly' : ''} from ${initial}% to ${later}%`
+            : delta < 0
+              ? `declined from ${initial}% to ${later}%`
               : `remained flat at ${initial}%`
-        return `${label} ${verb}`
+        return `${brand} ${verb}`
       }
 
-      const insight2Body =
-        `The NPS of ${primaryBrand} ${buildDurationSentence(primaryBrand, '').trim()}. ` +
-        `as the vehicle usage duration from ${firstDuration} to ${lastDuration}. ` +
-        `In contrast, the NPS of ${secondaryBrand} ${buildDurationSentence(secondaryBrand, '').trim()} ` +
-        `with the duration of usage.`
+      const buildDurationParagraph = (): string => {
+        if (comparisonBrands.length === 0) return ''
+        if (comparisonBrands.length === 1) {
+          return `The NPS of ${buildDurationSentence(primaryBrand)} as the vehicle usage duration shifts from ${firstDuration} to ${lastDuration}.`
+        }
+
+        const firstBrandSentence = `The NPS of ${buildDurationSentence(primaryBrand)} as the vehicle usage duration shifts from ${firstDuration} to ${lastDuration}.`
+
+        const restSentences = comparisonBrands.slice(1).map((b) => {
+          const initial = durationNpsMap[b]?.[firstDuration] ?? 0
+          const later = durationNpsMap[b]?.[lastDuration] ?? 0
+          const delta = later - initial
+          const verb =
+            delta > 0
+              ? `increased${Math.abs(delta) <= 3 ? ' slightly' : ''} from ${initial}% to ${later}%`
+              : delta < 0
+                ? `declined from ${initial}% to ${later}%`
+                : `remained flat at ${initial}%`
+          return `${b} ${verb}`
+        })
+
+        return (
+          firstBrandSentence +
+          ` In contrast, the NPS of ${joinWithAnd(restSentences)} over the same duration window.`
+        )
+      }
+
+      const insight2Body = buildDurationParagraph()
 
       // ─────────────────────────────────────────────────────────────────
       // PARAGRAPH 3 — Negative drivers
       // ─────────────────────────────────────────────────────────────────
       const insight3Body =
-        `Analysis of negative drivers (areas for improvement) indicates issues related ${negativeDriverList}.`
+        `Analysis of negative drivers (areas for improvement) indicates issues related to ${negativeDriverList}.`
 
       // ─────────────────────────────────────────────────────────────────
       // BUILD RUNS — 3 flowing paragraphs
+      // ─────────────────────────────────────────────────────────────────
       const kiTextRuns: any[] = [
         ...buildInsightRuns(insight1Body),
         ...buildInsightRuns(insight2Body),
         ...buildInsightRuns(insight3Body),
       ]
+
       // ── Render the insight text on the slide ──
       kiSlide.addText(kiTextRuns, {
         x: 0.6,
@@ -8096,25 +8217,21 @@ export default function DashboardPage() {
         fontFace: 'Arial',
       })
 
-
       // ── Diagnostic ──
       console.log('[KEY INSIGHTS]', {
-        primaryBrand,
-        secondaryBrand,
-        primaryNps,
-        secondaryNps,
-        primaryPassives,
-        secondaryPassives,
-        primaryDetractors,
-        secondaryDetractors,
+        comparisonBrands,
+        brandStats,
         firstDuration,
         lastDuration,
-        primaryDurationInitial,
-        primaryDurationLater,
-        secondaryDurationInitial,
-        secondaryDurationLater,
+        durationNpsMap,
         negativeDriverList,
+        insight1Body,
+        insight2Body,
+        insight3Body,
       })
+
+
+
       setPptProgress('Building table of contents...')
 
       tocSlide.addText('Table of Contents', {
