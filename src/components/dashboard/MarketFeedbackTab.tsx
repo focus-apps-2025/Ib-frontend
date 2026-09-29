@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import {
   Box, Card, CardContent, Typography, Grid, Chip, Button, TextField,
   IconButton, Dialog, DialogContent, DialogTitle, CircularProgress,
-  Paper, Avatar, InputAdornment
+  Paper, Avatar, InputAdornment,
+  FormControl, Select, MenuItem,
 } from '@mui/material'
 import {
   Comment, AddPhotoAlternate, Delete, Visibility, Save,
@@ -856,55 +857,38 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   const [isEmpty, setIsEmpty] = useState<boolean>(false)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null)
+  const [expandedAccordions, setExpandedAccordions] = useState<Record<string, boolean>>({})
 
-  // Remarks state
   const [remarks, setRemarks] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem(REMARKS_STORAGE_KEY)
       return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
+    } catch { return {} }
   })
 
-  // Photos state
   const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>(() => {
     try {
       const saved = localStorage.getItem(PHOTOS_STORAGE_KEY)
       return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
+    } catch { return {} }
   })
 
-  // Lightbox Modal state
+  const [contents, setContents] = useState<Record<string, string>>({})
   const [lightboxImg, setLightboxImg] = useState<{ url: string; title: string } | null>(null)
   const [editingRemarkKey, setEditingRemarkKey] = useState<string | null>(null)
   const [tempRemarkText, setTempRemarkText] = useState<string>('')
-  const [contents, setContents] = useState<Record<string, string>>({})
   const [editingContentKey, setEditingContentKey] = useState<string | null>(null)
   const [tempContentText, setTempContentText] = useState<string>('')
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
 
-  // Save remarks to LocalStorage
   useEffect(() => {
-    try {
-      localStorage.setItem(REMARKS_STORAGE_KEY, JSON.stringify(remarks))
-    } catch (e) {
-      console.error('Failed to save remarks to localStorage:', e)
-    }
+    try { localStorage.setItem(REMARKS_STORAGE_KEY, JSON.stringify(remarks)) } catch { }
   }, [remarks])
 
-  // Save photos to LocalStorage
   useEffect(() => {
-    try {
-      localStorage.setItem(PHOTOS_STORAGE_KEY, JSON.stringify(photos))
-    } catch (e) {
-      console.error('Failed to save photos to localStorage:', e)
-    }
+    try { localStorage.setItem(PHOTOS_STORAGE_KEY, JSON.stringify(photos)) } catch { }
   }, [photos])
 
-  // Check if data is empty via dashboard API
   useEffect(() => {
     const checkData = async () => {
       try {
@@ -919,11 +903,7 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
           search: filters.search || undefined,
         }
         const res = await dashboardApi.stats(params)
-        if (res.data && res.data.total_records === 0) {
-          setIsEmpty(true)
-        } else {
-          setIsEmpty(false)
-        }
+        setIsEmpty(res.data?.total_records === 0)
       } catch (err) {
         console.error('Failed to check dashboard stats:', err)
       }
@@ -931,22 +911,15 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     checkData()
   }, [filters])
 
-  // Initial load of saved remarks, custom contents, and photos from backend MongoDB
   useEffect(() => {
     const fetchMarketFeedback = async () => {
       try {
         const res = await marketFeedbackApi.getAll()
         if (res.data?.success && res.data?.data) {
           const { remarks: dbRemarks, photos: dbPhotos, contents: dbContents } = res.data.data
-          if (dbRemarks && Object.keys(dbRemarks).length > 0) {
-            setRemarks((prev) => ({ ...prev, ...dbRemarks }))
-          }
-          if (dbContents && Object.keys(dbContents).length > 0) {
-            setContents((prev) => ({ ...prev, ...dbContents }))
-          }
-          if (dbPhotos && Object.keys(dbPhotos).length > 0) {
-            setPhotos((prev) => ({ ...prev, ...dbPhotos }))
-          }
+          if (dbRemarks && Object.keys(dbRemarks).length > 0) setRemarks((p) => ({ ...p, ...dbRemarks }))
+          if (dbContents && Object.keys(dbContents).length > 0) setContents((p) => ({ ...p, ...dbContents }))
+          if (dbPhotos && Object.keys(dbPhotos).length > 0) setPhotos((p) => ({ ...p, ...dbPhotos }))
         }
       } catch (err) {
         console.warn('Could not fetch market feedback from DB, using cached local data:', err)
@@ -955,7 +928,6 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     fetchMarketFeedback()
   }, [])
 
-  // Load real survey issue analysis for TVS if available
   useEffect(() => {
     const fetchTvsAnalysis = async () => {
       setLoading(true)
@@ -972,13 +944,11 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
         }
         const res = await issuesApi.analysis(params)
         const apiIssues = res.data?.data || []
-
-        if (Array.isArray(apiIssues) && apiIssues.length > 0) {
-          const generated = generateFeedbackFromSurveyData(apiIssues, 'TVS')
-          setIssuesData(generated)
-        } else {
-          setIssuesData(DEFAULT_TVS_TOP_ISSUES)
-        }
+        setIssuesData(
+          Array.isArray(apiIssues) && apiIssues.length > 0
+            ? generateFeedbackFromSurveyData(apiIssues, 'TVS')
+            : DEFAULT_TVS_TOP_ISSUES
+        )
       } catch (err) {
         console.warn('Using default TVS market feedback baseline:', err)
         setIssuesData(DEFAULT_TVS_TOP_ISSUES)
@@ -989,49 +959,28 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     fetchTvsAnalysis()
   }, [filters])
 
-  // Save Remark to DB
   const handleSaveRemark = async (key: string, issueName?: string, subIssueTitle?: string) => {
     const textToSave = tempRemarkText
-    setRemarks((prev) => ({
-      ...prev,
-      [key]: textToSave,
-    }))
+    setRemarks((prev) => ({ ...prev, [key]: textToSave }))
     setEditingRemarkKey(null)
-
     try {
       await marketFeedbackApi.saveRemark({
-        remark_key: key,
-        remark: textToSave,
-        issue_name: issueName,
-        sub_issue_title: subIssueTitle,
+        remark_key: key, remark: textToSave, issue_name: issueName, sub_issue_title: subIssueTitle,
       })
-    } catch (err) {
-      console.error('Failed to save remark to database:', err)
-    }
+    } catch (err) { console.error('Failed to save remark to database:', err) }
   }
 
-  // Save Custom Summary Content to DB
   const handleSaveContent = async (key: string, issueName?: string, subIssueTitle?: string) => {
     const textToSave = tempContentText
-    setContents((prev) => ({
-      ...prev,
-      [key]: textToSave,
-    }))
+    setContents((prev) => ({ ...prev, [key]: textToSave }))
     setEditingContentKey(null)
-
     try {
       await marketFeedbackApi.saveContent({
-        remark_key: key,
-        content: textToSave,
-        issue_name: issueName,
-        sub_issue_title: subIssueTitle,
+        remark_key: key, content: textToSave, issue_name: issueName, sub_issue_title: subIssueTitle,
       })
-    } catch (err) {
-      console.error('Failed to save content to database:', err)
-    }
+    } catch (err) { console.error('Failed to save content to database:', err) }
   }
 
-  // Upload Photo to AWS S3 & DB
   const handlePhotoUpload = async (
     key: string,
     event: React.ChangeEvent<HTMLInputElement>,
@@ -1040,43 +989,31 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   ) => {
     const files = event.target.files
     if (!files || files.length === 0) return
-
     setUploadingKey(key)
-    const fileList = Array.from(files)
-
-    for (const file of fileList) {
+    for (const file of Array.from(files)) {
       try {
         const formData = new FormData()
         formData.append('remark_key', key)
         if (issueName) formData.append('issue_name', issueName)
         if (subIssueTitle) formData.append('sub_issue_title', subIssueTitle)
         formData.append('file', file)
-
         const res = await marketFeedbackApi.uploadPhoto(formData)
         if (res.data?.success && res.data?.data) {
           const { photo: uploadedPhoto, photos: keyPhotos } = res.data.data
-          setPhotos((prev) => ({
-            ...prev,
-            [key]: keyPhotos || [...(prev[key] || []), uploadedPhoto],
-          }))
+          setPhotos((prev) => ({ ...prev, [key]: keyPhotos || [...(prev[key] || []), uploadedPhoto] }))
         }
       } catch (err) {
         console.error('Failed to upload photo to S3:', err)
-        // Fallback to local DataURL preview if backend offline
         const reader = new FileReader()
         reader.onload = (e) => {
           const resultUrl = e.target?.result as string
           if (resultUrl) {
             const newPhoto: PhotoItem = {
               id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-              url: resultUrl,
-              name: file.name,
+              url: resultUrl, name: file.name,
               date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
             }
-            setPhotos((prev) => ({
-              ...prev,
-              [key]: [...(prev[key] || []), newPhoto],
-            }))
+            setPhotos((prev) => ({ ...prev, [key]: [...(prev[key] || []), newPhoto] }))
           }
         }
         reader.readAsDataURL(file)
@@ -1086,22 +1023,12 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     event.target.value = ''
   }
 
-  // Delete Photo from DB & S3
   const handleDeletePhoto = async (key: string, photoId: string) => {
-    setPhotos((prev) => ({
-      ...prev,
-      [key]: (prev[key] || []).filter((p) => p.id !== photoId),
-    }))
-
-    try {
-      await marketFeedbackApi.deletePhoto(key, photoId)
-    } catch (err) {
-      console.error('Failed to delete photo from database/S3:', err)
-    }
+    setPhotos((prev) => ({ ...prev, [key]: (prev[key] || []).filter((p) => p.id !== photoId) }))
+    try { await marketFeedbackApi.deletePhoto(key, photoId) }
+    catch (err) { console.error('Failed to delete photo from database/S3:', err) }
   }
 
-
-  // Filter issues based on search query or selected issue filter
   const filteredIssues = useMemo(() => {
     return issuesData.filter((item) => {
       const matchesSearch =
@@ -1117,6 +1044,74 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
     })
   }, [issuesData, searchQuery, selectedIssue])
 
+  const totalComplaints = useMemo(
+    () => filteredIssues.reduce((acc, i) => acc + (i.total_complaints || 0), 0),
+    [filteredIssues]
+  )
+  const totalSubIssues = useMemo(
+    () => filteredIssues.reduce((acc, i) => acc + (i.feedbacks?.length || 0), 0),
+    [filteredIssues]
+  )
+
+  const toggleAccordion = (key: string) =>
+    setExpandedAccordions((prev) => ({ ...prev, [key]: !prev[key] }))
+
+  const expandAll = () => {
+    const next: Record<string, boolean> = {}
+    filteredIssues.forEach((i) => {
+      i.feedbacks.forEach((f) => (next[`${i.issue_name}-${f.id}`] = true))
+    })
+    setExpandedAccordions(next)
+  }
+  const collapseAll = () => setExpandedAccordions({})
+
+  /**
+   * Build "Key Insights" bullets WITH ACTUAL PERCENTAGES.
+   * Sorted strictly by percentage DESC so the largest % is always first.
+   */
+  const buildKeyInsights = (feedback: MarketIssueFeedback): string[] => {
+    const items = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
+    if (!items.length) return ['No specific KM-range feedback captured for this sub-issue.']
+
+    const bullets: string[] = []
+    const top = items[0]
+    const rest = items.slice(1)
+
+    // First bullet — highest %
+    bullets.push(
+      `A major portion of ${feedback.subIssueTitle.toLowerCase()} complaints (${top.percentage}%) occur ${top.range.toLowerCase().startsWith('less') ? 'in ' : 'between '
+      }${top.range}.`
+    )
+
+    // Subsequent bullets — actual %
+    rest.forEach((item) => {
+      bullets.push(
+        `${item.percentage}% of users reported concerns ${item.range.toLowerCase().startsWith('less') ? 'in ' : 'between '
+        }${item.range}.`
+      )
+    })
+
+    // Overall summary line with actual %
+    if (feedback.overallSummary) {
+      bullets.push(feedback.overallSummary)
+    } else {
+      bullets.push(
+        `Overall (${feedback.totalUsersReported})(${feedback.reportedPercentage}) TVS users have reported on ` +
+        `${feedback.subIssueTitle.toLowerCase()} which was a major complaint in ${feedback.issueName}.`
+      )
+    }
+
+    return bullets
+  }
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
+
   if (!loading && (filteredIssues.length === 0 || isEmpty)) {
     return (
       <Box sx={{ p: { xs: 2, md: 4 } }}>
@@ -1126,494 +1121,501 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 } }}>
-      {/* Top Banner Header */}
-      <Card
-        sx={{
-          mb: 3,
-          background: c.isDarkTheme
-            ? 'linear-gradient(135deg, rgba(108,99,255,0.25), rgba(38,198,218,0.15))'
-            : 'linear-gradient(135deg, #EEF2FF, #E0E7FF)',
-          border: `1px solid ${c.isDarkTheme ? 'rgba(108,99,255,0.4)' : '#C7D2FE'}`,
-          borderRadius: 3,
-          boxShadow: '0 8px 32px rgba(108,99,255,0.12)',
-        }}
-      >
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, p: { xs: 2, md: 3 } }}>
+      {/* ── Header Banner (Service-style) ── */}
+      <Card elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 3, backgroundColor: c.cardBg }}>
         <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ p: 1.2, borderRadius: 2, backgroundColor: 'rgba(108, 99, 255, 0.12)', color: '#6C63FF', display: 'flex' }}>
+                <DirectionsCar sx={{ fontSize: 26 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, color: c.textPrimary }}>
+                  Feedback from Market
+                </Typography>
+                <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                  Top 10 TVS Issues — Sub-Issue Key Insights with KM-Range Percentages, Remarks & Photos
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              <Chip
+                label={`Base: ${totalComplaints} complaints`}
+                size="small"
+                sx={{ fontWeight: 700, backgroundColor: 'rgba(108, 99, 255, 0.15)', color: '#6C63FF' }}
+              />
+              <Chip
+                label={`Categories: ${filteredIssues.length}`}
+                size="small"
+                sx={{ fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' }}
+              />
+              <Chip
+                label={`Sub-Issues: ${totalSubIssues}`}
+                size="small"
+                sx={{ fontWeight: 700, backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10B981' }}
+              />
+            </Box>
+          </Box>
+
+          {/* Filter and Control Bar */}
           <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-            <Grid size={{ xs: 12, md: 8 }}>
-
-              <Typography variant="h5" sx={{ fontWeight: 800, color: c.textPrimary, mb: 0.5 }}>
-                Feedback From the Market – Top 10 TVS Issues
-              </Typography>
-              <Typography variant="body2" sx={{ color: c.textSecondary, maxWidth: 850 }}>
-                Generated field feedback insights reported by TVS owners. Explores mileage range failure percentages (sorted by highest major portion first), early durability concerns, overall user report statistics, field remarks, and defect photo attachments.
-              </Typography>
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }} sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  display: 'inline-block',
-                  background: c.isDarkTheme ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)',
-                  borderRadius: 2,
-                  border: `1px solid ${c.borderMuted}`,
+            <Grid size={{ xs: 12, md: 5 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search issues, sub-issues, KM ranges..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search sx={{ color: c.textSecondary, fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
                 }}
-              >
-                <Typography variant="caption" sx={{ color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Target Brand Analysis
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: '#6C63FF' }}>
-                  TVS Motor Company
-                </Typography>
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    backgroundColor: c.cardBg,
+                    fontSize: 13,
+                  },
+                }}
+              />
+            </Grid>
 
-              </Paper>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <FormControl fullWidth size="small">
+                <Select
+                  value={selectedIssue || 'all'}
+                  onChange={(e) => setSelectedIssue(e.target.value === 'all' ? null : e.target.value)}
+                  sx={{ borderRadius: 2, fontSize: 13, backgroundColor: c.cardBg }}
+                >
+                  <MenuItem value="all">All Issues</MenuItem>
+                  {issuesData.map((item) => (
+                    <MenuItem key={item.issue_name} value={item.issue_name}>
+                      {item.issue_name} ({item.total_complaints})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 3 }} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+              <Button size="small" variant="outlined" onClick={expandAll} sx={{ textTransform: 'none', fontSize: 12, borderRadius: 1.5 }}>
+                Expand All
+              </Button>
+              <Button size="small" variant="outlined" onClick={collapseAll} sx={{ textTransform: 'none', fontSize: 12, borderRadius: 1.5 }}>
+                Collapse All
+              </Button>
             </Grid>
           </Grid>
         </CardContent>
       </Card>
 
-      {/* Filter and Search Bar */}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', mb: 3 }}>
-        <TextField
-          size="small"
-          placeholder="Search issues, sub-issues, KM ranges..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search sx={{ color: c.textMuted, fontSize: 20 }} />
-                </InputAdornment>
-              ),
-            },
-          }}
-          sx={{ minWidth: 280, flexGrow: 1 }}
-        />
-
-
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
-            label="All Issues"
-            clickable
-            color={selectedIssue === null ? 'primary' : 'default'}
-            onClick={() => setSelectedIssue(null)}
-            sx={{ fontWeight: 600 }}
-          />
-          {issuesData.map((item) => (
-            <Chip
-              key={item.issue_name}
-              label={`${item.issue_name} (${item.total_complaints})`}
-              clickable
-              color={selectedIssue === item.issue_name ? 'primary' : 'default'}
-              variant={selectedIssue === item.issue_name ? 'filled' : 'outlined'}
-              onClick={() => setSelectedIssue(selectedIssue === item.issue_name ? null : item.issue_name)}
-              sx={{ fontWeight: 600 }}
-            />
-          ))}
-        </Box>
-      </Box>
-
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
-
-      {/* Issue Cards */}
-      <Grid container spacing={3}>
-        {filteredIssues.map((issueCategory, catIndex) => (
-          <Grid size={{ xs: 12 }} key={issueCategory.issue_name}>
-            <Card
-              elevation={2}
-              sx={{
-                borderRadius: 3,
-                border: `1px solid ${c.border}`,
-                overflow: 'hidden',
-                transition: 'box-shadow 0.2s ease',
-                '&:hover': {
-                  boxShadow: `0 8px 24px ${c.isDarkTheme ? 'rgba(0,0,0,0.5)' : 'rgba(108,99,255,0.15)'}`,
-                },
-              }}
-            >
-              {/* Category Top Banner */}
-              <Box
-                sx={{
-                  px: 3,
-                  py: 1.8,
-                  background: c.isDarkTheme
-                    ? 'linear-gradient(90deg, rgba(108,99,255,0.2), rgba(30,30,50,0.8))'
-                    : 'linear-gradient(90deg, #F0F4FF, #F8FAFC)',
-                  borderBottom: `1px solid ${c.border}`,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Avatar
-                    sx={{
-                      width: 34,
-                      height: 34,
-                      background: 'linear-gradient(135deg, #6C63FF, #9A94FF)',
-                      fontSize: '0.85rem',
-                      fontWeight: 800,
-                    }}
-                  >
-                    #{catIndex + 1}
-                  </Avatar>
+      {/* ── Issue Category Cards ── */}
+      {filteredIssues.map((issueCategory, catIndex) => (
+        <Card
+          key={issueCategory.issue_name}
+          elevation={0}
+          sx={{ border: `1px solid ${c.border}`, borderRadius: 3, backgroundColor: c.cardBg }}
+        >
+          <CardContent sx={{ p: 3 }}>
+            {/* Category Header */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mb: 2.5, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Avatar
+                  sx={{
+                    width: 34, height: 34,
+                    background: 'linear-gradient(135deg, #6C63FF, #9A94FF)',
+                    fontSize: '0.85rem', fontWeight: 800,
+                  }}
+                >
+                  #{catIndex + 1}
+                </Avatar>
+                <Box>
                   <Typography variant="h6" sx={{ fontWeight: 800, color: c.textPrimary }}>
                     {issueCategory.issue_name}
                   </Typography>
+                  <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                    {issueCategory.feedbacks.length} sub-issue{issueCategory.feedbacks.length !== 1 ? 's' : ''} reported
+                  </Typography>
                 </Box>
-                <Chip
-                  label={`${issueCategory.total_complaints} TVS Complaints`}
-                  size="small"
-                  sx={{
-                    background: c.isDarkTheme ? 'rgba(255,101,132,0.2)' : '#FFE4E6',
-                    color: '#FF6584',
-                    fontWeight: 700,
-                  }}
-                />
               </Box>
+              <Chip
+                label={`${issueCategory.total_complaints} TVS Complaints`}
+                size="small"
+                sx={{ fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' }}
+              />
+            </Box>
 
-              <CardContent sx={{ p: 3 }}>
-                {issueCategory.feedbacks.map((feedback) => {
-                  const remarkKey = `${issueCategory.issue_name}_${feedback.subIssueTitle}`
-                  const currentRemark = remarks[remarkKey] || ''
-                  const currentPhotos = photos[remarkKey] || []
-                  const isEditingRemark = editingRemarkKey === remarkKey
+            {/* Sub-Issue Accordions */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {issueCategory.feedbacks.map((feedback, fIdx) => {
+                const accordionKey = `${issueCategory.issue_name}-${feedback.id}`
+                const isExpanded = expandedAccordions[accordionKey] ?? true
 
-                  const contentKey = `market_content_${feedback.id}`
-                  const currentCustomContent = contents[contentKey] || ''
-                  const isEditingContent = editingContentKey === contentKey
+                const remarkKey = `${issueCategory.issue_name}_${feedback.subIssueTitle}`
+                const currentRemark = remarks[remarkKey] || ''
+                const currentPhotos = photos[remarkKey] || []
+                const isEditingRemark = editingRemarkKey === remarkKey
 
-                  // Ensure kmBreakdown is ALWAYS sorted strictly by percentage DESCENDING (highest % first)
-                  const sortedKmBreakdown = getSortedFormattedKmBreakdown(feedback.kmBreakdown, feedback.subIssueTitle)
+                const contentKey = `market_content_${feedback.id}`
+                const currentContent = contents[contentKey] || ''
+                const isEditingContent = editingContentKey === contentKey
 
-                  return (
+                return (
+                  <Paper
+                    key={feedback.id}
+                    elevation={0}
+                    sx={{ border: `1px solid ${c.border}`, borderRadius: 2, overflow: 'hidden' }}
+                  >
+                    {/* Accordion Header */}
                     <Box
-                      key={feedback.id}
+                      onClick={() => toggleAccordion(accordionKey)}
                       sx={{
-                        mb: 3.5,
-                        pb: 3,
-                        '&:last-child': { mb: 0, pb: 0 },
-                        borderBottom: `1px dashed ${c.borderMuted}`,
-                        '&:last-child': { borderBottom: 'none' },
+                        p: 2,
+                        backgroundColor: c.tableHeaderBg,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        userSelect: 'none',
+                        '&:hover': { backgroundColor: `${c.primary}08` },
                       }}
                     >
-                      {/* Sub-issue Title & Edit Content Action */}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#6C63FF' }}>
-                          📌 {feedback.subIssueTitle}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar
+                          sx={{
+                            width: 30, height: 30,
+                            background: 'linear-gradient(135deg, #6C63FF, #9A94FF)',
+                            fontSize: '0.8rem', fontWeight: 800,
+                          }}
+                        >
+                          #{fIdx + 1}
+                        </Avatar>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary, fontSize: 14 }}>
+                          {feedback.subIssueTitle}
                         </Typography>
-                        {!isEditingContent && (
-                          <Button
-                            size="small"
-                            variant="text"
-                            startIcon={<Save sx={{ fontSize: 14 }} />}
-                            onClick={() => {
-                              const defaultText = [
-                                ...sortedKmBreakdown.map((b) => b.description),
-                                feedback.overallSummary ? `Overall: ${feedback.overallSummary}` : ''
-                              ].filter(Boolean).join('\n')
-                              setEditingContentKey(contentKey)
-                              setTempContentText(currentCustomContent || defaultText)
-                            }}
-                            sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#6C63FF' }}
-                          >
-                            {currentCustomContent ? 'Edit Content' : 'Edit Content'}
-                          </Button>
-                        )}
                       </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Chip
+                          label={`Users Reported: ${feedback.totalUsersReported}`}
+                          size="small"
+                          sx={{ fontWeight: 700, backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#DC2626', fontSize: 11 }}
+                        />
+                        <Chip
+                          label={`${feedback.reportedPercentage} of Base`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontWeight: 600, fontSize: 11 }}
+                        />
+                        <ExpandMoreIcon
+                          sx={{
+                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s',
+                            color: c.textSecondary,
+                          }}
+                        />
+                      </Box>
+                    </Box>
 
-                      {/* Feedback Summary / KM Breakdown Block */}
-                      {isEditingContent ? (
-                        <Paper elevation={0} sx={{ p: 2, mb: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: c.textPrimary }}>
-                            Edit Market Feedback Content / Summary
-                          </Typography>
-                          <TextField
-                            fullWidth
-                            multiline
-                            rows={4}
-                            size="small"
-                            placeholder="Enter custom summary content for this sub-issue..."
-                            value={tempContentText}
-                            onChange={(e) => setTempContentText(e.target.value)}
-                            sx={{ mb: 1.5 }}
-                          />
-                          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                            <Button size="small" onClick={() => setEditingContentKey(null)} sx={{ textTransform: 'none' }}>
-                              Cancel
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => handleSaveContent(contentKey, issueCategory.issue_name, feedback.subIssueTitle)}
-                              sx={{ textTransform: 'none', background: '#6C63FF' }}
+                    {/* Accordion Body — Key Insights only */}
+                    {isExpanded && (
+                      <Box sx={{ p: 2.5, backgroundColor: c.cardBg }}>
+                        <Grid container spacing={3} sx={{ mb: 2.5 }}>
+                          {/* KEY INSIGHTS (full width — no table) */}
+                          <Grid size={{ xs: 12 }}>
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 2.5, borderRadius: 2,
+                                background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F5F3FF',
+                                border: `1px solid ${c.borderMuted}`,
+                              }}
                             >
-                              Save Content
-                            </Button>
-                          </Box>
-                        </Paper>
-                      ) : currentCustomContent ? (
-                        <Box sx={{ pl: 2, mb: 2, borderLeft: '3px solid #6C63FF' }}>
-                          <Typography variant="body2" sx={{ color: c.textPrimary, lineHeight: 1.7, fontSize: '0.92rem', whiteSpace: 'pre-line' }}>
-                            {currentCustomContent}
-                          </Typography>
-                        </Box>
-                      ) : (
-                        <Box sx={{ pl: 2, mb: 2, borderLeft: '3px solid #6C63FF' }}>
-                          {sortedKmBreakdown.map((item, idx) => (
-                            <Box key={idx} sx={{ mb: 1.2, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                              <Box
-                                sx={{
-                                  minWidth: 8,
-                                  height: 8,
-                                  borderRadius: '50%',
-                                  background:
-                                    idx === 0
-                                      ? '#FF6584'
-                                      : idx === 1
-                                        ? '#FFD93D'
-                                        : '#4ECCA3',
-                                  mt: 0.8,
-                                }}
-                              />
-                              <Typography variant="body2" sx={{ color: c.textPrimary, lineHeight: 1.6, fontSize: '0.92rem' }}>
-                                {item.description}
-                              </Typography>
-                            </Box>
-                          ))}
-
-                          {/* Overall Summary sentence */}
-                          <Paper
-                            elevation={0}
-                            sx={{
-                              mt: 2,
-                              p: 1.5,
-                              background: c.isDarkTheme ? 'rgba(78,204,163,0.1)' : '#F0FDF4',
-                              border: `1px solid ${c.isDarkTheme ? 'rgba(78,204,163,0.3)' : '#BBF7D0'}`,
-                              borderRadius: 2,
-                            }}
-                          >
-                            <Typography variant="body2" sx={{ fontWeight: 700, color: c.isDarkTheme ? '#4ECCA3' : '#15803D' }}>
-                              💡 {feedback.overallSummary}
-                            </Typography>
-                          </Paper>
-                        </Box>
-                      )}
-
-                      {/* Interactive Section: Remark & Photo Upload */}
-                      <Grid container spacing={2} sx={{ mt: 1 }}>
-                        {/* Remarks Column */}
-                        <Grid size={{ xs: 12, md: 7 }}>
-                          <Paper
-                            elevation={0}
-                            sx={{
-                              p: 2,
-                              borderRadius: 2,
-                              background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
-                              border: `1px solid ${c.borderMuted}`,
-                              height: '100%',
-                            }}
-                          >
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Comment sx={{ fontSize: 18, color: c.primary }} />
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
-                                  Remark Option
-                                </Typography>
-                              </Box>
-                              {!isEditingRemark && (
-                                <Button
-                                  size="small"
-                                  variant="text"
-                                  startIcon={<Save sx={{ fontSize: 14 }} />}
-                                  onClick={() => {
-                                    setEditingRemarkKey(remarkKey)
-                                    setTempRemarkText(currentRemark)
-                                  }}
-                                  sx={{ textTransform: 'none', fontSize: '0.75rem' }}
-                                >
-                                  {currentRemark ? 'Edit Remark' : '+ Add Remark'}
-                                </Button>
-                              )}
-                            </Box>
-
-                            {isEditingRemark ? (
-                              <Box sx={{ mt: 1 }}>
-                                <TextField
-                                  fullWidth
-                                  multiline
-                                  rows={3}
-                                  size="small"
-                                  placeholder="Enter field remark or observation for this issue..."
-                                  value={tempRemarkText}
-                                  onChange={(e) => setTempRemarkText(e.target.value)}
-                                  sx={{ mb: 1 }}
-                                />
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                                  <Button
-                                    size="small"
-                                    onClick={() => setEditingRemarkKey(null)}
-                                    sx={{ textTransform: 'none' }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    onClick={() => handleSaveRemark(remarkKey, issueCategory.issue_name, feedback.subIssueTitle)}
-                                    sx={{ textTransform: 'none', background: '#6C63FF' }}
-                                  >
-                                    Save Remark
-                                  </Button>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Assessment sx={{ fontSize: 20, color: '#6C63FF' }} />
+                                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: c.textPrimary }}>
+                                    Key Insight & Summary
+                                  </Typography>
                                 </Box>
+                                {!isEditingContent && (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    startIcon={<Save sx={{ fontSize: 14 }} />}
+                                    onClick={() => {
+                                      const defaultText = buildKeyInsights(feedback).join('\n')
+                                      setEditingContentKey(contentKey)
+                                      setTempContentText(currentContent || defaultText)
+                                    }}
+                                    sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#6C63FF' }}
+                                  >
+                                    {currentContent ? 'Edit Content' : 'Edit Content'}
+                                  </Button>
+                                )}
                               </Box>
-                            ) : (
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: currentRemark ? c.textPrimary : c.textMuted,
-                                  fontStyle: currentRemark ? 'normal' : 'italic',
-                                  whiteSpace: 'pre-line',
-                                }}
-                              >
-                                {currentRemark || 'No field remarks added yet. Click "+ Add Remark" to add notes for this issue.'}
-                              </Typography>
-                            )}
-                          </Paper>
-                        </Grid>
 
-                        {/* Photo Option Column */}
-                        <Grid size={{ xs: 12, md: 5 }}>
-                          <Paper
-                            elevation={0}
-                            sx={{
-                              p: 2,
-                              borderRadius: 2,
-                              background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
-                              border: `1px solid ${c.borderMuted}`,
-                              height: '100%',
-                            }}
-                          >
-
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <AddPhotoAlternate sx={{ fontSize: 18, color: c.primary }} />
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
-                                  Photo Option ({currentPhotos.length})
-                                </Typography>
-                              </Box>
-                              <Button
-                                component="label"
-                                size="small"
-                                variant="outlined"
-                                disabled={uploadingKey === remarkKey}
-                                startIcon={uploadingKey === remarkKey ? <CircularProgress size={14} color="inherit" /> : <CloudUpload sx={{ fontSize: 14 }} />}
-                                sx={{ textTransform: 'none', fontSize: '0.75rem', borderColor: c.primary }}
-                              >
-                                {uploadingKey === remarkKey ? 'Uploading...' : 'Upload Photo'}
-                                <input
-                                  type="file"
-                                  hidden
-                                  accept="image/*"
-                                  multiple
-                                  disabled={uploadingKey === remarkKey}
-                                  onChange={(e) => handlePhotoUpload(remarkKey, e, issueCategory.issue_name, feedback.subIssueTitle)}
-                                />
-                              </Button>
-                            </Box>
-
-
-                            {/* Photo Thumbnails */}
-                            {currentPhotos.length > 0 ? (
-                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                                {currentPhotos.map((photo) => {
-                                  const fullUrl = getPhotoUrl(photo.url)
-                                  return (
+                              {isEditingContent ? (
+                                <Box>
+                                  <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={6}
+                                    size="small"
+                                    placeholder="Edit key insights content..."
+                                    value={tempContentText}
+                                    onChange={(e) => setTempContentText(e.target.value)}
+                                    sx={{ mb: 1 }}
+                                  />
+                                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                    <Button size="small" onClick={() => setEditingContentKey(null)} sx={{ textTransform: 'none' }}>
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      onClick={() => handleSaveContent(contentKey, issueCategory.issue_name, feedback.subIssueTitle)}
+                                      sx={{ textTransform: 'none', background: '#6C63FF' }}
+                                    >
+                                      Save Content
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              ) : currentContent ? (
+                                <Box component="ul" sx={{ pl: 3, m: 0 }}>
+                                  {currentContent.split('\n').filter(Boolean).map((line, i) => (
                                     <Box
-                                      key={photo.id}
-                                      onClick={(e) => {
-                                        if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
-                                        setLightboxImg({ url: fullUrl, title: `${feedback.subIssueTitle} - ${photo.name}` })
-                                      }}
+                                      component="li"
+                                      key={i}
                                       sx={{
-                                        position: 'relative',
-                                        width: 64,
-                                        height: 64,
-                                        borderRadius: 1.5,
-                                        overflow: 'hidden',
-                                        border: `1px solid ${c.border}`,
-                                        cursor: 'pointer',
-                                        '&:hover .photo-overlay': { opacity: 1 },
+                                        fontSize: 14,
+                                        lineHeight: 1.8,
+                                        mb: 0.85,
+                                        color: c.textPrimary,
+                                        fontWeight: 400,
+                                        '&::marker': { color: '#6C63FF', fontSize: 15 },
                                       }}
                                     >
-                                      <img
-                                        src={fullUrl}
-                                        alt={photo.name}
-                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                      />
+                                      {line}
+                                    </Box>
+                                  ))}
+                                </Box>
+                              ) : (
+                                <Box component="ul" sx={{ pl: 3, m: 0 }}>
+                                  {buildKeyInsights(feedback).map((bullet, bIdx) => (
+                                    <Box
+                                      component="li"
+                                      key={bIdx}
+                                      sx={{
+                                        fontSize: 14,
+                                        lineHeight: 1.8,
+                                        mb: 0.85,
+                                        color: c.textPrimary,
+                                        fontWeight: bIdx === buildKeyInsights(feedback).length - 1 ? 700 : 400,
+                                        '&::marker': {
+                                          color: bIdx === buildKeyInsights(feedback).length - 1 ? '#10B981' : '#6C63FF',
+                                          fontSize: 15,
+                                        },
+                                      }}
+                                    >
+                                      {bullet}
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                            </Paper>
+                          </Grid>
+                        </Grid>
+
+                        {/* Remark & Photo */}
+                        <Grid container spacing={2} sx={{ pt: 1, borderTop: `1px dashed ${c.borderMuted}` }}>
+                          {/* Remark */}
+                          <Grid size={{ xs: 12, md: 7 }}>
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 2, borderRadius: 2,
+                                background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                border: `1px solid ${c.borderMuted}`, height: '100%',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Comment sx={{ fontSize: 18, color: c.primary }} />
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                    Remark Option
+                                  </Typography>
+                                </Box>
+                                {!isEditingRemark && (
+                                  <Button
+                                    size="small"
+                                    variant="text"
+                                    startIcon={<Save sx={{ fontSize: 14 }} />}
+                                    onClick={() => {
+                                      setEditingRemarkKey(remarkKey)
+                                      setTempRemarkText(currentRemark)
+                                    }}
+                                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                                  >
+                                    {currentRemark ? 'Edit Remark' : '+ Add Remark'}
+                                  </Button>
+                                )}
+                              </Box>
+
+                              {isEditingRemark ? (
+                                <Box sx={{ mt: 1 }}>
+                                  <TextField
+                                    fullWidth
+                                    multiline
+                                    rows={3}
+                                    size="small"
+                                    placeholder="Enter field remark or observation for this issue..."
+                                    value={tempRemarkText}
+                                    onChange={(e) => setTempRemarkText(e.target.value)}
+                                    sx={{ mb: 1 }}
+                                  />
+                                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                    <Button size="small" onClick={() => setEditingRemarkKey(null)} sx={{ textTransform: 'none' }}>
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      onClick={() => handleSaveRemark(remarkKey, issueCategory.issue_name, feedback.subIssueTitle)}
+                                      sx={{ textTransform: 'none', background: '#6C63FF' }}
+                                    >
+                                      Save Remark
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              ) : (
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: currentRemark ? c.textPrimary : c.textMuted,
+                                    fontStyle: currentRemark ? 'normal' : 'italic',
+                                    whiteSpace: 'pre-line',
+                                  }}
+                                >
+                                  {currentRemark || 'No field remarks added yet. Click "+ Add Remark" to add notes for this issue.'}
+                                </Typography>
+                              )}
+                            </Paper>
+                          </Grid>
+
+                          {/* Photo */}
+                          <Grid size={{ xs: 12, md: 5 }}>
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 2, borderRadius: 2,
+                                background: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                border: `1px solid ${c.borderMuted}`, height: '100%',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <AddPhotoAlternate sx={{ fontSize: 18, color: c.primary }} />
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                    Photo Option ({currentPhotos.length})
+                                  </Typography>
+                                </Box>
+                                <Button
+                                  component="label"
+                                  size="small"
+                                  variant="outlined"
+                                  disabled={uploadingKey === remarkKey}
+                                  startIcon={uploadingKey === remarkKey ? <CircularProgress size={14} color="inherit" /> : <CloudUpload sx={{ fontSize: 14 }} />}
+                                  sx={{ textTransform: 'none', fontSize: '0.75rem', borderColor: c.primary }}
+                                >
+                                  {uploadingKey === remarkKey ? 'Uploading...' : 'Upload Photo'}
+                                  <input
+                                    type="file"
+                                    hidden
+                                    accept="image/*"
+                                    multiple
+                                    disabled={uploadingKey === remarkKey}
+                                    onChange={(e) => handlePhotoUpload(remarkKey, e, issueCategory.issue_name, feedback.subIssueTitle)}
+                                  />
+                                </Button>
+                              </Box>
+
+                              {currentPhotos.length > 0 ? (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                  {currentPhotos.map((photo) => {
+                                    const fullUrl = getPhotoUrl(photo.url)
+                                    return (
                                       <Box
-                                        className="photo-overlay"
+                                        key={photo.id}
+                                        onClick={(e) => {
+                                          if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                          setLightboxImg({ url: fullUrl, title: `${feedback.subIssueTitle} - ${photo.name}` })
+                                        }}
                                         sx={{
-                                          position: 'absolute',
-                                          inset: 0,
-                                          background: 'rgba(0,0,0,0.6)',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          gap: 0.5,
-                                          opacity: 0,
-                                          transition: 'opacity 0.2s ease',
+                                          position: 'relative',
+                                          width: 64, height: 64,
+                                          borderRadius: 1.5, overflow: 'hidden',
+                                          border: `1px solid ${c.border}`,
+                                          cursor: 'pointer',
+                                          '&:hover .photo-overlay': { opacity: 1 },
                                         }}
                                       >
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e?.stopPropagation?.()
-                                            if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
-                                            setLightboxImg({ url: fullUrl, title: `${feedback.subIssueTitle} - ${photo.name}` })
+                                        <img src={fullUrl} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <Box
+                                          className="photo-overlay"
+                                          sx={{
+                                            position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5,
+                                            opacity: 0, transition: 'opacity 0.2s ease',
                                           }}
-                                          sx={{ color: '#fff', p: 0.3 }}
                                         >
-                                          <Visibility sx={{ fontSize: 16 }} />
-                                        </IconButton>
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => {
-                                            e?.stopPropagation?.()
-                                            handleDeletePhoto(remarkKey, photo.id)
-                                          }}
-                                          sx={{ color: '#FF6584', p: 0.3 }}
-                                        >
-                                          <Delete sx={{ fontSize: 16 }} />
-                                        </IconButton>
+                                          <IconButton
+                                            size="small"
+                                            onClick={(e) => {
+                                              e?.stopPropagation?.()
+                                              if (e?.currentTarget) (e.currentTarget as HTMLElement).blur()
+                                              setLightboxImg({ url: fullUrl, title: `${feedback.subIssueTitle} - ${photo.name}` })
+                                            }}
+                                            sx={{ color: '#fff', p: 0.3 }}
+                                          >
+                                            <Visibility sx={{ fontSize: 16 }} />
+                                          </IconButton>
+                                          <IconButton
+                                            size="small"
+                                            onClick={(e) => {
+                                              e?.stopPropagation?.()
+                                              handleDeletePhoto(remarkKey, photo.id)
+                                            }}
+                                            sx={{ color: '#FF6584', p: 0.3 }}
+                                          >
+                                            <Delete sx={{ fontSize: 16 }} />
+                                          </IconButton>
+                                        </Box>
                                       </Box>
-                                    </Box>
-                                  )
-                                })}
-                              </Box>
-                            ) : (
-                              <Typography variant="caption" sx={{ color: c.textMuted, fontStyle: 'italic', display: 'block', mt: 1 }}>
-                                No photos attached. Click Upload Photo to attach part defect pictures.
-                              </Typography>
-                            )}
-                          </Paper>
+                                    )
+                                  })}
+                                </Box>
+                              ) : (
+                                <Typography variant="caption" sx={{ color: c.textMuted, fontStyle: 'italic', display: 'block', mt: 1 }}>
+                                  No photos attached. Click Upload Photo to attach part defect pictures.
+                                </Typography>
+                              )}
+                            </Paper>
+                          </Grid>
                         </Grid>
-                      </Grid>
-                    </Box>
-                  )
-                })}
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+                      </Box>
+                    )}
+                  </Paper>
+                )
+              })}
+            </Box>
+          </CardContent>
+        </Card>
+      ))}
 
       {/* Lightbox Dialog */}
       <Dialog open={Boolean(lightboxImg)} onClose={() => setLightboxImg(null)} maxWidth="md" fullWidth>
@@ -1625,7 +1627,6 @@ export default function MarketFeedbackTab({ filters }: { filters: FilterState })
             <Close />
           </IconButton>
         </DialogTitle>
-
         <DialogContent sx={{ p: 2, display: 'flex', justifyContent: 'center', background: '#000' }}>
           {lightboxImg && (
             <img

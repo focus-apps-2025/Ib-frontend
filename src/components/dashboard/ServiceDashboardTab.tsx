@@ -115,7 +115,8 @@ const PIE_NPS_COLORS = {
 interface ServiceDashboardTabProps {
   onDownloadPPT?: () => void
   pptGenerating?: boolean
-  filters?: FilterState
+  filters?: FilterState,
+  initialTab?: number
 }
 
 const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
@@ -139,7 +140,8 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
   const filters = _props.filters || storeFilters
   const c = useThemeColors()
 
-  const [activeTab, setActiveTab] = useState<number>(0)
+  const [activeTab, setActiveTab] = useState<number>(_props.initialTab ?? 0)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -3307,29 +3309,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
       {/* Header Bar */}
 
 
-      {/* Sub-Tab Navigation Switcher */}
-      <Box sx={{ borderBottom: 1, borderColor: c.border }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, newVal) => setActiveTab(newVal)}
-          sx={{
-            '& .MuiTab-root': {
-              fontWeight: 600,
-              fontSize: '0.9rem',
-              textTransform: 'none',
-              minHeight: 48,
-              mr: 2,
-            }
-          }}
-        >
-          <Tab icon={<Speed sx={{ fontSize: 20 }} />} iconPosition="start" label="Service Frequency" />
-          <Tab icon={<Star sx={{ fontSize: 20 }} />} iconPosition="start" label="Service NPS (Authorized & PGM)" />
-          <Tab icon={<ThumbUp sx={{ fontSize: 20 }} />} iconPosition="start" label="Benefits & Betterments" />
-          <Tab icon={<VerifiedUser sx={{ fontSize: 20 }} />} iconPosition="start" label="Service Satisfaction" />
-          <Tab icon={<Assessment sx={{ fontSize: 20 }} />} iconPosition="start" label="Customer Perception Score" />
-          <Tab icon={<Handyman sx={{ fontSize: 20 }} />} iconPosition="start" label="Feedback from market(Service)" />
-        </Tabs>
-      </Box>
+
 
       {/* Tab 0: Service Frequency (KMS & Time) */}
       {activeTab === 0 && (

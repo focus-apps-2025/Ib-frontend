@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Box, Card, CardContent, Typography, Accordion, AccordionSummary,
   AccordionDetails, Table, TableBody, TableCell, TableHead, TableRow,
@@ -111,6 +111,16 @@ interface IssueData {
   sub_issues?: SubIssueData[]
 }
 
+const analysisCache = new Map<
+  string,
+  { issues: IssueData[]; brands: string[]; summary: Record<string, unknown> }
+>()
+
+// Bump this whenever a new Excel file is uploaded, to invalidate cache
+export function invalidateIssuesCache() {
+  analysisCache.clear()
+}
+
 export default function IssuesTab({ filters }: { filters: FilterState }) {
   const c = useThemeColors()
   const [issues, setIssues] = useState<IssueData[]>([])
@@ -134,22 +144,36 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
 
 
   const loadAnalysis = async () => {
+    const params: Record<string, string | undefined> = {
+      region_id: toParam(filters.regionId),
+      country_id: toParam(filters.countryId),
+      ib_version_id: toParam(filters.ibVersionId),
+      brand_model: toParam(filters.brandModel),
+      survey_location: toParam(filters.surveyLocation),
+      date_from: filters.dateFrom || undefined,
+      date_to: filters.dateTo || undefined,
+      search: filters.search || undefined,
+    }
+
+    const cacheKey = JSON.stringify(params)
+
+    // ⚡ Instant return from cache — no spinner, no network
+    const cached = analysisCache.get(cacheKey)
+    if (cached) {
+      setIssues(cached.issues)
+      setBrands(cached.brands)
+      setSummary(cached.summary)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const params: Record<string, string | undefined> = {
-        region_id: toParam(filters.regionId),
-        country_id: toParam(filters.countryId),
-        ib_version_id: toParam(filters.ibVersionId),
-        brand_model: toParam(filters.brandModel),
-        survey_location: toParam(filters.surveyLocation),
-        date_from: filters.dateFrom || undefined,
-        date_to: filters.dateTo || undefined,
-        search: filters.search || undefined,
-      }
       const res = await issuesApi.analysis(params)
-      const rawIssues: IssueData[] = res.data.data || []
+      const rawIssues: IssueData[] = (res.data.data || []).filter(
+        (issue: IssueData) => issue.sub_issues && issue.sub_issues.length > 0
+      )
 
-      // Dynamically extract all brands from the dataset to ensure no columns are missing
       const extractedBrands = new Set<string>(res.data.brands || [])
       rawIssues.forEach(issue => {
         issue.sub_issues?.forEach(sub => {
@@ -164,9 +188,16 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
       })
       const apiBrands = Array.from(extractedBrands).sort()
 
-      setIssues(rawIssues)
-      setBrands(apiBrands)
-      setSummary(res.data.summary || {})
+      const payload = {
+        issues: rawIssues,
+        brands: apiBrands,
+        summary: (res.data.summary || {}) as Record<string, unknown>,
+      }
+      analysisCache.set(cacheKey, payload)
+
+      setIssues(payload.issues)
+      setBrands(payload.brands)
+      setSummary(payload.summary)
     } catch (error) {
       console.error('Error loading analysis:', error)
     }
@@ -184,30 +215,37 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
     filters.search
   ])
 
-  const filtered = issues
-    .filter((i) => i.issue_name.toLowerCase().includes(searchIssue.toLowerCase()))
-    .sort((a, b) =>
-      sortBy === 'count' ? b.total_complaints - a.total_complaints
-        : a.issue_name.localeCompare(b.issue_name)
-    )
+  const filtered = useMemo(
+    () =>
+      issues
+        .filter((i) => i.issue_name.toLowerCase().includes(searchIssue.toLowerCase()))
+        .sort((a, b) =>
+          sortBy === 'count'
+            ? b.total_complaints - a.total_complaints
+            : a.issue_name.localeCompare(b.issue_name)
+        ),
+    [issues, searchIssue, sortBy]
+  )
 
-  const topIssues = filtered.slice(0, 10).map(issue => ({
-    ...issue,
-    display_name: cleanIssueName(issue.issue_name)
-  }))
+  const topIssues = useMemo(
+    () =>
+      filtered.slice(0, 10).map((issue) => ({
+        ...issue,
+        display_name: cleanIssueName(issue.issue_name),
+      })),
+    [filtered]
+  )
 
-  const calculatePieData = () => {
+  const pieData = useMemo(() => {
     const top10 = filtered.slice(0, 10)
-    const totalAllComplaints = filtered.reduce((sum, issue) => sum + issue.total_complaints, 0)
+    const totalAllComplaints = filtered.reduce((sum, i) => sum + i.total_complaints, 0)
     if (totalAllComplaints === 0) return []
-    return top10.map(issue => ({
+    return top10.map((issue) => ({
       name: issue.issue_name,
       value: issue.total_complaints,
-      percentage: (issue.total_complaints / totalAllComplaints) * 100
+      percentage: (issue.total_complaints / totalAllComplaints) * 100,
     }))
-  }
-
-  const pieData = calculatePieData()
+  }, [filtered])
 
   return (
     <Box>
@@ -358,252 +396,253 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
               <Chip label={`${issue.total_complaints.toLocaleString()} complaints`} size="small" sx={{ background: `${ISSUE_COLORS[idx % ISSUE_COLORS.length]}20`, color: ISSUE_COLORS[idx % ISSUE_COLORS.length], fontWeight: 700, fontSize: '0.7rem' }} />
               <Chip label={`${issue.percentage?.toFixed(1)}%`} size="small" sx={{ background: c.chipWhiteBg, color: c.textSecondary, fontSize: '0.7rem' }} />
             </AccordionSummary>
-
-            <AccordionDetails sx={{ p: 3, borderTop: `1px solid ${c.borderMuted}` }}>
-              {!issue.sub_issues || issue.sub_issues.length === 0 ? (
-                <Typography sx={{ py: 2, color: c.textMuted, fontSize: '0.85rem', textAlign: 'center' }}>No follow-up data available.</Typography>
-              ) : (
-                <Grid container spacing={3}>
-                  {/* LEFT SIDE: TABLE */}
-                  <Grid size={{ xs: 12, lg: 6 }}>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Complaint Breakdown by Brand
-                    </Typography>
-                    <Box sx={{ overflowX: 'auto', borderRadius: 2, border: `1px solid ${c.borderMuted}` }}>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Sub-Issue</TableCell>
-                            <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Follow-up Question</TableCell>
-                            <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Answer</TableCell>
-                            {brands.map((brandName, index) => {
-                              const bColor = getBrandColor(brandName, index)
+            {(expandedIssue === issue.issue_name || expandedIssue === 'all') && (
+              <AccordionDetails sx={{ p: 3, borderTop: `1px solid ${c.borderMuted}` }}>
+                {!issue.sub_issues || issue.sub_issues.length === 0 ? (
+                  <Typography sx={{ py: 2, color: c.textMuted, fontSize: '0.85rem', textAlign: 'center' }}>No follow-up data available.</Typography>
+                ) : (
+                  <Grid container spacing={3}>
+                    {/* LEFT SIDE: TABLE */}
+                    <Grid size={{ xs: 12, lg: 6 }}>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Complaint Breakdown by Brand
+                      </Typography>
+                      <Box sx={{ overflowX: 'auto', borderRadius: 2, border: `1px solid ${c.borderMuted}` }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Sub-Issue</TableCell>
+                              <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Follow-up Question</TableCell>
+                              <TableCell sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Answer</TableCell>
+                              {brands.map((brandName, index) => {
+                                const bColor = getBrandColor(brandName, index)
+                                return (
+                                  <TableCell
+                                    key={brandName}
+                                    align="right"
+                                    sx={{
+                                      fontWeight: 700,
+                                      background: `${bColor}18`,        // soft tint (works in light & dark)
+                                      color: bColor,                    // brand color text
+                                      fontSize: '0.75rem',
+                                      textTransform: 'uppercase',
+                                      borderBottom: `2px solid ${bColor}`,
+                                    }}
+                                  >
+                                    {brandName}
+                                  </TableCell>
+                                )
+                              })}
+                              <TableCell align="right" sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Total</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {(() => {
                               return (
-                                <TableCell
-                                  key={brandName}
-                                  align="right"
-                                  sx={{
-                                    fontWeight: 700,
-                                    background: `${bColor}18`,        // soft tint (works in light & dark)
-                                    color: bColor,                    // brand color text
-                                    fontSize: '0.75rem',
-                                    textTransform: 'uppercase',
-                                    borderBottom: `2px solid ${bColor}`,
-                                  }}
-                                >
-                                  {brandName}
-                                </TableCell>
-                              )
-                            })}
-                            <TableCell align="right" sx={{ fontWeight: 700, background: c.headerCell, color: c.textSecondary, fontSize: '0.75rem', textTransform: 'uppercase' }}>Total</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {(() => {
-                            return (
-                              <>
-                                {issue.sub_issues?.map((sub) => {
-                                  // Calculate total sub-issue row span
-                                  let subRowSpan = 0
-                                  if (!sub.has_follow_ups || !sub.follow_ups || sub.follow_ups.length === 0) {
-                                    subRowSpan = 1
-                                  } else {
-                                    sub.follow_ups.forEach((fu) => {
-                                      subRowSpan += fu.answers && fu.answers.length > 0 ? fu.answers.length : 1
-                                    })
-                                  }
+                                <>
+                                  {issue.sub_issues?.map((sub) => {
+                                    // Calculate total sub-issue row span
+                                    let subRowSpan = 0
+                                    if (!sub.has_follow_ups || !sub.follow_ups || sub.follow_ups.length === 0) {
+                                      subRowSpan = 1
+                                    } else {
+                                      sub.follow_ups.forEach((fu) => {
+                                        subRowSpan += fu.answers && fu.answers.length > 0 ? fu.answers.length : 1
+                                      })
+                                    }
 
-                                  if (!sub.has_follow_ups || !sub.follow_ups || sub.follow_ups.length === 0) {
-                                    // Single row for sub-issue with no follow-ups
-                                    return (
-                                      <TableRow key={`sub-only-${sub.sub_issue}`} sx={{ '&:hover': { background: c.tableHover } }}>
-                                        <TableCell sx={{ fontWeight: 600, color: c.textPrimary, fontSize: '0.8rem' }}>
-                                          {sub.sub_issue} ({sub.total})
-                                        </TableCell>
-                                        <TableCell sx={{ color: c.textMuted, fontSize: '0.78rem' }}></TableCell>
-                                        <TableCell sx={{ color: c.textMuted, fontSize: '0.75rem' }}></TableCell>
-                                        {brands.map((brandName) => {
-                                          const brandCount = sub.brands.find((b) => b.name === brandName)?.count || 0
-                                          return (
-                                            <TableCell key={brandName} align="right" sx={{ color: c.textPrimary, fontSize: '0.75rem' }}>
-                                              {brandCount.toLocaleString()}
-                                            </TableCell>
-                                          )
-                                        })}
-                                        <TableCell align="right" sx={{ fontWeight: 700, color: c.textPrimary, fontSize: '0.75rem' }}>
-                                          {sub.total.toLocaleString()}
-                                        </TableCell>
-                                      </TableRow>
-                                    )
-                                  }
-
-                                  const rows: React.ReactNode[] = []
-                                  let isFirstSubCell = true
-
-                                  sub.follow_ups.forEach((fu) => {
-                                    const fuRowSpan = fu.answers && fu.answers.length > 0 ? fu.answers.length : 1
-                                    let isFirstFuCell = true
-
-                                    if (!fu.answers || fu.answers.length === 0) {
-                                      // Follow-up with no answers
-                                      rows.push(
-                                        <TableRow key={`fu-only-${sub.sub_issue}-${fu.follow_up}`} sx={{ background: 'rgba(108,99,255,0.02)', '&:hover': { background: c.tableHover } }}>
-                                          {isFirstSubCell && (
-                                            <TableCell rowSpan={subRowSpan} sx={{ fontWeight: 600, color: c.textPrimary, fontSize: '0.8rem', verticalAlign: 'top' }}>
-                                              {sub.sub_issue} ({sub.total})
-                                            </TableCell>
-                                          )}
-                                          <TableCell sx={{ fontWeight: 500, color: c.textSecondary, fontSize: '0.78rem' }}>
-                                            ↳ {fu.follow_up} ({fu.total})
+                                    if (!sub.has_follow_ups || !sub.follow_ups || sub.follow_ups.length === 0) {
+                                      // Single row for sub-issue with no follow-ups
+                                      return (
+                                        <TableRow key={`sub-only-${sub.sub_issue}`} sx={{ '&:hover': { background: c.tableHover } }}>
+                                          <TableCell sx={{ fontWeight: 600, color: c.textPrimary, fontSize: '0.8rem' }}>
+                                            {sub.sub_issue} ({sub.total})
                                           </TableCell>
+                                          <TableCell sx={{ color: c.textMuted, fontSize: '0.78rem' }}></TableCell>
                                           <TableCell sx={{ color: c.textMuted, fontSize: '0.75rem' }}></TableCell>
                                           {brands.map((brandName) => {
-                                            const brandCount = fu.brands.find((b) => b.name === brandName)?.count || 0
+                                            const brandCount = sub.brands.find((b) => b.name === brandName)?.count || 0
                                             return (
-                                              <TableCell key={brandName} align="right" sx={{ color: c.textSecondary, fontSize: '0.75rem' }}>
+                                              <TableCell key={brandName} align="right" sx={{ color: c.textPrimary, fontSize: '0.75rem' }}>
                                                 {brandCount.toLocaleString()}
                                               </TableCell>
                                             )
                                           })}
-                                          <TableCell align="right" sx={{ fontWeight: 600, color: c.textSecondary, fontSize: '0.75rem' }}>
-                                            {fu.total.toLocaleString()}
+                                          <TableCell align="right" sx={{ fontWeight: 700, color: c.textPrimary, fontSize: '0.75rem' }}>
+                                            {sub.total.toLocaleString()}
                                           </TableCell>
                                         </TableRow>
                                       )
-                                      isFirstSubCell = false
-                                    } else {
-                                      fu.answers.forEach((ans) => {
-                                        const rowBg = ans.is_split
-                                          ? 'rgba(255, 235, 59, 0.15)'
-                                          : 'inherit'
+                                    }
 
+                                    const rows: React.ReactNode[] = []
+                                    let isFirstSubCell = true
+
+                                    sub.follow_ups.forEach((fu) => {
+                                      const fuRowSpan = fu.answers && fu.answers.length > 0 ? fu.answers.length : 1
+                                      let isFirstFuCell = true
+
+                                      if (!fu.answers || fu.answers.length === 0) {
+                                        // Follow-up with no answers
                                         rows.push(
-                                          <TableRow key={`ans-${sub.sub_issue}-${fu.follow_up}-${ans.answer}`} sx={{ background: rowBg, '&:hover': { background: c.tableHover } }}>
+                                          <TableRow key={`fu-only-${sub.sub_issue}-${fu.follow_up}`} sx={{ background: 'rgba(108,99,255,0.02)', '&:hover': { background: c.tableHover } }}>
                                             {isFirstSubCell && (
                                               <TableCell rowSpan={subRowSpan} sx={{ fontWeight: 600, color: c.textPrimary, fontSize: '0.8rem', verticalAlign: 'top' }}>
                                                 {sub.sub_issue} ({sub.total})
                                               </TableCell>
                                             )}
-                                            {isFirstFuCell && (
-                                              <TableCell rowSpan={fuRowSpan} sx={{ fontWeight: 500, color: c.textSecondary, fontSize: '0.78rem', verticalAlign: 'top', background: 'rgba(108,99,255,0.02)' }}>
-                                                ↳ {fu.follow_up} ({fu.total})
-                                              </TableCell>
-                                            )}
-                                            <TableCell sx={{ color: c.textPrimary, fontSize: '0.75rem' }}>
-                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                {ans.answer.startsWith('"') && ans.answer.endsWith('"')
-                                                  ? ans.answer
-                                                  : `"${ans.answer}"`}
-                                                {ans.is_split && <span title="Split answer">🟡</span>}
-                                              </Box>
+                                            <TableCell sx={{ fontWeight: 500, color: c.textSecondary, fontSize: '0.78rem' }}>
+                                              ↳ {fu.follow_up} ({fu.total})
                                             </TableCell>
+                                            <TableCell sx={{ color: c.textMuted, fontSize: '0.75rem' }}></TableCell>
                                             {brands.map((brandName) => {
-                                              const brandObj = ans.brands.find((b) => b.name === brandName)
-                                              const count = brandObj?.count || 0
-                                              const percentage = brandObj?.percentage
-
+                                              const brandCount = fu.brands.find((b) => b.name === brandName)?.count || 0
                                               return (
-                                                <TableCell
-                                                  key={brandName}
-                                                  align="right"
-                                                  sx={{
-                                                    color: c.textMuted,
-                                                    fontSize: '0.75rem',
-                                                  }}
-                                                >
-                                                  {percentage !== undefined ? (
-                                                    `${count.toLocaleString()} (${percentage}%)`
-                                                  ) : (
-                                                    count.toLocaleString()
-                                                  )}
+                                                <TableCell key={brandName} align="right" sx={{ color: c.textSecondary, fontSize: '0.75rem' }}>
+                                                  {brandCount.toLocaleString()}
                                                 </TableCell>
                                               )
                                             })}
-                                            <TableCell
-                                              align="right"
-                                              sx={{
-                                                fontWeight: 500,
-                                                color: c.textMuted,
-                                                fontSize: '0.75rem',
-                                              }}
-                                            >
-                                              {ans.total.toLocaleString()}
+                                            <TableCell align="right" sx={{ fontWeight: 600, color: c.textSecondary, fontSize: '0.75rem' }}>
+                                              {fu.total.toLocaleString()}
                                             </TableCell>
                                           </TableRow>
                                         )
                                         isFirstSubCell = false
-                                        isFirstFuCell = false
-                                      })
-                                    }
-                                  })
-                                  return rows
-                                })}
-                              </>
-                            )
-                          })()}
+                                      } else {
+                                        fu.answers.forEach((ans) => {
+                                          const rowBg = ans.is_split
+                                            ? 'rgba(255, 235, 59, 0.15)'
+                                            : 'inherit'
 
-                          {/* Grand Total Row */}
-                          <TableRow sx={{ background: `${c.headerCell}50`, fontWeight: 700 }}>
-                            <TableCell colSpan={3} sx={{ fontWeight: 700, color: c.textPrimary, fontSize: '0.8rem' }}>Grand Total</TableCell>
-                            {brands.map((brandName) => {
-                              const totalBrandCount = issue.sub_issues?.reduce((sum, s) => sum + (s.brands.find(b => b.name === brandName)?.count || 0), 0) || 0
-                              return (
-                                <TableCell key={brandName} align="right" sx={{ fontWeight: 700, color: c.textPrimary }}>
-                                  {totalBrandCount.toLocaleString()}
-                                </TableCell>
+                                          rows.push(
+                                            <TableRow key={`ans-${sub.sub_issue}-${fu.follow_up}-${ans.answer}`} sx={{ background: rowBg, '&:hover': { background: c.tableHover } }}>
+                                              {isFirstSubCell && (
+                                                <TableCell rowSpan={subRowSpan} sx={{ fontWeight: 600, color: c.textPrimary, fontSize: '0.8rem', verticalAlign: 'top' }}>
+                                                  {sub.sub_issue} ({sub.total})
+                                                </TableCell>
+                                              )}
+                                              {isFirstFuCell && (
+                                                <TableCell rowSpan={fuRowSpan} sx={{ fontWeight: 500, color: c.textSecondary, fontSize: '0.78rem', verticalAlign: 'top', background: 'rgba(108,99,255,0.02)' }}>
+                                                  ↳ {fu.follow_up} ({fu.total})
+                                                </TableCell>
+                                              )}
+                                              <TableCell sx={{ color: c.textPrimary, fontSize: '0.75rem' }}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                  {ans.answer.startsWith('"') && ans.answer.endsWith('"')
+                                                    ? ans.answer
+                                                    : `"${ans.answer}"`}
+                                                  {ans.is_split && <span title="Split answer">🟡</span>}
+                                                </Box>
+                                              </TableCell>
+                                              {brands.map((brandName) => {
+                                                const brandObj = ans.brands.find((b) => b.name === brandName)
+                                                const count = brandObj?.count || 0
+                                                const percentage = brandObj?.percentage
+
+                                                return (
+                                                  <TableCell
+                                                    key={brandName}
+                                                    align="right"
+                                                    sx={{
+                                                      color: c.textMuted,
+                                                      fontSize: '0.75rem',
+                                                    }}
+                                                  >
+                                                    {percentage !== undefined ? (
+                                                      `${count.toLocaleString()} (${percentage}%)`
+                                                    ) : (
+                                                      count.toLocaleString()
+                                                    )}
+                                                  </TableCell>
+                                                )
+                                              })}
+                                              <TableCell
+                                                align="right"
+                                                sx={{
+                                                  fontWeight: 500,
+                                                  color: c.textMuted,
+                                                  fontSize: '0.75rem',
+                                                }}
+                                              >
+                                                {ans.total.toLocaleString()}
+                                              </TableCell>
+                                            </TableRow>
+                                          )
+                                          isFirstSubCell = false
+                                          isFirstFuCell = false
+                                        })
+                                      }
+                                    })
+                                    return rows
+                                  })}
+                                </>
                               )
-                            })}
-                            <TableCell align="right" sx={{ fontWeight: 700, color: c.textPrimary }}>
-                              {issue.sub_issues?.reduce((sum, s) => sum + s.total, 0).toLocaleString()}
-                            </TableCell>
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </Box>
-                  </Grid>
+                            })()}
 
-                  {/* RIGHT SIDE: CHART */}
-                  <Grid size={{ xs: 12, lg: 6 }}>
-                    <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Distribution by Sub-Issue
-                    </Typography>
-                    <Box sx={{ p: 2, border: `1px solid ${c.borderMuted}`, borderRadius: 2 }}>
-                      {issue.sub_issues && issue.sub_issues.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={Math.max(250, issue.sub_issues.length * 50)}>
-                          <BarChart
-                            data={issue.sub_issues.map(sub => {
-                              const rowData: Record<string, any> = { name: sub.sub_issue }
-                              brands.forEach(bname => {
-                                rowData[bname] = sub.brands.find(b => b.name === bname)?.count || 0
-                              })
-                              return rowData
-                            })}
-                            layout="horizontal"
-                            margin={{ left: 10, right: 10, top: 25, bottom: 10 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke={c.chartGrid} horizontal={true} vertical={false} />
-                            <XAxis dataKey="name" tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 600 }} />
-                            <YAxis tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 500 }} />
-                            <Tooltip contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }} labelStyle={{ color: c.textPrimary }} />
-                            <Legend wrapperStyle={{ fontSize: '10px', paddingTop: 10 }} />
-                            {brands.map((brandName, index) => (
-                              <Bar
-                                key={brandName}
-                                dataKey={brandName}
-                                fill={getBrandColor(brandName, index)}
-                                radius={[4, 4, 0, 0]}
-                              />
-                            ))}
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <Typography sx={{ textAlign: 'center', color: c.textMuted, py: 4 }}>No chart data available</Typography>
-                      )}
-                    </Box>
+                            {/* Grand Total Row */}
+                            <TableRow sx={{ background: `${c.headerCell}50`, fontWeight: 700 }}>
+                              <TableCell colSpan={3} sx={{ fontWeight: 700, color: c.textPrimary, fontSize: '0.8rem' }}>Grand Total</TableCell>
+                              {brands.map((brandName) => {
+                                const totalBrandCount = issue.sub_issues?.reduce((sum, s) => sum + (s.brands.find(b => b.name === brandName)?.count || 0), 0) || 0
+                                return (
+                                  <TableCell key={brandName} align="right" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                    {totalBrandCount.toLocaleString()}
+                                  </TableCell>
+                                )
+                              })}
+                              <TableCell align="right" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                                {issue.sub_issues?.reduce((sum, s) => sum + s.total, 0).toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    </Grid>
+
+                    {/* RIGHT SIDE: CHART */}
+                    <Grid size={{ xs: 12, lg: 6 }}>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 700, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Distribution by Sub-Issue
+                      </Typography>
+                      <Box sx={{ p: 2, border: `1px solid ${c.borderMuted}`, borderRadius: 2 }}>
+                        {issue.sub_issues && issue.sub_issues.length > 0 ? (
+                          <ResponsiveContainer width="100%" height={Math.max(250, issue.sub_issues.length * 50)}>
+                            <BarChart
+                              data={issue.sub_issues.map(sub => {
+                                const rowData: Record<string, any> = { name: sub.sub_issue }
+                                brands.forEach(bname => {
+                                  rowData[bname] = sub.brands.find(b => b.name === bname)?.count || 0
+                                })
+                                return rowData
+                              })}
+                              layout="horizontal"
+                              margin={{ left: 10, right: 10, top: 25, bottom: 10 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke={c.chartGrid} horizontal={true} vertical={false} />
+                              <XAxis dataKey="name" tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 600 }} />
+                              <YAxis tick={{ fill: c.chartTick, fontSize: 10, fontWeight: 500 }} />
+                              <Tooltip contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }} labelStyle={{ color: c.textPrimary }} />
+                              <Legend wrapperStyle={{ fontSize: '10px', paddingTop: 10 }} />
+                              {brands.map((brandName, index) => (
+                                <Bar
+                                  key={brandName}
+                                  dataKey={brandName}
+                                  fill={getBrandColor(brandName, index)}
+                                  radius={[4, 4, 0, 0]}
+                                />
+                              ))}
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <Typography sx={{ textAlign: 'center', color: c.textMuted, py: 4 }}>No chart data available</Typography>
+                        )}
+                      </Box>
+                    </Grid>
                   </Grid>
-                </Grid>
-              )}
-            </AccordionDetails>
+                )}
+              </AccordionDetails>
+            )}
           </Accordion>
         ))
       )}

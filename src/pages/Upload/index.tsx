@@ -50,7 +50,7 @@ export default function UploadPage() {
   const [selectedIB, setSelectedIB] = useState('')
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<Record<string, string>>({})
+  const [uploadProgress, setUploadProgress] = useState<Record<string, string | number>>({})
   const [uploadError, setUploadError] = useState('')
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -122,37 +122,48 @@ export default function UploadPage() {
     if (!uploadedFile || !selectedRegion || !selectedCountry || !selectedIB) return
     setUploading(true)
     setUploadError('')
+
+    let eventSource: EventSource | null = null
+
     try {
       const form = new FormData()
       form.append('region_id', selectedRegion)
       form.append('country_id', selectedCountry)
       form.append('ib_version_id', selectedIB)
-      if (selectedAdminId) {
-        form.append('assigned_admin_id', selectedAdminId)
-      }
+      if (selectedAdminId) form.append('assigned_admin_id', selectedAdminId)
       form.append('file', uploadedFile)
 
       const res = await uploadApi.upload(form)
       const fileId = res.data.file_id
       setActiveStep(stepOffset + 4)
 
-      // SSE Progress tracking
       const token = localStorage.getItem('access_token')
-      const eventSource = new EventSource(`/api/upload/${fileId}/progress?token=${token || ''}`)
+      eventSource = new EventSource(`/api/upload/${fileId}/progress?token=${token || ''}`)
+
       eventSource.onmessage = (e) => {
         const data = JSON.parse(e.data)
         setUploadProgress(data)
+
         if (['completed', 'failed', 'partial'].includes(data.status)) {
-          eventSource.close()
+          eventSource?.close()
+          setUploading(false)          // ✅ stop spinner only when job is truly done
           loadHistory()
         }
       }
-      eventSource.onerror = () => { eventSource.close(); loadHistory() }
+
+      // ⚠️ do NOT close on every error — EventSource auto-reconnects
+      eventSource.onerror = () => {
+        // Only treat as terminal if the connection is closed (readyState === 2)
+        if (eventSource?.readyState === EventSource.CLOSED) {
+          setUploading(false)
+          loadHistory()
+        }
+        // Otherwise let the browser auto-reconnect
+      }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } } }
       setUploadError(e.response?.data?.detail || 'Upload failed. Please try again.')
-    } finally {
-      setUploading(false)
+      setUploading(false)              // ✅ only on genuine upload failure
     }
   }
 
@@ -462,29 +473,42 @@ export default function UploadPage() {
                 <StepLabel>Processing</StepLabel>
                 <StepContent>
                   <Box sx={{ mt: 1, mb: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2" sx={{ color: c.textSecondary }}>
-                        {uploadProgress.message || 'Processing...'}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: '#6C63FF', fontWeight: 700 }}>
-                        {uploadProgress.progress || 0}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={parseFloat(uploadProgress.progress || '0')}
-                      sx={{
-                        height: 8, borderRadius: 4,
-                        background: 'rgba(108,99,255,0.1)',
-                        '& .MuiLinearProgress-bar': {
-                          background: uploadProgress.status === 'completed'
-                            ? 'linear-gradient(90deg, #4ECCA3, #26C6DA)'
-                            : uploadProgress.status === 'failed'
-                              ? 'linear-gradient(90deg, #FF6B6B, #FF6584)'
-                              : 'linear-gradient(90deg, #6C63FF, #9A94FF)',
-                        },
-                      }}
-                    />
+                    {(() => {
+                      const raw = uploadProgress.progress
+                      const pct = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '0'))
+                      const safePct = Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 0
+
+                      return (
+                        <>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography variant="body2" sx={{ color: c.textSecondary }}>
+                              {uploadProgress.message || 'Processing...'}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: '#6C63FF', fontWeight: 700 }}>
+                              {safePct.toFixed(1)}%
+                            </Typography>
+                          </Box>
+
+                          <LinearProgress
+                            variant="determinate"
+                            value={safePct}
+                            sx={{
+                              height: 8,
+                              borderRadius: 4,
+                              background: 'rgba(108,99,255,0.1)',
+                              '& .MuiLinearProgress-bar': {
+                                background: uploadProgress.status === 'completed'
+                                  ? 'linear-gradient(90deg, #4ECCA3, #26C6DA)'
+                                  : uploadProgress.status === 'failed'
+                                    ? 'linear-gradient(90deg, #FF6B6B, #FF6584)'
+                                    : 'linear-gradient(90deg, #6C63FF, #9A94FF)',
+                              },
+                            }}
+                          />
+                        </>
+                      )
+                    })()}
+
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
                       <Typography variant="caption" sx={{ color: c.textMuted }}>
                         {uploadProgress.processed_records || 0} / {uploadProgress.total_records || 0} records
@@ -513,6 +537,7 @@ export default function UploadPage() {
                         ❌ Processing failed. {uploadProgress.error_message || 'Please check the file format.'}
                       </Alert>
                     )}
+
                     <Button
                       size="small"
                       onClick={() => { setActiveStep(0); setUploadedFile(null); setUploadProgress({}) }}

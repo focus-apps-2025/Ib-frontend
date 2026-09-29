@@ -14,6 +14,8 @@ import { ModuleRegistry, AllCommunityModule, InfiniteRowModelModule } from 'ag-g
 import type { ColDef, GridReadyEvent, IDatasource, IGetRowsParams } from 'ag-grid-community'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
+import * as XLSX from 'xlsx-js-style'
+
 
 
 // Recharts imports for hidden slide capture
@@ -46,6 +48,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker'
 
 // Allow parsing of the store's 'YYYY-MM' values (e.g. "2025-03") into dayjs.
 dayjs.extend(customParseFormat)
+const TOTAL_EXPECTED_COLUMNS = 449
+
 
 /** Parse a stored 'YYYY-MM' string into a Dayjs object (null when empty). */
 const toMonthPickValue = (value: string): Dayjs | null =>
@@ -107,6 +111,17 @@ export default function DashboardPage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [gridApi, setGridApi] = useState<unknown>(null)
   const [totalRows, setTotalRows] = useState(0)
+  const [maxColumnLetter, setMaxColumnLetter] = useState<string>('')
+
+  const columnCount = useMemo(() => {
+    if (!maxColumnLetter) return TOTAL_EXPECTED_COLUMNS
+    let n = 0
+    for (const ch of maxColumnLetter.toUpperCase()) {
+      n = n * 26 + (ch.charCodeAt(0) - 64)
+    }
+    return Math.max(n, TOTAL_EXPECTED_COLUMNS)
+  }, [maxColumnLetter])
+
 
   const [pptGenerating, setPptGenerating] = useState(false)
   const [pptProgress, setPptProgressRaw] = useState('')
@@ -1324,18 +1339,18 @@ export default function DashboardPage() {
 
         // Header Top Left
         slide.addText("Respondent Profile Demographic", {
-          x: 0.4, y: 0.16, w: 7.2, h: 0.32,
-          fontSize: 24, bold: true, color: '1E1B4B', fontFace: 'Arial'
+          x: 0.3, y: 0.2, w: 8.0, h: 0.4,
+          fontSize: 18, bold: true, color: '1E1B4B', fontFace: 'Arial'
         })
         slide.addText(questionText, {
-          x: 0.4, y: 0.50, w: 7.2, h: 0.32,
-          fontSize: 18, bold: true, color: '1E1B4B', fontFace: 'Arial'
+          x: 0.3, y: 0.59, w: 8.0, h: 0.25,
+          fontSize: 10, bold: true, color: '1E1B4B', fontFace: 'Arial'
         })
 
         // Header Top Right Logo
         slide.addImage({
           path: '/assets/logo.png',
-          x: 8.6, y: 0.16, w: 1.1, h: 0.52
+          x: 8.72, y: 0.25, w: 1.0, h: 0.52
         })
 
         // Decorative Rainbow Line
@@ -2742,14 +2757,13 @@ export default function DashboardPage() {
       renderServiceNpsOverallSlide('pgm', 'Service NPS Overall Based on Workshop')
 
       // ─── DIVIDER: Customer Perception Score (CPS) ───
-      addDividerSlide('Customer Perception Score (CPS)')
+      addDividerSlide('Parts satisfaction score')
 
-      // ─── SLIDES: CPS per question ───
       const cpsQuestions = [
-        { id: 'pk', title: 'Recommend TVS Genuine Spare Parts', code: 'C1 (PK)' },
-        { id: 'po', title: 'Availability of TVS Genuine Spare Parts', code: 'C2 (PO)' },
-        { id: 'ps', title: 'Quality of TVS Genuine Spare Parts', code: 'C3 (PS)' },
-        { id: 'pw', title: 'Value for Money of TVS Genuine Spare Parts', code: 'C4 (PW)' },
+        { id: 'pk', code: 'C1 (PK)', fallbackTitle: 'Recommend TVS Genuine Spare Parts' },
+        { id: 'po', code: 'C2 (PO)', fallbackTitle: 'Availability of TVS Genuine Spare Parts' },
+        { id: 'ps', code: 'C3 (PS)', fallbackTitle: 'Quality of TVS Genuine Spare Parts' },
+        { id: 'pw', code: 'C4 (PW)', fallbackTitle: 'Value for Money of TVS Genuine Spare Parts' },
       ]
 
       const brandBreakdownCps = cpsData.brand_breakdown || []
@@ -2758,7 +2772,11 @@ export default function DashboardPage() {
         setPptProgress(`Generating Slide: CPS - ${q.code}...`)
         const slideCps = pptx.addSlide()
         slideCps.background = { fill: 'FFFFFF' }
-        addSlideTitle(slideCps, `${q.code}: ${q.title}`, 'Customer Perception Score')
+
+        // Pull the actual question from the API response
+        const rawQuestion = (cpsData?.questions?.[q.id] || q.fallbackTitle || '').trim()
+        const displayQuestion = rawQuestion || q.fallbackTitle
+        addSlideTitle(slideCps, `${displayQuestion}`, '')
 
         const validBrands = brandBreakdownCps.filter((row: any) => {
           const qData = row[q.id] || { Yes: 0, Maybe: 0, No: 0, total: 0 }
@@ -4296,6 +4314,784 @@ export default function DashboardPage() {
         })
       }
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // ANSWER-WISE SLIDE RENDERING (for Jerking, Seat, Kicker, Wiper, etc.)
+      // ═══════════════════════════════════════════════════════════════════════
+      //
+      // Config: which issue_name maps to which mode. The backend already
+      // attaches `answer_values` on the sub-issues (see issue_controller.py).
+      //
+      //   mode 'single'  → one merged answer list per issue (e.g. Low Speed, Chain)
+      //   mode 'merge'   → one merged answer list, columns combined (Jerking, Seat…)
+      //   mode 'per-col' → each sub-issue is its own column, answers per column
+      //                    (Battery, Running off) — backend already attaches them
+      //
+
+      const normalizeIssueKeyForAnswers = (name: string): string =>
+        String(name || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s*\/\s*/g, '/')     // "Throttle / Accelerator" → "throttle/accelerator"
+          .replace(/\s+/g, ' ')
+          .replace(/\s*issues?$/, '')    // strip trailing "issue"/"issues"
+          .trim()
+
+      /**
+  * Render one "answer-wise" slide for an issue.
+  *
+  * Layout (matches existing BNL slides):
+  *   Title: "Issue Name (Total)"
+  *   LEFT  : table — Answer | brand columns  (no Sub-Issue, no Total column)
+  *   RIGHT : horizontal bar chart of answer counts per brand
+  */
+      const ANSWER_WISE_CONFIG: Record<string, {
+        mode: 'single' | 'merge' | 'per-col'
+        hideAnswers?: boolean
+        hideSubIssue?: boolean
+      }> = {
+        // Single-column — Answer only
+        'low speed': { mode: 'single', hideSubIssue: true },
+        'throttle/accelerator': { mode: 'single', hideSubIssue: true },
+        'low mileage': { mode: 'single', hideSubIssue: true },
+        'roof top (soft top)': { mode: 'single' },
+        'faster': { mode: 'single', hideSubIssue: true },
+        'chain': { mode: 'single', hideSubIssue: true },
+        'chain case': { mode: 'single', hideSubIssue: true },
+
+        // Merged-column — Answer only
+        'jerking': { mode: 'merge', hideSubIssue: true },
+        'seat': { mode: 'merge', hideSubIssue: true },
+        'vehicle pulling problem': { mode: 'merge', hideSubIssue: true },
+        'kicker': { mode: 'merge', hideSubIssue: true },
+        'wiper problem': { mode: 'merge', hideSubIssue: true },
+
+        // Per-column — keep Sub-Complaint + Answer
+        'battery': { mode: 'per-col' },
+        'running off': { mode: 'per-col' },
+      }
+
+      const renderAnswerWiseSlide = (
+        issueItem: any,
+        config: {
+          mode: 'single' | 'merge' | 'per-col'
+          hideAnswers?: boolean
+          hideSubIssue?: boolean
+        }
+      ) => {
+        const issueName = String(issueItem?.issue_name || '').trim().toLowerCase()
+        if (issueName === 'low boot space') return
+        const mode = config.mode
+        const hideAnswers = config.hideAnswers === true
+        const hideSubIssue = config.hideSubIssue === true
+
+        // ─── Collect sub-issues ───
+        const subIssues: any[] = (issueItem.sub_issues || []).filter(
+          (s: any) =>
+            s.sub_issue &&
+            s.sub_issue !== 'Blank' &&
+            (hideAnswers
+              ? s.brands && s.brands.length > 0
+              : s.answer_values && Object.keys(s.answer_values).length > 0)
+        )
+        if (subIssues.length === 0) return
+
+        // ─── Shorten sub-issue labels ───
+        const shortenSubIssueLabel = (label: string): string => {
+          const s = String(label || '').trim()
+          const bracketMatch = s.match(/\[([^\]]+)\]/)
+          if (bracketMatch && bracketMatch[1].trim()) return bracketMatch[1].trim()
+          const parenMatch = s.match(/\(([^)]+)\)\s*$/)
+          if (parenMatch && parenMatch[1].trim()) return parenMatch[1].trim()
+          return s
+        }
+
+        // ─── Unique sub-issue names ───
+        const uniqueSubIssueNames = new Set<string>()
+        subIssues.forEach((sub: any) => {
+          uniqueSubIssueNames.add(String(sub.sub_issue || '').trim())
+        })
+        const hasMultipleSubIssueNames = uniqueSubIssueNames.size > 1
+
+        // ─── Brands present ───
+        const brandSet = new Set<string>()
+        if (hideAnswers) {
+          subIssues.forEach((sub: any) => {
+            sub.brands?.forEach((b: any) => {
+              if (b.name && b.name !== 'Blank') brandSet.add(b.name)
+            })
+          })
+        } else {
+          subIssues.forEach((sub: any) => {
+            Object.values(sub.answer_values || {}).forEach((info: any) => {
+              Object.keys(info.brands || {}).forEach((b) => {
+                if (b && b !== 'Blank') brandSet.add(b)
+              })
+            })
+          })
+        }
+        let orderedBrands = getOrderedBrands(Array.from(brandSet))
+        if (orderedBrands.length === 0) orderedBrands = orderedNpsBrands
+        if (orderedBrands.length === 0) return
+
+        // ─── Title ───
+        let issueTvsCount = 0
+        subIssues.forEach((sub: any) => {
+          sub.brands?.forEach((b: any) => {
+            if (b.name?.toUpperCase().startsWith('TVS')) {
+              issueTvsCount += Number(b.count || 0)
+            }
+          })
+        })
+
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+        const formatMainIssueTitle = (name: string, _count: number): string => {
+          const cleaned = cleanIssueName(name)
+          const formatted = cleaned.split(' ').map(word => {
+            if (!word) return ''
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+          }).join(' ')
+          return `${formatted}`
+        }
+
+        const mainTitle = formatMainIssueTitle(issueItem.issue_name, issueTvsCount)
+        slide.addText(mainTitle, {
+          x: 0.3, y: 0.3, w: 6.0, h: 0.5,
+          fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial',
+        })
+        slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+        slide.addShape(pptx.shapes.LINE, {
+          x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+          line: { color: '3B82F6', width: 2 },
+        })
+
+        // ─── Build rows ───
+        type Row = {
+          subIssueLabel: string
+          answerLabel: string
+          brandCounts: Record<string, number>
+          total: number
+        }
+        const rows: Row[] = []
+
+        if (hideAnswers) {
+          subIssues.forEach((sub: any) => {
+            const subLabel = shortenSubIssueLabel(String(sub.sub_issue || '').trim())
+            const brandCounts: Record<string, number> = {}
+            orderedBrands.forEach((b) => {
+              const found = sub.brands?.find((sb: any) => sb.name === b)
+              brandCounts[b] = Number(found?.count || 0)
+            })
+            rows.push({
+              subIssueLabel: subLabel,
+              answerLabel: '',
+              brandCounts,
+              total: Number(sub.total || 0),
+            })
+          })
+        } else {
+          subIssues.forEach((sub: any) => {
+            const rawSub = String(sub.sub_issue || '').trim()
+            const subLabel = shortenSubIssueLabel(rawSub)
+            const answersObj = sub.answer_values || {}
+            const sortedAnswers = Object.entries(answersObj).sort(
+              ([, a]: any, [, b]: any) => Number(b.total || 0) - Number(a.total || 0)
+            )
+            sortedAnswers.forEach(([answerText, info]: [string, any]) => {
+              const brandCounts: Record<string, number> = {}
+              orderedBrands.forEach((b) => {
+                brandCounts[b] = Number(info.brands?.[b] || 0)
+              })
+              rows.push({
+                subIssueLabel: subLabel,
+                answerLabel: String(answerText),
+                brandCounts,
+                total: Number(info.total || 0),
+              })
+            })
+          })
+        }
+
+        if (rows.length === 0) return
+
+        // ─── Brand totals ───
+        const brandTotals: Record<string, number> = {}
+        orderedBrands.forEach((b) => (brandTotals[b] = 0))
+        rows.forEach((row) => {
+          orderedBrands.forEach((b) => {
+            brandTotals[b] += row.brandCounts[b] || 0
+          })
+        })
+
+        // ─── Column visibility ───
+        const showSubIssueColumn = !hideSubIssue
+        const showAnswerColumn = !hideAnswers
+
+        // ─── Layout ───
+        const tableX = 0.3
+        const tableY = 1.1
+        const tableW = 4.4
+
+        const chartX = 4.9
+        const chartY = 1.40
+        const chartW = 4.8
+        const chartH = 3.75
+
+        const CHART_BOX_X = chartX - 0.1
+        const CHART_BOX_Y = 1.10
+        const CHART_BOX_W = chartW + 0.2
+        const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+        // ─── Header row ───
+        const headerRow: any[] = []
+        if (showSubIssueColumn) {
+          headerRow.push({
+            text: 'Sub Complaint',
+            options: {
+              bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF',
+              align: 'left', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+            },
+          })
+        }
+        if (showAnswerColumn) {
+          headerRow.push({
+            text: 'Answer',
+            options: {
+              bold: true, fill: NEUTRAL_GREY, color: 'FFFFFF',
+              align: 'left', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+            },
+          })
+        }
+        orderedBrands.forEach((b) => {
+          headerRow.push({
+            text: b,
+            options: { ...getBrandHeaderOptions(b), valign: 'middle' },
+          })
+        })
+
+        // ─── Chunking ───
+        const MAX_ROWS_PER_SLIDE = 13
+        const chunks: Row[][] = []
+        for (let i = 0; i < rows.length; i += MAX_ROWS_PER_SLIDE) {
+          chunks.push(rows.slice(i, i + MAX_ROWS_PER_SLIDE))
+        }
+
+        chunks.forEach((chunk, chunkIdx) => {
+          const isFirstChunk = chunkIdx === 0
+          const isLastChunk = chunkIdx === chunks.length - 1
+
+          const activeSlide = isFirstChunk ? slide : (() => {
+            const s = pptx.addSlide()
+            s.background = { fill: 'FFFFFF' }
+            s.addText(mainTitle, { x: 0.3, y: 0.3, w: 6.0, h: 0.5, fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial' })
+            s.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
+            s.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
+            return s
+          })()
+
+          // ─── TABLE ───
+          const pageRows: any[][] = [headerRow]
+          chunk.forEach((row) => {
+            const cells: any[] = []
+            if (showSubIssueColumn) {
+              cells.push({
+                text: row.subIssueLabel,
+                options: { align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial' },
+              })
+            }
+            if (showAnswerColumn) {
+              cells.push({
+                text: row.answerLabel,
+                options: { align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial' },
+              })
+            }
+            orderedBrands.forEach((b) => {
+              const cnt = row.brandCounts[b] || 0
+              cells.push({
+                text: String(cnt),
+                options: { align: 'center', valign: 'middle', fontSize: 7.5, fontFace: 'Arial' },
+              })
+            })
+            pageRows.push(cells)
+          })
+
+          if (isLastChunk) {
+            const grandRow: any[] = []
+            if (showSubIssueColumn) {
+              grandRow.push({
+                text: 'Grand Total',
+                options: { bold: true, align: 'left', valign: 'middle', fontSize: 8, fontFace: 'Arial' },
+              })
+            }
+            if (showAnswerColumn) {
+              grandRow.push({
+                text: 'Grand Total',
+                options: { bold: true, align: 'left', valign: 'middle', fontSize: 8, fontFace: 'Arial' },
+              })
+            }
+            orderedBrands.forEach((b) => {
+              grandRow.push({
+                text: String(brandTotals[b] || 0),
+                options: { bold: true, align: 'center', valign: 'middle', fontSize: 8, fontFace: 'Arial' },
+              })
+            })
+            pageRows.push(grandRow)
+          }
+
+          const numTextCols = (showSubIssueColumn ? 1 : 0) + (showAnswerColumn ? 1 : 0)
+          const textColW = numTextCols === 2 ? 1.6 : 2.4
+          const brandColW = (tableW - textColW * numTextCols) / Math.max(1, orderedBrands.length)
+          const colWidths: number[] = []
+          if (showSubIssueColumn) colWidths.push(textColW)
+          if (showAnswerColumn) colWidths.push(textColW)
+          orderedBrands.forEach(() => colWidths.push(Math.max(0.6, brandColW)))
+
+          activeSlide.addTable(pageRows, {
+            x: tableX,
+            y: tableY,
+            w: tableW,
+            h: Math.min(4.2, pageRows.length * 0.3),
+            border: { type: 'solid', color: 'CCCCCC', size: 0.5 },
+            fontSize: 7.5,
+            fontFace: 'Arial',
+            colW: colWidths,
+            rowH: pageRows.map(() => 0.26),
+          })
+
+          // ─── CHART CONTAINER (only once) ───
+          activeSlide.addShape(pptx.ShapeType.roundRect, {
+            x: CHART_BOX_X,
+            y: CHART_BOX_Y,
+            w: CHART_BOX_W,
+            h: CHART_BOX_H,
+            fill: { color: 'F8FAFC' },
+            line: { color: 'E2E8F0', width: 1 },
+            rectRadius: 0.08,
+          })
+
+          // ─── MANUAL LEGEND (only once) ───
+          const legendStartY = CHART_BOX_Y + 0.15
+          const legendItemWidth = 1.2
+          const legendBoxSize = 0.12
+          const legendTextGap = 0.02
+          const legendTotalWidth = orderedBrands.length * legendItemWidth
+          const legendStartX = chartX + (chartW - legendTotalWidth) / 2
+
+          orderedBrands.forEach((brand: string, idx: number) => {
+            const brandColor = getBrandColor(brand)
+            const legendX = legendStartX + idx * legendItemWidth
+
+            activeSlide.addShape(pptx.ShapeType.rect, {
+              x: legendX,
+              y: legendStartY,
+              w: legendBoxSize,
+              h: legendBoxSize,
+              fill: { color: brandColor },
+              line: { color: brandColor, transparency: 100 },
+            })
+
+            activeSlide.addText(brand, {
+              x: legendX + legendBoxSize + legendTextGap,
+              y: legendStartY - 0.03,
+              w: legendItemWidth - legendBoxSize - legendTextGap - 0.05,
+              h: legendBoxSize + 0.06,
+              fontSize: 5,
+              color: '333333',
+              align: 'left',
+              valign: 'middle',
+              fontFace: 'Arial',
+            })
+          })
+
+          // ─── CHART ───
+          const reversedChunk = [...chunk].reverse()
+          const chartLabels = reversedChunk.map(r =>
+            showSubIssueColumn ? r.subIssueLabel : r.answerLabel
+          )
+
+          const chartBrands = [...orderedBrands].reverse()
+
+          const chartData = chartBrands.map((b) => {
+            const brandTotal = brandTotals[b] || 0
+            return {
+              name: b,
+              labels: chartLabels,
+              values: reversedChunk.map((r) => {
+                const cnt = r.brandCounts[b] || 0
+                return brandTotal > 0 ? Math.round((cnt / brandTotal) * 100) : 0
+              }),
+            }
+          })
+
+          const brandColors = getBrandColorsArray(chartBrands)
+
+          try {
+            activeSlide.addChart(pptx.ChartType.bar, chartData, {
+              x: chartX,
+              y: chartY,
+              w: chartW,
+              h: chartH,
+              barDir: 'bar',
+              barGrouping: 'clustered',
+              chartColors: brandColors,
+              showTitle: false,
+              showLegend: false,
+              showValue: true,
+              dataLabelPosition: 'outEnd',
+              dataLabelFormatCode: '0"%"',
+              dataLabelFontSize: 7.5,
+              dataLabelColor: '1E293B',
+              dataLabelFontFace: 'Arial',
+              catAxisLabelFontSize: 8,
+              catAxisLabelColor: '333333',
+              catAxisLineShow: true,
+              catAxisLineColor: 'CBD5E1',
+              valAxisLineShow: false,
+              valAxisHidden: true,
+              valAxisMinVal: 0,
+              valAxisMaxVal: 100,
+              valAxisMajorUnit: 20,
+              valGridLine: { style: 'none' },
+              barGapWidthPct: 100,
+            })
+          } catch (err) {
+            console.error(`[PPT] Error adding answer-wise chart for ${issueItem.issue_name}:`, err)
+          }
+        })
+      }
+      // const renderAnswerWiseSlide = (
+      //   issueItem: any,
+      //   mode: 'single' | 'merge' | 'per-col'
+      // ) => {
+      //   // ─── Collect sub-issues that carry answer_values ───
+      //   const subIssues: any[] = (issueItem.sub_issues || []).filter(
+      //     (s: any) =>
+      //       s.sub_issue &&
+      //       s.sub_issue !== 'Blank' &&
+      //       s.answer_values &&
+      //       Object.keys(s.answer_values).length > 0
+      //   )
+      //   if (subIssues.length === 0) return
+
+      //   // ─── Determine brands present ───
+      //   const brandSet = new Set<string>()
+      //   subIssues.forEach((sub: any) => {
+      //     Object.values(sub.answer_values || {}).forEach((info: any) => {
+      //       Object.keys(info.brands || {}).forEach((b) => {
+      //         if (b && b !== 'Blank') brandSet.add(b)
+      //       })
+      //     })
+      //   })
+      //   let orderedBrands = getOrderedBrands(Array.from(brandSet))
+      //   if (orderedBrands.length === 0) orderedBrands = orderedNpsBrands
+      //   if (orderedBrands.length === 0) return
+
+      //   // ─── TVS-only count for the title (matches other slides) ───
+      //   let issueTvsCount = 0
+      //   subIssues.forEach((sub: any) => {
+      //     sub.brands?.forEach((b: any) => {
+      //       if (b.name?.toUpperCase().startsWith('TVS')) {
+      //         issueTvsCount += Number(b.count || 0)
+      //       }
+      //     })
+      //   })
+
+      //   // ─── Merge all answer rows into one flat list ───
+      //   type Row = {
+      //     answerLabel: string
+      //     brandCounts: Record<string, number>
+      //     total: number
+      //   }
+      //   const rowMap: Record<string, Row> = {}
+
+      //   subIssues.forEach((sub: any) => {
+      //     const answersObj = sub.answer_values || {}
+      //     Object.entries(answersObj).forEach(([answerText, info]: [string, any]) => {
+      //       const key = String(answerText).trim().toLowerCase()
+      //       if (!rowMap[key]) {
+      //         rowMap[key] = {
+      //           answerLabel: `"${String(answerText).trim()}"`,
+      //           brandCounts: {},
+      //           total: 0,
+      //         }
+      //       }
+      //       orderedBrands.forEach((b) => {
+      //         const cnt = Number(info.brands?.[b] || 0)
+      //         rowMap[key].brandCounts[b] = (rowMap[key].brandCounts[b] || 0) + cnt
+      //         rowMap[key].total += cnt
+      //       })
+      //     })
+      //   })
+
+      //   const rows: Row[] = Object.values(rowMap).sort(
+      //     (a, b) => b.total - a.total
+      //   )
+      //   if (rows.length === 0) return
+
+      //   // ─── Brand totals for percentages ───
+      //   const brandTotals: Record<string, number> = {}
+      //   orderedBrands.forEach((b) => (brandTotals[b] = 0))
+      //   rows.forEach((row) => {
+      //     orderedBrands.forEach((b) => {
+      //       brandTotals[b] += row.brandCounts[b] || 0
+      //     })
+      //   })
+
+      //   // ─── Slide + title + logo + divider ───
+      //   const slide = pptx.addSlide()
+      //   slide.background = { fill: 'FFFFFF' }
+      //   const formatMainIssueTitle = (name: string, count: number): string => {
+      //     const cleaned = cleanIssueName(name)
+      //     const formatted = cleaned.split(' ').map(word => {
+      //       if (!word) return ''
+      //       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      //     }).join(' ')
+      //     return `${formatted}`
+      //   }
+      //   const mainTitle = formatMainIssueTitle(issueItem.issue_name, issueTvsCount)
+      //   slide.addText(mainTitle, {
+      //     x: 0.3, y: 0.3, w: 6.0, h: 0.5,
+      //     fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial',
+      //   })
+      //   slide.addImage({
+      //     path: '/assets/logo.png',
+      //     x: 8.72, y: 0.19, w: 1.0, h: 0.62,
+      //   })
+      //   slide.addShape(pptx.shapes.LINE, {
+      //     x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+      //     line: { color: '3B82F6', width: 2 },
+      //   })
+
+      //   // ─── LEFT: table (Answer + brand columns, no Sub-Issue, no Total) ───
+      //   const tableX = 0.3
+      //   const tableY = 1.10
+      //   const tableW = 4.4
+
+      //   const headerRow: any[] = [
+      //     {
+      //       text: 'Answer',
+      //       options: {
+      //         bold: true,
+      //         fill: '475569',
+      //         color: 'FFFFFF',
+      //         align: 'left',
+      //         valign: 'middle',
+      //         fontSize: 8,
+      //         fontFace: 'Arial',
+      //       },
+      //     },
+      //   ]
+      //   orderedBrands.forEach((b) => {
+      //     headerRow.push({
+      //       text: b,
+      //       options: { ...getBrandHeaderOptions(b), valign: 'middle' },
+      //     })
+      //   })
+
+      //   const MAX_ROWS_PER_SLIDE = 13
+      //   const chunks: Row[][] = []
+      //   for (let i = 0; i < rows.length; i += MAX_ROWS_PER_SLIDE) {
+      //     chunks.push(rows.slice(i, i + MAX_ROWS_PER_SLIDE))
+      //   }
+
+      //   chunks.forEach((chunk, chunkIdx) => {
+      //     const isFirstChunk = chunkIdx === 0
+      //     const isLastChunk = chunkIdx === chunks.length - 1
+
+      //     const activeSlide = isFirstChunk
+      //       ? slide
+      //       : (() => {
+      //         const s = pptx.addSlide()
+      //         s.background = { fill: 'FFFFFF' }
+      //         s.addText(mainTitle, {
+      //           x: 0.3, y: 0.3, w: 6.0, h: 0.5,
+      //           fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial',
+      //         })
+
+      //         s.addImage({
+      //           path: '/assets/logo.png',
+      //           x: 8.72, y: 0.19, w: 1.0, h: 0.62,
+      //         })
+      //         s.addShape(pptx.shapes.LINE, {
+      //           x: 0.3, y: 0.85, w: 9.4, h: 0.0,
+      //           line: { color: '3B82F6', width: 2 },
+      //         })
+      //         return s
+      //       })()
+
+      //     const pageRows: any[][] = [headerRow]
+
+      //     chunk.forEach((row) => {
+      //       const cells: any[] = [
+      //         {
+      //           text: row.answerLabel,
+      //           options: { align: 'left', fontSize: 7.5, fontFace: 'Arial' },
+      //         },
+      //       ]
+      //       orderedBrands.forEach((b) => {
+      //         const cnt = row.brandCounts[b] || 0
+      //         const tot = brandTotals[b] || 0
+      //         const pct = tot > 0 ? Math.round((cnt / tot) * 100) : 0
+      //         cells.push({
+      //           text: `${cnt} (${pct}%)`,
+      //           options: { align: 'center', fontSize: 7.5, fontFace: 'Arial' },
+      //         })
+      //       })
+      //       pageRows.push(cells)
+      //     })
+
+      //     // Grand Total row (no empty Sub-Issue cell since it's removed)
+      //     if (isLastChunk) {
+      //       const grandRow: any[] = [
+      //         {
+      //           text: 'Grand Total',
+      //           options: {
+      //             bold: true,
+      //             fill: 'ECEFF1',
+      //             align: 'left',
+      //             fontSize: 7.5,
+      //             fontFace: 'Arial',
+      //           },
+      //         },
+      //       ]
+      //       orderedBrands.forEach((b) => {
+      //         grandRow.push({
+      //           text: String(brandTotals[b] || 0),
+      //           options: {
+      //             bold: true,
+      //             fill: 'ECEFF1',
+      //             align: 'center',
+      //             fontSize: 7.5,
+      //             fontFace: 'Arial',
+      //           },
+      //         })
+      //       })
+      //       pageRows.push(grandRow)
+      //     }
+
+      //     // Column widths: Answer gets more space; brands share the rest
+      //     const answerColW = 2.0
+      //     const brandColW = (tableW - answerColW) / Math.max(1, orderedBrands.length)
+      //     const colWidths = [answerColW, ...orderedBrands.map(() => brandColW)]
+
+      //     activeSlide.addTable(pageRows, {
+      //       x: tableX,
+      //       y: tableY,
+      //       w: tableW,
+      //       border: { type: 'solid', color: 'CCCCCC', size: 0.5 },
+      //       fontSize: 7.5,
+      //       fontFace: 'Arial',
+      //       colW: colWidths,
+      //       rowH: pageRows.map(() => 0.26),
+      //     })
+      //   })
+
+      //   // ─── RIGHT: chart (answer counts per brand) ───
+      //   const chartX = 4.9
+      //   const chartY = 1.40
+      //   const chartW = 4.8
+      //   const chartH = 3.75
+
+      //   const CHART_BOX_X = chartX - 0.1
+      //   const CHART_BOX_Y = 1.10
+      //   const CHART_BOX_W = chartW + 0.2
+      //   const CHART_BOX_H = (chartY + chartH) - CHART_BOX_Y + 0.15
+
+      //   slide.addShape(pptx.ShapeType.roundRect, {
+      //     x: CHART_BOX_X,
+      //     y: CHART_BOX_Y,
+      //     w: CHART_BOX_W,
+      //     h: CHART_BOX_H,
+      //     fill: { color: 'F8FAFC' },
+      //     line: { color: 'E2E8F0', width: 1 },
+      //     rectRadius: 0.08,
+      //   })
+
+      //   // Legend
+      //   const legendStartY = CHART_BOX_Y + 0.15
+      //   const legendItemWidth = 1.2
+      //   const legendBoxSize = 0.12
+      //   const legendTextGap = 0.02
+      //   const legendTotalWidth = orderedBrands.length * legendItemWidth
+      //   const legendStartX = chartX + (chartW - legendTotalWidth) / 2
+
+      //   orderedBrands.forEach((brand: string, idx: number) => {
+      //     const brandColor = getBrandColor(brand)
+      //     const legendX = legendStartX + idx * legendItemWidth
+
+      //     slide.addShape(pptx.ShapeType.rect, {
+      //       x: legendX,
+      //       y: legendStartY,
+      //       w: legendBoxSize,
+      //       h: legendBoxSize,
+      //       fill: { color: brandColor },
+      //       line: { color: brandColor, transparency: 100 },
+      //     })
+      //     slide.addText(brand, {
+      //       x: legendX + legendBoxSize + legendTextGap,
+      //       y: legendStartY - 0.03,
+      //       w: legendItemWidth - legendBoxSize - legendTextGap - 0.05,
+      //       h: legendBoxSize + 0.06,
+      //       fontSize: 5,
+      //       color: '333333',
+      //       align: 'left',
+      //       valign: 'middle',
+      //       fontFace: 'Arial',
+      //     })
+      //   })
+
+      //   // Chart data — reverse rows so largest appears at top
+      //   const reversedRows = [...rows].reverse()
+      //   const chartBrands = [...orderedBrands].reverse()
+
+      //   const chartData = chartBrands.map((b) => {
+      //     const brandTotal = brandTotals[b] || 0
+      //     return {
+      //       name: b,
+      //       labels: reversedRows.map((r) => r.answerLabel),
+      //       values: reversedRows.map((r) => {
+      //         const cnt = r.brandCounts[b] || 0
+      //         return brandTotal > 0 ? Math.round((cnt / brandTotal) * 100) : 0
+      //       }),
+      //     }
+      //   })
+
+      //   const brandColors = getBrandColorsArray(chartBrands)
+
+      //   try {
+      //     slide.addChart(pptx.ChartType.bar, chartData, {
+      //       x: chartX,
+      //       y: chartY,
+      //       w: chartW,
+      //       h: chartH,
+      //       barDir: 'bar',
+      //       barGrouping: 'clustered',
+      //       chartColors: brandColors,
+      //       showTitle: false,
+      //       showLegend: false,
+      //       showValue: true,
+      //       dataLabelPosition: 'outEnd',
+      //       dataLabelFormatCode: '0"%"',
+      //       dataLabelFontSize: 7.5,
+      //       dataLabelColor: '1E293B',
+      //       dataLabelFontFace: 'Arial',
+      //       catAxisLabelFontSize: 8,
+      //       catAxisLabelColor: '333333',
+      //       catAxisLineShow: true,
+      //       catAxisLineColor: 'CBD5E1',
+      //       valAxisLineShow: false,
+      //       valAxisHidden: true,
+      //       valAxisMinVal: 0,
+      //       valAxisMaxVal: 100,
+      //       valAxisMajorUnit: 20,
+      //       valGridLine: { style: 'none' },
+      //       barGapWidthPct: 100,
+      //     })
+      //   } catch (err) {
+      //     console.error(`[PPT] Error adding answer-wise chart for ${issueItem.issue_name}:`, err)
+      //   }
+      // }
+
       // ─── HELPER: Add branded title ───
       const addSlideTitle = (slide: any, title: string, subtitle: string) => {
         slide.addText(title, {
@@ -4320,10 +5116,7 @@ export default function DashboardPage() {
 
         slide.addImage({
           path: '/assets/logo.png',
-          x: 8.42,
-          y: 0.15,
-          w: 1.0,
-          h: 0.52
+          x: 8.72, y: 0.19, w: 1.0, h: 0.62,
         })
       }
 
@@ -5885,7 +6678,16 @@ export default function DashboardPage() {
             return b.total - a.total                        // tiebreak: total desc
           })
 
+
         issuesWithTotals.forEach(({ issueItem }: { issueItem: any }) => {
+          // ─── Intercept answer-wise issues ───
+          const issueKey = normalizeIssueKeyForAnswers(issueItem.issue_name)
+          const awConfig = ANSWER_WISE_CONFIG[issueKey]
+          if (awConfig) {
+            renderAnswerWiseSlide(issueItem, awConfig)
+            return  // skip the default sub-issue breakdown
+          }
+
           const subIssues = (issueItem.sub_issues || []).filter(
             (s: any) => s.sub_issue && s.sub_issue !== 'Blank'
           )
@@ -6189,14 +6991,6 @@ export default function DashboardPage() {
       })
 
       // Title Case formatting helper for Main Issue Titles
-      const formatMainIssueTitle = (name: string, count: number): string => {
-        const cleaned = cleanIssueName(name)
-        const formatted = cleaned.split(' ').map(word => {
-          if (!word) return ''
-          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        }).join(' ')
-        return `${formatted} (${count})`
-      }
 
       // Build the header row (6 columns)
       const fuHeaderRow: any[] = [
@@ -6247,6 +7041,8 @@ export default function DashboardPage() {
         })
 
       issuesWithTotals.forEach(({ issueItem: issue }: { issueItem: any }) => {
+        const issueKey = normalizeIssueKeyForAnswers(issue.issue_name)
+        if (ANSWER_WISE_CONFIG[issueKey]) return
         // Find valid sub-issues that actually contain answers
         const validSubIssues = (issue.sub_issues || []).filter((sub: any) => {
           if (!sub.has_follow_ups || !sub.follow_ups) return false
@@ -6343,6 +7139,16 @@ export default function DashboardPage() {
           }
         }
 
+        const formatMainIssueTitle = (name: string, count: number): string => {
+          const cleaned = cleanIssueName(name)
+          const formatted = cleaned.split(' ').map(word => {
+            if (!word) return ''
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+          }).join(' ')
+          return `${formatted}`
+        }
+
+
         for (let slideIdx = 0; slideIdx < totalSlidesForIssue; slideIdx++) {
           const chunk = rawRows.slice(slideIdx * maxRowsPerSlide, (slideIdx + 1) * maxRowsPerSlide)
           const isLastSlideOfIssue = (slideIdx === totalSlidesForIssue - 1)
@@ -6364,13 +7170,10 @@ export default function DashboardPage() {
             fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
           })
 
-          // Logo Branding Image
+
           fuSlide.addImage({
             path: '/assets/logo.png',
-            x: 8.72,
-            y: 0.25,
-            w: 1.0,
-            h: 0.52
+            x: 8.72, y: 0.19, w: 1.0, h: 0.62,
           })
 
           // Divider Line
@@ -6509,12 +7312,10 @@ export default function DashboardPage() {
           x: 0.3, y: 0.3, w: 6.0, h: 0.5,
           fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
         })
+
         fuSlide.addImage({
-          path: '/src/assets/logo.png',
-          x: 8.0,
-          y: 0.25,
-          w: 1.7,
-          h: 0.5
+          path: '/assets/logo.png',
+          x: 8.72, y: 0.19, w: 1.0, h: 0.62,
         })
         fuSlide.addShape(pptx.shapes.LINE, {
           x: 0.3, y: 0.85, w: 9.4, h: 0.0,
@@ -6640,10 +7441,9 @@ export default function DashboardPage() {
             line: { color: '3B82F6', width: 2 },
           })
 
-          // ── Logo ──
           mfSlide.addImage({
             path: '/assets/logo.png',
-            x: 8.72, y: 0.15, w: 1.0, h: 0.52,
+            x: 8.72, y: 0.19, w: 1.0, h: 0.62,
           })
 
           // ── Sub-heading (sub-issue name only) ──
@@ -6958,10 +7758,9 @@ export default function DashboardPage() {
             line: { color: '3B82F6', width: 2 },
           })
 
-          // Logo
           mfSlide.addImage({
             path: '/assets/logo.png',
-            x: 8.72, y: 0.15, w: 1.0, h: 0.52,
+            x: 8.72, y: 0.19, w: 1.0, h: 0.62,
           })
 
           // ── Distribute chunk blocks by their estimated weight ──
@@ -7039,9 +7838,8 @@ export default function DashboardPage() {
       // Logo
       kiSlide.addImage({
         path: '/assets/logo.png',
-        x: 8.72, y: 0.25, w: 1.0, h: 0.52
+        x: 8.72, y: 0.19, w: 1.0, h: 0.62,
       })
-
       // Divider
       kiSlide.addShape(pptx.ShapeType.line, {
         x: 0.3, y: 0.85, w: 9.4, h: 0,
@@ -7327,8 +8125,10 @@ export default function DashboardPage() {
         x: 0.3, y: 0.85, w: 9.4, h: 0.0,
         line: { color: '3B82F6', width: 2 },
       })
-      tocSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.53 })
-
+      tocSlide.addImage({
+        path: '/assets/logo.png',
+        x: 8.72, y: 0.19, w: 1.0, h: 0.62,
+      })
       // ─── TOC layout config ───
       const slideW = 10
       const slideH = 5.625
@@ -7572,11 +8372,36 @@ export default function DashboardPage() {
         })
         const { data, total } = res.data
         setTotalRows(total)
+
         // Flatten full_data for AG Grid columns
         const rows = data.map((r: Record<string, unknown>) => ({
           ...r,
           ...(r.full_data as Record<string, unknown> || {}),
         }))
+
+        // ─── Detect the widest Excel column letter in this page of data ───
+        const colLetterRegex = /^[A-Z]{1,2}$/
+        let widest = ''
+        for (const r of data) {
+          const fd = (r.full_data as Record<string, unknown>) || {}
+          for (const key of Object.keys(fd)) {
+            if (!colLetterRegex.test(key)) continue
+            if (
+              key.length > widest.length ||
+              (key.length === widest.length && key > widest)
+            ) {
+              widest = key
+            }
+          }
+        }
+        if (widest) {
+          setMaxColumnLetter(prev => {
+            if (widest.length > prev.length) return widest
+            if (widest.length === prev.length && widest > prev) return widest
+            return prev
+          })
+        }
+
         params.successCallback(rows, total)
       } catch {
         params.failCallback()
@@ -7595,7 +8420,6 @@ export default function DashboardPage() {
     }
   }, [datasource, gridApi])
 
-  // Build column definitions dynamically
   const columnDefs: ColDef[] = useMemo(() => {
     const base: ColDef[] = [
       { headerName: '#', valueGetter: 'node.rowIndex + 1', width: 60, pinned: 'left', sortable: false, filter: false },
@@ -7623,12 +8447,15 @@ export default function DashboardPage() {
       },
     ]
 
-    // Add columns A-OD from full_data with actual Excel header names
+    // Generate A..ZZ (702 columns max)
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
     const allCols: string[] = []
     letters.forEach((l) => allCols.push(l))
     letters.forEach((l1) => letters.forEach((l2) => allCols.push(l1 + l2)))
-    const excelCols = allCols.slice(0, 422)
+
+    // Clamp to the number of columns we actually need (never exceed the generated pool)
+    const totalCols = Math.min(columnCount, allCols.length)
+    const excelCols = allCols.slice(0, totalCols)
 
     const dynamicCols: ColDef[] = excelCols.slice(8).map((col) => {
       const headerTitle = getColumnHeader(col)
@@ -7644,7 +8471,7 @@ export default function DashboardPage() {
     })
 
     return [...base, ...dynamicCols]
-  }, [])
+  }, [columnCount])   // ← dependency added
 
   const defaultColDef: ColDef = {
     resizable: true,
@@ -7659,16 +8486,155 @@ export default function DashboardPage() {
     try {
       const res = await responsesApi.exportCsv()
       const blob = res.data
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'survey_responses.csv'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      const text = await blob.text()
+
+      // ── Proper CSV parser that handles quoted fields AND newlines inside quotes ──
+      const parseCSV = (input: string): string[][] => {
+        const rows: string[][] = []
+        let row: string[] = []
+        let field = ''
+        let inQuotes = false
+
+        for (let i = 0; i < input.length; i++) {
+          const ch = input[i]
+
+          if (inQuotes) {
+            if (ch === '"') {
+              if (input[i + 1] === '"') {
+                field += '"'
+                i++
+              } else {
+                inQuotes = false
+              }
+            } else {
+              field += ch
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true
+            } else if (ch === ',') {
+              row.push(field)
+              field = ''
+            } else if (ch === '\r') {
+              // ignore, handled by \n
+            } else if (ch === '\n') {
+              row.push(field)
+              rows.push(row)
+              row = []
+              field = ''
+            } else {
+              field += ch
+            }
+          }
+        }
+
+        // flush last field/row if file doesn't end with newline
+        if (field.length > 0 || row.length > 0) {
+          row.push(field)
+          rows.push(row)
+        }
+
+        return rows
+      }
+
+      const allRows = parseCSV(text)
+      if (allRows.length === 0) return
+
+      const headers = allRows[0]
+
+      // ── Drop columns A–D + id / survey_date / brand_model / location / nps_score ──
+      const DROP_HEADERS = new Set([
+        'id',
+        'survey_date',
+        'brand_model',
+        'location',
+        'survey_location',
+        'nps_score',
+      ])
+      const DROP_FIRST_N = 4
+
+      const keepIndices: number[] = []
+      headers.forEach((h, idx) => {
+        const key = h.trim().toLowerCase().replace(/^\uFEFF/, '')
+        if (idx < DROP_FIRST_N) return
+        if (DROP_HEADERS.has(key)) return
+        keepIndices.push(idx)
+      })
+
+      const filteredHeaders = keepIndices.map((i) => headers[i].trim())
+
+      // ── Build data rows — SKIP rows that are completely empty ──
+      const dataRows: string[][] = []
+      for (let r = 1; r < allRows.length; r++) {
+        const srcRow = allRows[r]
+
+        // skip if the source row is empty / all-whitespace
+        const isBlankSourceRow =
+          srcRow.length === 0 ||
+          srcRow.every((c) => (c ?? '').trim() === '')
+        if (isBlankSourceRow) continue
+
+        const projected = keepIndices.map((idx) => (srcRow[idx] ?? '').trim())
+
+        // skip if after dropping columns A–D + excluded headers everything is empty
+        const isBlankAfterFilter = projected.every((c) => c === '')
+        if (isBlankAfterFilter) continue
+
+        dataRows.push(projected)
+      }
+
+      // ── Build worksheet ──
+      const aoa: any[][] = [filteredHeaders, ...dataRows]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+
+      // ── Header style ──
+      const PURPLE = '5B3E8E'
+      const HEADER_STYLE = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+        fill: { patternType: 'solid', fgColor: { rgb: PURPLE } },
+        alignment: { wrapText: true, vertical: 'center', horizontal: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: 'FFFFFF' } },
+          bottom: { style: 'thin', color: { rgb: 'FFFFFF' } },
+          left: { style: 'thin', color: { rgb: 'FFFFFF' } },
+          right: { style: 'thin', color: { rgb: 'FFFFFF' } },
+        },
+      }
+
+      filteredHeaders.forEach((_, colIdx) => {
+        const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+        if (!ws[addr]) ws[addr] = { t: 's', v: filteredHeaders[colIdx] }
+        ws[addr].s = HEADER_STYLE
+      })
+
+      // ── Header row height ──
+      if (!ws['!rows']) ws['!rows'] = []
+      ws['!rows'][0] = { hpt: 75, hpx: 100 }
+
+      // ── Column widths ──
+      const colWidths = filteredHeaders.map((header, colIdx) => {
+        let maxLen = header.length
+        for (let r = 0; r < dataRows.length; r++) {
+          const v = dataRows[r][colIdx] ?? ''
+          if (v.length > maxLen) maxLen = v.length
+        }
+        return { wch: Math.min(40, Math.max(12, maxLen + 2)) }
+      })
+      ws['!cols'] = colWidths
+
+      // ── Save ──
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Responses')
+      XLSX.writeFile(wb, 'survey_responses.xlsx')
+
+      setToastSeverity('success')
+      setToastMessage('Excel downloaded successfully!')
+      setToastOpen(true)
     } catch (err) {
-      console.error('CSV export failed:', err)
+      console.error('Excel export failed:', err)
+      setToastSeverity('error')
+      setToastMessage('Excel export failed.')
+      setToastOpen(true)
     }
   }
 
@@ -7685,12 +8651,17 @@ export default function DashboardPage() {
       { id: 'tab-data-table', key: 'data-table', label: `Data Table (${totalRows.toLocaleString()} rows)` },
     ] : []),
     ...(showService ? [
-      { id: 'tab-service-dashboard', key: 'service-dashboard', label: 'Service Dashboard' },
+      { id: 'tab-service-frequency', key: 'service-frequency', label: 'Service Frequency' },
+      { id: 'tab-service-nps', key: 'service-nps', label: 'Service NPS' },
+      { id: 'tab-service-benefits', key: 'service-benefits', label: 'Benefits & Betterments' },
+      { id: 'tab-service-satisfaction', key: 'service-satisfaction', label: 'Service Satisfaction' },
+      { id: 'tab-service-cps', key: 'service-cps', label: 'Customer Perception' },
+      { id: 'tab-service-market-feedback', key: 'service-market-feedback', label: 'Market Feedback' },
     ] : []),
   ]
 
   const activeTabKey = availableTabs[tab]?.key ?? availableTabs[0]?.key
-  const isServiceActive = activeTabKey === 'service-dashboard' || (analysisMode.length === 1 && analysisMode[0] === 'service')
+  const isServiceActive = activeTabKey?.startsWith('service-')
 
   return (
     <Box>
@@ -8011,9 +8982,7 @@ export default function DashboardPage() {
       </Box>
 
       {/* Dynamic Tab Content */}
-      {activeTabKey === 'service-dashboard' && (
-        <ServiceDashboardTab filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} />
-      )}
+
       {activeTabKey === 'issues' && <IssuesTab filters={filters} />}
       {activeTabKey === 'dashboard' && <DashboardAnalytics filters={filters} />}
       {activeTabKey === 'comparison' && <ComparisonTab filters={filters} />}
@@ -8024,7 +8993,7 @@ export default function DashboardPage() {
           <CardContent sx={{ p: 0 }}>
             <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${c.borderMuted}` }}>
               <Typography variant="body2" sx={{ color: c.textSecondary, flex: 1 }}>
-                Showing all 422 columns • Horizontally scrollable • Server-side pagination
+                Showing all {columnCount} columns • Horizontally scrollable • Server-side pagination
               </Typography>
               <Tooltip title="Export CSV">
                 <IconButton id="export-csv-btn" size="small" onClick={handleExportCSV} sx={{ color: c.success }}>
@@ -8052,6 +9021,31 @@ export default function DashboardPage() {
                 '--ag-foreground-color': c.textPrimary,
                 '--ag-header-foreground-color': c.textSecondary,
                 '--ag-secondary-foreground-color': c.textSecondary,
+
+                // ─── NEW: header sizing & wrapping ───
+                '--ag-header-height': '80px',                // matches headerHeight prop
+                '--ag-header-column-resize-handle-height': '100%',
+                '--ag-header-cell-hover-background-color': c.agGridHeader,
+                '--ag-header-cell-moving-background-color': c.agGridHeader,
+
+                // Allow header text to wrap and use vertical centering
+                '& .ag-header-cell-label': {
+                  whiteSpace: 'normal',
+                  lineHeight: '1.25',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                },
+                '& .ag-header-cell-text': {
+                  whiteSpace: 'normal',
+                  overflow: 'visible',
+                  textOverflow: 'clip',
+                  lineHeight: '1.25',
+                },
+                '& .ag-header-cell': {
+                  paddingLeft: '6px',
+                  paddingRight: '6px',
+                },
               } as React.CSSProperties}
             >
               <AgGridReact
@@ -8067,10 +9061,35 @@ export default function DashboardPage() {
                 suppressRowClickSelection={true}
                 enableCellTextSelection={true}
                 tooltipShowDelay={500}
+
+                // ─── NEW: header height + wrapping ───
+                headerHeight={80}                 // base height (60–100 looks like your image)
+                groupHeaderHeight={80}            // if you ever add grouped headers
+                wrapHeaderText={true}             // ← allows multi-line header text
+                autoHeaderHeight={true}           // ← auto-grows if content needs more room
               />
             </Box>
           </CardContent>
         </Card>
+      )}
+      {/* Service Tabs — pass a `initialTab` prop to ServiceDashboardTab */}
+      {activeTabKey === 'service-frequency' && (
+        <ServiceDashboardTab key="svc-0" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={0} />
+      )}
+      {activeTabKey === 'service-nps' && (
+        <ServiceDashboardTab key="svc-1" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={1} />
+      )}
+      {activeTabKey === 'service-benefits' && (
+        <ServiceDashboardTab key="svc-2" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={2} />
+      )}
+      {activeTabKey === 'service-satisfaction' && (
+        <ServiceDashboardTab key="svc-3" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={3} />
+      )}
+      {activeTabKey === 'service-cps' && (
+        <ServiceDashboardTab key="svc-4" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={4} />
+      )}
+      {activeTabKey === 'service-market-feedback' && (
+        <ServiceDashboardTab key="svc-5" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={5} />
       )}
 
       {/* PPT progress alert
