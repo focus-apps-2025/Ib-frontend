@@ -1890,250 +1890,230 @@ export default function DashboardPage() {
         sectionKey: 'authorized' | 'pgm'
       ) => {
         const rawBenefitsData = serviceBenefitsData?.data || serviceBenefitsData || {}
+        const emptySeg = { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} }
         const secData = rawBenefitsData?.[sectionKey] || {
           sample_size: 0,
-          overall: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
-          promoter: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
-          passive: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
-          detractor: { top_benefits: [], top_issues: [], brand_benefits: {}, brand_issues: {} },
+          overall: emptySeg, promoter: emptySeg, passive: emptySeg, detractor: emptySeg,
+        }
+        const sampleSize = secData.sample_size || 0
+        const overallSeg = secData.overall || {}
+
+        type FbItem = { name: string; count: number; percentage: number }
+
+        const isJunkTopicName = (name: string) => {
+          if (!name) return true
+          const s = String(name).trim().toLowerCase()
+          if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
+          if (!isNaN(Number(s))) return true
+          const junkWords = [
+            'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
+            'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
+            'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
+            'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
+          ]
+          if (junkWords.includes(s)) return true
+          if (s.startsWith('submitform')) return true
+          return false
         }
 
-        const sampleSize = secData.sample_size || 0
-        const overall = secData.overall || {}
-        const brandBenefits = overall.brand_benefits || {}
-        const brandIssues = overall.brand_issues || {}
-
-        // Helper to format items for panel chart
         const formatFeedbackItems = (
-          items: any[],
-          overallItems: any[],
-          isOverallCategory: boolean,
-          base: number
-        ) => {
-          const isJunkTopicName = (name: string) => {
-            if (!name) return true
-            const s = String(name).trim().toLowerCase()
-            if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
-            if (!isNaN(Number(s))) return true
-            const junkWords = [
-              'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
-              'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
-              'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
-              'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
-            ]
-            if (junkWords.includes(s)) return true
-            if (s.startsWith('submitform')) return true
-            return false
-          }
-
-          return (items || [])
+          items: any[], overallItems: any[], isOverallCategory: boolean, base: number
+        ): FbItem[] =>
+          (items || [])
             .filter((it: any) => !isJunkTopicName(it.topic || it.issue || it.name))
             .map((it: any) => {
               const itemName = String(it.topic || it.issue || it.name || '')
               const count = Number(it.count || 0)
               let percentage = 0
-
-              // Use pre-computed percentage from backend (divides by correct segment base)
               if (it.percentage !== undefined && it.percentage !== null) {
                 percentage = Math.round(Number(it.percentage))
               } else if (isOverallCategory) {
                 percentage = base > 0 ? Math.round((count / base) * 100) : 0
               } else {
-                const overallMatch = (overallItems || []).find(
+                const m = (overallItems || []).find(
                   (o: any) => String(o.topic || o.issue || o.name || '').trim().toLowerCase() === itemName.trim().toLowerCase()
                 )
-                const totalCount = overallMatch ? Number(overallMatch.count || 0) : count
-                percentage = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0
+                const total = m ? Number(m.count || 0) : count
+                percentage = total > 0 ? Math.round((count / total) * 100) : 0
               }
-
-              return {
-                name: itemName,
-                count: count,
-                percentage: percentage,
-              }
+              return { name: itemName, count, percentage }
             })
-            .filter((it: any) => it.count > 0 || it.percentage > 0)   // ← add this line  
-        }
+            .filter((it: FbItem) => it.count > 0 || it.percentage > 0)
 
-        // ─── FIXED: renderPanelChart with descending sort ───
-        const renderPanelChart = (
-          slideObj: any,
-          panelX: number,
-          panelY: number,
-          panelW: number,
-          panelH: number,
-          items: { name: string; count: number; percentage: number }[],
-          isGreen: boolean
-        ) => {
-          if (!items || items.length === 0) return
-
-          // ─── SORT IN DESCENDING ORDER (largest first) ───
-          const sortedItems = [...items].sort((a, b) => b.percentage - a.percentage)
-          const top10 = sortedItems.slice(0, 10)
-
-          // ─── REVERSE so largest appears at TOP of chart ───
-          const reversed = [...top10].reverse()
-
-          const chartData = [
-            {
-              name: isGreen ? 'Benefits' : 'Betterment',
-              labels: reversed.map((it) => it.name),
-              values: reversed.map((it) => it.percentage),
-            },
-          ]
-
-          const maxVal = Math.max(...chartData[0].values, 10)
-          const valAxisMax = Math.min(100, Math.max(20, Math.ceil(maxVal / 10) * 10))
-
-          try {
-            slideObj.addChart(pptx.ChartType.bar, chartData, {
-              x: panelX + 0.1,
-              y: panelY + 0.40,
-              w: panelW - 0.2,
-              h: panelH - 0.50,
-              barDir: 'bar',
-              barGrouping: 'standard',
-              chartColors: [isGreen ? '28A745' : 'DC3545'],
-              showTitle: false,
-              showLegend: false,
-              showValue: true,
-              dataLabelPosition: 'outEnd',
-              dataLabelFormatCode: '0"%"',
-              dataLabelFontSize: 8,
-              dataLabelColor: '1E293B',
-              dataLabelFontFace: 'Arial',
-              catAxisLabelFontSize: 8,
-              catAxisLabelColor: '333333',
-              catAxisLineShow: false,
-              valAxisLineShow: false,
-              valAxisHidden: true,
-              valAxisMinVal: 0,
-              valAxisMaxVal: valAxisMax,
-              valGridLine: { style: 'none' },
-              barGapWidthPct: 40,
-            })
-          } catch (err) {
-            console.error('Error adding panel chart:', err)
+        // ─── One section: full-width banner + one NATIVE CHART per column ───
+        const drawSection = (
+          slide: any,
+          o: {
+            cols: { label: string; items: FbItem[] }[]
+            x: number; w: number
+            bannerY: number; bannerH: number
+            panelY: number; panelH: number
+            bannerText: string; color: string; bg: string
+            fontSize: number; maxPct: number
           }
-        }
-
-        // Helper to create a dual-panel slide (Green Benefits on Left, Red Betterment on Right)
-        const createFeedbackPanelSlide = (
-          slideTitle: string,
-          benefitItemsRaw: any[],
-          issueItemsRaw: any[],
-          overallBenefitItemsRaw: any[],
-          overallIssueItemsRaw: any[],
-          isOverallCategory: boolean,
-          baseCount: number
         ) => {
-          // ─── 1. Format data FIRST (before creating the slide) ───
-          const formattedBenefits = formatFeedbackItems(
-            benefitItemsRaw,
-            overallBenefitItemsRaw,
-            isOverallCategory,
-            baseCount
-          )
-          const formattedIssues = formatFeedbackItems(
-            issueItemsRaw,
-            overallIssueItemsRaw,
-            isOverallCategory,
-            baseCount
-          )
+          const colW = o.w / o.cols.length
 
-          const hasBenefits = formattedBenefits.length > 0
-          const hasIssues = formattedIssues.length > 0
+          // ── Banner (full-width green/red strip) ──
+          slide.addText(o.bannerText, {
+            x: o.x, y: o.bannerY, w: o.w, h: o.bannerH,
+            fill: { color: o.color }, color: 'FFFFFF', bold: true,
+            align: 'center', valign: 'middle', fontSize: 10, fontFace: 'Arial',
+          })
 
-          // ─── 2. Skip the slide entirely if both panels are empty ───
-          if (!hasBenefits && !hasIssues) return
+          const ROWS = 10
 
-          // ─── 3. NOW create the slide ───
-          setPptProgress(`Generating Slide: ${slideTitle}...`)
-          const slideFB = pptx.addSlide()
-          slideFB.background = { fill: 'FFFFFF' }
-          addSlideTitle(slideFB, slideTitle, '')
+          o.cols.forEach((col, cIdx) => {
+            const colX = o.x + cIdx * colW
 
-          // ─── 4. Layout constants ───
-          const SLIDE_CONTENT_X = 0.3
-          const SLIDE_CONTENT_W = 9.4
-          const PANEL_W = 4.55
-          const PANEL_H = 4.25
-          const PANEL_Y = 1.0
-          const PANEL_GAP = 0.3
-
-          const leftX = SLIDE_CONTENT_X                              // 0.3
-          const rightX = SLIDE_CONTENT_X + PANEL_W + PANEL_GAP       // 5.15
-          const centeredPanelX = SLIDE_CONTENT_X + (SLIDE_CONTENT_W - PANEL_W) / 2  // 2.725
-
-          // ─── 5. Render panels based on data availability ───
-          if (hasBenefits && !hasIssues) {
-            // Only Benefits → centered
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-              fill: { color: 'F0FDF4' },
-              line: { color: '4ECCA3', width: 1.5 },
-            })
-            slideFB.addText('AREAS FOR BENEFITS', {
-              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-              fill: { color: '28A745' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
-            })
-            renderPanelChart(slideFB, centeredPanelX, PANEL_Y, PANEL_W, PANEL_H, formattedBenefits, true)
-          } else if (!hasBenefits && hasIssues) {
-            // Only Betterments → centered
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-              fill: { color: 'FEF2F2' },
-              line: { color: 'FF6584', width: 1.5 },
-            })
-            slideFB.addText('AREAS FOR BETTERMENT', {
-              x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-              fill: { color: 'DC3545' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
-            })
-            renderPanelChart(slideFB, centeredPanelX, PANEL_Y, PANEL_W, PANEL_H, formattedIssues, false)
-          } else {
-            // Both present → side-by-side (original layout)
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: leftX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-              fill: { color: 'F0FDF4' },
-              line: { color: '4ECCA3', width: 1.5 },
-            })
-            slideFB.addText('AREAS FOR BENEFITS', {
-              x: leftX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-              fill: { color: '28A745' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
+            // ── Panel background + border ──
+            slide.addShape(pptx.ShapeType.rect, {
+              x: colX, y: o.panelY, w: colW, h: o.panelH,
+              fill: { color: o.bg }, line: { color: o.color, width: 1 },
             })
 
-            slideFB.addShape(pptx.ShapeType.rect, {
-              x: rightX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-              fill: { color: 'FEF2F2' },
-              line: { color: 'FF6584', width: 1.5 },
-            })
-            slideFB.addText('AREAS FOR BETTERMENT', {
-              x: rightX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-              fill: { color: 'DC3545' },
-              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-              fontSize: 10, fontFace: 'Arial',
-            })
+            const sorted = [...col.items]
+              .sort((a, b) => b.percentage - a.percentage)
+              .slice(0, ROWS)
 
-            renderPanelChart(slideFB, leftX, PANEL_Y, PANEL_W, PANEL_H, formattedBenefits, true)
-            renderPanelChart(slideFB, rightX, PANEL_Y, PANEL_W, PANEL_H, formattedIssues, false)
-          }
+            if (sorted.length === 0) return
 
-          // ─── 6. Base footer (only rendered when a slide actually exists) ───
-          slideFB.addText(`Base: ${baseCount || 0} respondents`, {
-            x: 0.3, y: 5.32, w: 4.0, h: 0.25,
-            fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
+            const reversed = [...sorted].reverse()
+
+            const chartData = [
+              {
+                name: col.label,
+                labels: reversed.map((it) => it.name),
+                values: reversed.map((it) => it.percentage),
+              },
+            ]
+
+            try {
+              slide.addChart(pptx.ChartType.bar, chartData, {
+                x: colX + 0.04,
+                y: o.panelY + 0.04,
+                w: colW - 0.08,
+                h: o.panelH - 0.08,
+                barDir: 'bar',
+                barGrouping: 'clustered',
+                chartColors: [o.color],
+                chartColorsOpacity: 100,
+                showTitle: false,
+                showLegend: false,
+                showValue: true,
+                dataLabelPosition: 'outEnd',
+                dataLabelFormatCode: '0"%"',
+                dataLabelFontSize: o.fontSize,
+                dataLabelColor: '1E293B',
+                dataLabelFontFace: 'Arial',
+                catAxisLabelFontSize: o.fontSize,
+                catAxisLabelColor: '1E293B',
+                catAxisLabelFontFace: 'Arial',
+                catAxisLineShow: false,
+                catGridLine: { style: 'none' },
+                valAxisHidden: true,
+                valAxisLineShow: false,
+                valAxisMinVal: 0,
+                valAxisMaxVal: Math.max(o.maxPct, 1),
+                valGridLine: { style: 'none' },
+                barGapWidthPct: 120,
+              })
+            } catch (err) {
+              console.error('[PPT] Error adding benefits/betterment chart:', err)
+            }
           })
         }
 
-        const overallSeg = secData.overall || {}
+        type Col = { label: string; color: string; benefits: FbItem[]; issues: FbItem[]; base: number }
 
-        // 1. Overall Location Customer Feedback Slides (Location-wide)
+        // ─── One slide for up to 3 columns ───
+        const createFeedbackSlide = (slideTitle: string, cols: Col[]) => {
+          const hasBenefits = cols.some((c) => c.benefits.length > 0)
+          const hasIssues = cols.some((c) => c.issues.length > 0)
+          if (!hasBenefits && !hasIssues) return
+
+          setPptProgress(`Generating Slide: ${slideTitle}...`)
+          const slide = pptx.addSlide()
+          slide.background = { fill: 'FFFFFF' }
+
+          slide.addText(slideTitle, {
+            x: 0.3, y: 0.15, w: 8.2, h: 0.45,
+            fontSize: 18, bold: true, color: '1F2A6B', fontFace: 'Arial',
+          })
+          slide.addShape(pptx.ShapeType.line, {
+            x: 0.3, y: 0.68, w: 9.4, h: 0, line: { color: '3B82F6', width: 2 },
+          })
+          slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.12, w: 1.0, h: 0.52 })
+
+          const X = 0.3, W = 9.4
+          const colW = W / cols.length
+          const HEADER_Y = 0.80          // ← nudged up (was 0.85)
+          const HEADER_H = 0.28
+          const BANNER_H = 0.24
+          const BOTTOM = 5.28            // ← pushed down (was 5.0)
+          const topY = HEADER_Y + HEADER_H
+
+          cols.forEach((c, i) => {
+            slide.addText(c.label, {
+              x: X + i * colW, y: HEADER_Y, w: colW, h: HEADER_H,
+              fill: { color: c.color }, line: { color: 'FFFFFF', width: 0.75 },
+              color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+              fontSize: 10, fontFace: 'Arial',
+            })
+          })
+
+          const benCols = cols.map((c) => ({ label: c.label, items: c.benefits }))
+          const issCols = cols.map((c) => ({ label: c.label, items: c.issues }))
+
+          if (hasBenefits && hasIssues) {
+            const maxPct = Math.max(1, ...cols.flatMap((c) => [...c.benefits, ...c.issues].map((x) => x.percentage)))
+
+            // ── Dynamic split so both panels grow with BOTTOM ──
+            const totalPanelSpace = BOTTOM - (topY + BANNER_H * 2 + 0.02)
+            const benefitPanelH = totalPanelSpace * 0.50   // ← was fixed 1.75
+            const benefitPanelY = topY + BANNER_H
+            const issueBannerY = benefitPanelY + benefitPanelH + 0.02
+            const issuePanelY = issueBannerY + BANNER_H
+
+            drawSection(slide, {
+              cols: benCols, x: X, w: W,
+              bannerY: topY, bannerH: BANNER_H, panelY: benefitPanelY, panelH: benefitPanelH,
+              bannerText: 'AREAS FOR BENEFITS', color: '28A745', bg: 'F0FDF4', fontSize: 7.5, maxPct,
+            })
+            drawSection(slide, {
+              cols: issCols, x: X, w: W,
+              bannerY: issueBannerY, bannerH: BANNER_H, panelY: issuePanelY, panelH: BOTTOM - issuePanelY,
+              bannerText: 'AREAS FOR BETTERMENT', color: 'DC3545', bg: 'FFF1F2', fontSize: 7.5, maxPct,
+            })
+          } else if (hasIssues) {
+            // Betterment only → moved to top, full height
+            const maxPct = Math.max(1, ...cols.flatMap((c) => c.issues.map((x) => x.percentage)))
+            const panelY = topY + BANNER_H
+            drawSection(slide, {
+              cols: issCols, x: X, w: W,
+              bannerY: topY, bannerH: BANNER_H, panelY, panelH: BOTTOM - panelY,
+              bannerText: 'AREAS FOR BETTERMENT', color: 'DC3545', bg: 'FFF1F2', fontSize: 8, maxPct,
+            })
+          } else {
+            const maxPct = Math.max(1, ...cols.flatMap((c) => c.benefits.map((x) => x.percentage)))
+            const panelY = topY + BANNER_H
+            drawSection(slide, {
+              cols: benCols, x: X, w: W,
+              bannerY: topY, bannerH: BANNER_H, panelY, panelH: BOTTOM - panelY,
+              bannerText: 'AREAS FOR BENEFITS', color: '28A745', bg: 'F0FDF4', fontSize: 8, maxPct,
+            })
+          }
+
+          // ─── Base note under each column (moved slightly lower) ───
+          cols.forEach((c, i) => {
+            slide.addText(`Base: ${c.base || 0} respondents`, {
+              x: X + i * colW, y: BOTTOM + 0.10, w: colW, h: 0.25,
+              fontSize: 8, italic: true, color: '64748B',
+              align: 'center', valign: 'middle', fontFace: 'Arial',
+            })
+          })
+        }
+
         const feedbackCategories: { key: 'overall' | 'promoter' | 'passive' | 'detractor'; titleSuffix: string }[] = [
           { key: 'overall', titleSuffix: 'Overall Customer Feedback' },
           { key: 'promoter', titleSuffix: 'Promoters (Yes) Customer Feedback' },
@@ -2141,47 +2121,49 @@ export default function DashboardPage() {
           { key: 'detractor', titleSuffix: 'Detractors (No) Customer Feedback' },
         ]
 
-        feedbackCategories.forEach((catConfig) => {
-          const segObj = secData[catConfig.key] || {}
-          const segBase = segObj.base || sampleSize  // use segment-specific base from backend
-          createFeedbackPanelSlide(
-            `${sectionName} | ${catConfig.titleSuffix}`,
-            segObj.top_benefits || [],
-            segObj.top_issues || [],
-            overallSeg.top_benefits || [],
-            overallSeg.top_issues || [],
-            catConfig.key === 'overall',
-            segBase
-          )
-        })
-
-        // 2. Per-Brand Customer Feedback Slides (Each Brand gets 4 category slides)
+        // Brands across all segments
         const allBrandsSet = new Set<string>()
-        feedbackCategories.forEach((catConfig) => {
-          const segObj = secData[catConfig.key] || {}
-          Object.keys(segObj.brand_benefits || {}).forEach((b) => allBrandsSet.add(b))
-          Object.keys(segObj.brand_issues || {}).forEach((b) => allBrandsSet.add(b))
+        feedbackCategories.forEach(({ key }) => {
+          const seg = secData[key] || {}
+          Object.keys(seg.brand_benefits || {}).forEach((b) => allBrandsSet.add(b))
+          Object.keys(seg.brand_issues || {}).forEach((b) => allBrandsSet.add(b))
         })
         const orderedSectionBrands = getOrderedBrands(Array.from(allBrandsSet))
 
-        orderedSectionBrands.forEach((brand) => {
-          feedbackCategories.forEach((catConfig) => {
-            const segObj = secData[catConfig.key] || {}
-            const segBase = segObj.base || sampleSize  // use segment-specific base from backend
-            const bBen = segObj.brand_benefits?.[brand] || []
-            const bIss = segObj.brand_issues?.[brand] || []
-            const overallBBen = overallSeg.brand_benefits?.[brand] || []
-            const overallBIss = overallSeg.brand_issues?.[brand] || []
-            createFeedbackPanelSlide(
-              `${sectionName} - ${brand} | ${catConfig.titleSuffix}`,
-              bBen,
-              bIss,
-              overallBBen,
-              overallBIss,
-              catConfig.key === 'overall',
-              segBase
+        feedbackCategories.forEach(({ key, titleSuffix }) => {
+          const seg = secData[key] || {}
+          const segBase = seg.base || sampleSize
+          const isOverall = key === 'overall'
+
+          // Section-wide slide (single full-width column)
+          createFeedbackSlide(`${sectionName} | ${titleSuffix}`, [{
+            label: sectionName,
+            color: '475569',
+            benefits: formatFeedbackItems(seg.top_benefits || [], overallSeg.top_benefits || [], isOverall, segBase),
+            issues: formatFeedbackItems(seg.top_issues || [], overallSeg.top_issues || [], isOverall, segBase),
+            base: segBase,
+          }])
+
+          // Brand slides: up to 3 brands side by side (reference layout)
+          const brandCols: Col[] = orderedSectionBrands.map((brand) => ({
+            label: brand,
+            color: getBrandColor(brand),
+            benefits: formatFeedbackItems(
+              seg.brand_benefits?.[brand] || [], overallSeg.brand_benefits?.[brand] || [], isOverall, segBase),
+            issues: formatFeedbackItems(
+              seg.brand_issues?.[brand] || [], overallSeg.brand_issues?.[brand] || [], isOverall, segBase),
+            base: seg.brand_base?.[brand] ?? segBase,
+          })).filter((c) => c.benefits.length > 0 || c.issues.length > 0)
+
+          const CHUNK = 3
+          for (let i = 0; i < brandCols.length; i += CHUNK) {
+            const chunk = brandCols.slice(i, i + CHUNK)
+            const multi = brandCols.length > CHUNK
+            createFeedbackSlide(
+              `${sectionName} | ${titleSuffix}${multi ? ` (${Math.floor(i / CHUNK) + 1})` : ''}`,
+              chunk
             )
-          })
+          }
         })
       }
 
@@ -6413,218 +6395,284 @@ export default function DashboardPage() {
       }
 
       // ─── DIVIDER 3: Benefits & Betterments ───
+      // ─── DIVIDER 3: Benefits & Betterments ───
       addDividerSlide('Benefits & Betterments')
 
-      // ─── SLIDE N+1 to N+4 (per brand): NPS-Segmented Customer Feedback Slides ───
+      // ─── SLIDES: Benefits & Betterments — 3-column brand layout ───
       if (brandFeedback && brandFeedback.length > 0) {
-        setPptProgress('Generating Per-Brand NPS Customer Feedback slides...')
+        setPptProgress('Generating Benefits & Betterments slides...')
 
-        const feedbackCategories: { key: 'overall' | 'promoters' | 'passives' | 'detractors'; titleSuffix: string }[] = [
-          { key: 'overall', titleSuffix: 'Overall Customer Feedback' },
-          { key: 'promoters', titleSuffix: 'Promoters (Yes) Customer Feedback' },
-          { key: 'passives', titleSuffix: 'Passives (Maybe) Customer Feedback' },
-          { key: 'detractors', titleSuffix: 'Detractors (No) Customer Feedback' },
-        ]
+        const isJunkTopicName = (name: string) => {
+          if (!name) return true
+          const s = String(name).trim().toLowerCase()
+          if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
+          if (!isNaN(Number(s))) return true
+          const junkWords = [
+            'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
+            'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
+            'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
+            'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
+          ]
+          if (junkWords.includes(s)) return true
+          if (s.startsWith('submitform')) return true
+          return false
+        }
 
-        const allFeedbackBrands: string[] = []
-        orderedNpsBrands.forEach((b: string) => {
-          if (!allFeedbackBrands.includes(b)) allFeedbackBrands.push(b)
-        })
-        brandFeedback.forEach((bf: any) => {
-          if (bf.brand && !allFeedbackBrands.includes(bf.brand)) {
-            allFeedbackBrands.push(bf.brand)
+        type FbItem = { name: string; count: number; percentage: number }
+
+        const drawSection = (
+          slide: any,
+          opts: {
+            brands: string[]
+            dataMap: Record<string, FbItem[]>
+            x: number; w: number
+            bannerY: number; bannerH: number
+            panelY: number; panelH: number
+            bannerText: string
+            color: string; bg: string
+            fontSize: number
+            maxPct: number
           }
-        })
+        ) => {
+          const { brands, dataMap, x, w, bannerY, bannerH, panelY, panelH,
+            bannerText, color, bg, fontSize, maxPct } = opts
+          const n = brands.length
+          const colW = w / n
 
-        allFeedbackBrands.forEach((brandName: string) => {
-          const brandFb = brandFeedback.find((bf: any) =>
-            String(bf.brand || '').trim().toUpperCase() === String(brandName || '').trim().toUpperCase()
-          )
-
-          feedbackCategories.forEach((catConfig) => {
-            const catData = brandFb?.categories?.[catConfig.key] || { base: 0, topics: [], issues: [] }
-
-            // ─── 1. Define helpers + build data FIRST (no pptx calls yet) ───
-            const isJunkTopicName = (name: string) => {
-              if (!name) return true
-              const s = String(name).trim().toLowerCase()
-              if (['blank', 'nil', 'none', 'n/a', 'na', 'null', 'nan', '-', '.', '..'].includes(s)) return true
-              if (!isNaN(Number(s))) return true
-              const junkWords = [
-                'average', 'avg', 'best', 'bad', 'good', 'very good', 'poor', 'very poor',
-                'fair', 'excellent', 'satisfied', 'unsatisfied', 'dissatisfied',
-                'very satisfied', 'neutral', 'medium', 'high', 'low', 'ok', 'okay',
-                'normal', 'strongly agree', 'agree', 'disagree', 'strongly disagree'
-              ]
-              if (junkWords.includes(s)) return true
-              if (s.startsWith('submitform')) return true
-              return false
-            }
-
-            const overallCat = brandFb?.categories?.overall || { base: 0, topics: [], issues: [] }
-
-            const segmentBase = Number(catData.base || 0)
-
-            const topicItems = (catData.topics || [])
-              .filter(t => !isJunkTopicName(t.topic))
-              .map(t => {
-                const count = Number(t.count || 0)
-                // ✅ NEW: always divide by the segment base shown in the footer
-                const pct = segmentBase > 0
-                  ? Math.round((count / segmentBase) * 100)
-                  : 0
-                return { name: t.topic, count, percentage: pct }
-              })
-
-            const issueItems = (catData.issues || [])
-              .filter(i => !isJunkTopicName(i.issue))
-              .map(i => {
-                const count = Number(i.count || 0)
-                const pct = segmentBase > 0
-                  ? Math.round((count / segmentBase) * 100)
-                  : 0
-                return { name: i.issue, count, percentage: pct }
-              })
-            const hasBenefits = topicItems.length > 0
-            const hasIssues = issueItems.length > 0
-
-            // ─── 2. SKIP SLIDE if both are empty — BEFORE calling pptx.addSlide() ───
-            if (!hasBenefits && !hasIssues) return
-
-            // ─── 3. NOW create the slide ───
-            const slideFB = pptx.addSlide()
-            slideFB.background = { fill: 'FFFFFF' }
-            addSlideTitle(slideFB, `${brandName} | ${catConfig.titleSuffix}`, '')
-
-            // ─── 4. Layout constants ───
-            const SLIDE_CONTENT_X = 0.3
-            const SLIDE_CONTENT_W = 9.4
-            const PANEL_W = 4.55
-            const PANEL_H = 4.25
-            const PANEL_Y = 1.0
-            const PANEL_GAP = 0.3
-
-            const leftX = SLIDE_CONTENT_X
-            const rightX = SLIDE_CONTENT_X + PANEL_W + PANEL_GAP
-            const centeredPanelX = SLIDE_CONTENT_X + (SLIDE_CONTENT_W - PANEL_W) / 2
-
-            // ─── 5. Panel chart renderer (unchanged) ───
-            const renderPanelChart = (
-              panelX: number,
-              items: { name: string; count: number; percentage: number }[],
-              isGreen: boolean
-            ) => {
-              if (!items || items.length === 0) return
-
-              const sortedItems = [...items].sort((a, b) => b.percentage - a.percentage)
-              const top10 = sortedItems.slice(0, 10)
-              const reversed = [...top10].reverse()
-
-              const chartData = [
-                {
-                  name: isGreen ? 'Benefits' : 'Betterment',
-                  labels: reversed.map((it) => it.name),
-                  values: reversed.map((it) => it.percentage),
-                },
-              ]
-
-              try {
-                slideFB.addChart(pptx.ChartType.bar, chartData, {
-                  x: panelX + 0.1,
-                  y: PANEL_Y + 0.40,
-                  w: PANEL_W - 0.2,
-                  h: PANEL_H - 0.50,
-                  barDir: 'bar',
-                  barGrouping: 'standard',
-                  chartColors: [isGreen ? '28A745' : 'DC3545'],
-                  showTitle: false,
-                  showLegend: false,
-                  showValue: true,
-                  dataLabelPosition: 'outEnd',
-                  dataLabelFormatCode: '0"%"',
-                  dataLabelFontSize: 8,
-                  dataLabelColor: '1E293B',
-                  dataLabelFontFace: 'Arial',
-                  catAxisLabelFontSize: 8,
-                  catAxisLabelColor: '333333',
-                  catAxisLineShow: false,
-                  valAxisLineShow: false,
-                  valAxisHidden: true,
-                  valAxisMinVal: 0,
-                  valAxisMaxVal: 100,
-                  valAxisMajorUnit: 20,
-                  valGridLine: { style: 'none' },
-                  barGapWidthPct: 40,
-                })
-              } catch (err) {
-                console.error('Error adding panel chart:', err)
-              }
-            }
-
-            // ─── 6. Render panels based on data availability ───
-            if (hasBenefits && !hasIssues) {
-              slideFB.addShape(pptx.ShapeType.rect, {
-                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-                fill: { color: 'F0FDF4' },
-                line: { color: '4ECCA3', width: 1.5 },
-              })
-              slideFB.addText('AREAS FOR BENEFITS', {
-                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-                fill: { color: '28A745' },
-                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-                fontSize: 10, fontFace: 'Arial',
-              })
-              renderPanelChart(centeredPanelX, topicItems, true)
-            } else if (!hasBenefits && hasIssues) {
-              slideFB.addShape(pptx.ShapeType.rect, {
-                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-                fill: { color: 'FEF2F2' },
-                line: { color: 'FF6584', width: 1.5 },
-              })
-              slideFB.addText('AREAS FOR BETTERMENT', {
-                x: centeredPanelX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-                fill: { color: 'DC3545' },
-                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-                fontSize: 10, fontFace: 'Arial',
-              })
-              renderPanelChart(centeredPanelX, issueItems, false)
-            } else {
-              slideFB.addShape(pptx.ShapeType.rect, {
-                x: leftX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-                fill: { color: 'F0FDF4' },
-                line: { color: '4ECCA3', width: 1.5 },
-              })
-              slideFB.addText('AREAS FOR BENEFITS', {
-                x: leftX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-                fill: { color: '28A745' },
-                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-                fontSize: 10, fontFace: 'Arial',
-              })
-
-              slideFB.addShape(pptx.ShapeType.rect, {
-                x: rightX, y: PANEL_Y, w: PANEL_W, h: PANEL_H,
-                fill: { color: 'FEF2F2' },
-                line: { color: 'FF6584', width: 1.5 },
-              })
-              slideFB.addText('AREAS FOR BETTERMENT', {
-                x: rightX, y: PANEL_Y, w: PANEL_W, h: 0.35,
-                fill: { color: 'DC3545' },
-                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
-                fontSize: 10, fontFace: 'Arial',
-              })
-
-              renderPanelChart(leftX, topicItems, true)
-              renderPanelChart(rightX, issueItems, false)
-            }
-
-            // ─── 7. Base footer (only rendered when we reach this point) ───
-            slideFB.addText(`Base: ${catData.base || 0} respondents`, {
-              x: 0.3, y: 5.32, w: 4.0, h: 0.25,
-              fontSize: 8.5, color: '64748B', italic: true, fontFace: 'Arial',
-            })
+          // ── Full-width banner (stays as shape, spans all columns) ──
+          slide.addText(bannerText, {
+            x, y: bannerY, w, h: bannerH,
+            fill: { color }, color: 'FFFFFF', bold: true,
+            align: 'center', valign: 'middle', fontSize: 10, fontFace: 'Arial',
           })
 
-        })
+          const ROWS = 10
+
+          brands.forEach((brand, cIdx) => {
+            const colX = x + cIdx * colW
+
+            // ── Panel background + border (kept as shape) ──
+            slide.addShape(pptx.ShapeType.rect, {
+              x: colX, y: panelY, w: colW, h: panelH,
+              fill: { color: bg }, line: { color, width: 1 },
+            })
+
+            const sorted = [...(dataMap[brand] || [])]
+              .sort((a, b) => b.percentage - a.percentage)
+              .slice(0, ROWS)
+
+            const reversed = [...sorted].reverse()
+
+            const chartData = [
+              {
+                name: brand,
+                labels: reversed.map((it) => it.name),
+                values: reversed.map((it) => it.percentage),
+              },
+            ]
+
+            try {
+              slide.addChart(pptx.ChartType.bar, chartData, {
+                x: colX + 0.02,
+                y: panelY + 0.02,
+                w: colW - 0.05,
+                h: panelH - 0.05,
+                barDir: 'bar',
+                barGrouping: 'clustered',
+                chartColors: [color],
+                chartColorsOpacity: 100,
+                showTitle: false,
+                showLegend: false,
+                showValue: true,
+                dataLabelPosition: 'outEnd',
+                dataLabelFormatCode: '0"%"',
+                dataLabelFontSize: fontSize,
+                dataLabelColor: '1E293B',
+                dataLabelFontFace: 'Arial',
+                catAxisLabelFontSize: fontSize,
+                catAxisLabelColor: '1E293B',
+                catAxisLabelFontFace: 'Arial',
+                catAxisLineShow: false,
+                catGridLine: { style: 'none' },
+                valAxisHidden: true,
+                valAxisLineShow: false,
+                valAxisMinVal: 0,
+                valAxisMaxVal: Math.max(maxPct, 1),
+                valGridLine: { style: 'none' },
+                barGapWidthPct: 120,
+              })
+            } catch (err) {
+              console.error('[PPT] Error adding benefits/betterment chart:', err)
+            }
+          })
+        }
+
+        const renderSegmentSlidesForProduct = (
+          catKey: 'overall' | 'promoters' | 'passives' | 'detractors',
+          catSuffix: string
+        ) => {
+          const brandsWithData: string[] = []
+          const brandDataMap: Record<string, { benefits: FbItem[]; issues: FbItem[]; base: number }> = {}
+
+          brandFeedback.forEach((bf: any) => {
+            const catData = bf?.categories?.[catKey] || { base: 0, topics: [], issues: [] }
+            const segmentBase = Number(catData.base || 0)
+
+            const topicItems: FbItem[] = (catData.topics || [])
+              .filter((t: any) => !isJunkTopicName(t.topic))
+              .map((t: any) => {
+                const count = Number(t.count || 0)
+                return { name: t.topic, count, percentage: segmentBase > 0 ? Math.round((count / segmentBase) * 100) : 0 }
+              })
+              .filter((it: FbItem) => it.count > 0 || it.percentage > 0)
+
+            const issueItems: FbItem[] = (catData.issues || [])
+              .filter((i: any) => !isJunkTopicName(i.issue))
+              .map((i: any) => {
+                const count = Number(i.count || 0)
+                return { name: i.issue, count, percentage: segmentBase > 0 ? Math.round((count / segmentBase) * 100) : 0 }
+              })
+              .filter((it: FbItem) => it.count > 0 || it.percentage > 0)
+
+            if (topicItems.length > 0 || issueItems.length > 0) {
+              const brandName = String(bf.brand || '').trim()
+              if (!brandName) return
+              brandsWithData.push(brandName)
+              brandDataMap[brandName] = { benefits: topicItems, issues: issueItems, base: segmentBase }
+            }
+          })
+
+          if (brandsWithData.length === 0) return
+
+          const sortedBrands = getOrderedBrands(brandsWithData)
+          const CHUNK_SIZE = 3
+
+          for (let i = 0; i < sortedBrands.length; i += CHUNK_SIZE) {
+            const chunk = sortedBrands.slice(i, i + CHUNK_SIZE)
+            const isMultiChunk = sortedBrands.length > CHUNK_SIZE
+            const title = isMultiChunk
+              ? `${catSuffix} (${Math.floor(i / CHUNK_SIZE) + 1})`
+              : `${catSuffix}`
+
+            setPptProgress(`Generating Slide: ${title}...`)
+            const slideFB = pptx.addSlide()
+            slideFB.background = { fill: 'FFFFFF' }
+
+            slideFB.addText(title, {
+              x: 0.3, y: 0.15, w: 8.0, h: 0.45,
+              fontSize: 20, bold: true, color: '1F2A6B', fontFace: 'Arial',
+            })
+            slideFB.addShape(pptx.ShapeType.line, {
+              x: 0.3, y: 0.68, w: 9.4, h: 0,
+              line: { color: '3B82F6', width: 2 },
+            })
+            slideFB.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.12, w: 1.0, h: 0.52 })
+
+            // ─── Layout ───
+            const X = 0.3
+            const W = 9.4
+            const colW = W / chunk.length
+            const HEADER_Y = 0.80          // ← nudged slightly up to give more room to panels
+            const HEADER_H = 0.28
+            const BOTTOM = 5.28            // ← was 5.0 — pushed down for taller panels + lower Base
+
+            const hasBenefits = chunk.some((b) => (brandDataMap[b]?.benefits || []).length > 0)
+            const hasIssues = chunk.some((b) => (brandDataMap[b]?.issues || []).length > 0)
+
+            // Brand header bands (one per column)
+            chunk.forEach((brand, idx) => {
+              slideFB.addText(brand, {
+                x: X + idx * colW, y: HEADER_Y, w: colW, h: HEADER_H,
+                fill: { color: getBrandColor(brand) },
+                line: { color: 'FFFFFF', width: 0.75 },
+                color: 'FFFFFF', bold: true, align: 'center', valign: 'middle',
+                fontSize: 10, fontFace: 'Arial',
+              })
+            })
+
+            const benefitMap: Record<string, FbItem[]> = {}
+            const issueMap: Record<string, FbItem[]> = {}
+            chunk.forEach((b) => {
+              benefitMap[b] = brandDataMap[b]?.benefits || []
+              issueMap[b] = brandDataMap[b]?.issues || []
+            })
+
+            const BANNER_H = 0.24
+            const topY = HEADER_Y + HEADER_H
+
+            if (hasBenefits && hasIssues) {
+              // ─── BOTH sections (reference layout) ───
+              const allPcts = chunk.flatMap((b) => [
+                ...benefitMap[b].map((x) => x.percentage),
+                ...issueMap[b].map((x) => x.percentage),
+              ])
+              const maxPct = Math.max(1, ...allPcts)
+
+              // Total vertical space available for the two panels
+              const totalPanelSpace = BOTTOM - (topY + BANNER_H * 2 + 0.02)
+              // Split ~45% benefits / 55% betterment (betterment usually has more rows)
+              const benefitPanelH = totalPanelSpace * 0.50   // ← was fixed 1.75
+              const benefitBannerY = topY
+              const benefitPanelY = benefitBannerY + BANNER_H
+              const issueBannerY = benefitPanelY + benefitPanelH + 0.02
+              const issuePanelY = issueBannerY + BANNER_H
+              const issuePanelH = BOTTOM - issuePanelY
+
+              drawSection(slideFB, {
+                brands: chunk, dataMap: benefitMap, x: X, w: W,
+                bannerY: benefitBannerY, bannerH: BANNER_H,
+                panelY: benefitPanelY, panelH: benefitPanelH,
+                bannerText: 'AREAS FOR BENEFITS',
+                color: '28A745', bg: 'F0FDF4', fontSize: 7.5, maxPct,
+              })
+              drawSection(slideFB, {
+                brands: chunk, dataMap: issueMap, x: X, w: W,
+                bannerY: issueBannerY, bannerH: BANNER_H,
+                panelY: issuePanelY, panelH: issuePanelH,
+                bannerText: 'AREAS FOR BETTERMENT',
+                color: 'DC3545', bg: 'FFF1F2', fontSize: 7.5, maxPct,
+              })
+            } else if (hasIssues) {
+              // ─── ONLY betterments ───
+              const maxPct = Math.max(1, ...chunk.flatMap((b) => issueMap[b].map((x) => x.percentage)))
+              const panelY = topY + BANNER_H
+
+              drawSection(slideFB, {
+                brands: chunk, dataMap: issueMap, x: X, w: W,
+                bannerY: topY, bannerH: BANNER_H,
+                panelY, panelH: BOTTOM - panelY,
+                bannerText: 'AREAS FOR BETTERMENT',
+                color: 'DC3545', bg: 'FFF1F2', fontSize: 8, maxPct,
+              })
+            } else {
+              // ─── ONLY benefits ───
+              const maxPct = Math.max(1, ...chunk.flatMap((b) => benefitMap[b].map((x) => x.percentage)))
+              const panelY = topY + BANNER_H
+
+              drawSection(slideFB, {
+                brands: chunk, dataMap: benefitMap, x: X, w: W,
+                bannerY: topY, bannerH: BANNER_H,
+                panelY, panelH: BOTTOM - panelY,
+                bannerText: 'AREAS FOR BENEFITS',
+                color: '28A745', bg: 'F0FDF4', fontSize: 8, maxPct,
+              })
+            }
+
+            // ─── Base note under each column (moved slightly lower) ───
+            chunk.forEach((brand, idx) => {
+              slideFB.addText(`Base: ${brandDataMap[brand]?.base || 0} respondents`, {
+                x: X + idx * colW, y: BOTTOM + 0.10, w: colW, h: 0.25,
+                fontSize: 8, italic: true, color: '64748B',
+                align: 'center', valign: 'middle', fontFace: 'Arial',
+              })
+            })
+          }
+        }
+
+        renderSegmentSlidesForProduct('overall', 'Overall Customer Feedback')
+        renderSegmentSlidesForProduct('promoters', 'Promoters (Yes) Customer Feedback')
+        renderSegmentSlidesForProduct('passives', 'Passives (Maybe) Customer Feedback')
+        renderSegmentSlidesForProduct('detractors', 'Detractors (No) Customer Feedback')
       }
 
       // ─── DIVIDER: Betterments Next Level ───
