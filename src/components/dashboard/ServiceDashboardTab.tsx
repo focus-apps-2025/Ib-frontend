@@ -136,6 +136,19 @@ const renderCustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, perc
   )
 }
 
+// ─── Module-level cache for Service Dashboard data ──────────────
+const serviceDataCache = new Map<string, {
+  freqData: any
+  npsData: any
+  benefitsData: any
+  satisfactionData: any
+  cpsData: any
+}>()
+
+export const clearServiceCache = () => {
+  serviceDataCache.clear()
+}
+
 export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {}) {
   // Prefer the explicit `filters` prop (matching IssuesTab/DashboardAnalytics),
   // but keep the store subscription as a fallback so it also works standalone.
@@ -144,6 +157,13 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
   const c = useThemeColors()
 
   const [activeTab, setActiveTab] = useState<number>(_props.initialTab ?? 0)
+
+  // Keep activeTab synced if initialTab prop changes dynamically
+  useEffect(() => {
+    if (_props.initialTab !== undefined) {
+      setActiveTab(_props.initialTab)
+    }
+  }, [_props.initialTab])
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -309,21 +329,34 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
   useEffect(() => {
     const fetchData = async () => {
+      const filterParams = {
+        file_id: filters.fileId || undefined,
+        region_id: toParam(filters.regionId),
+        country_id: toParam(filters.countryId),
+        ib_version_id: toParam(filters.ibVersionId),
+        brand_model: toParam(filters.brandModel),
+        survey_location: toParam(filters.surveyLocation),
+        date_from: filters.dateFrom || undefined,
+        date_to: filters.dateTo || undefined,
+        search: filters.search || undefined,
+      }
+
+      const cacheKey = JSON.stringify(filterParams)
+      const cached = serviceDataCache.get(cacheKey)
+
+      if (cached) {
+        setFreqData(cached.freqData)
+        setNpsData(cached.npsData)
+        setBenefitsData(cached.benefitsData)
+        setSatisfactionData(cached.satisfactionData)
+        setCpsData(cached.cpsData)
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError(null)
       try {
-        const filterParams = {
-          file_id: filters.fileId || undefined,
-          region_id: toParam(filters.regionId),
-          country_id: toParam(filters.countryId),
-          ib_version_id: toParam(filters.ibVersionId),
-          brand_model: toParam(filters.brandModel),
-          survey_location: toParam(filters.surveyLocation),
-          date_from: filters.dateFrom || undefined,
-          date_to: filters.dateTo || undefined,
-          search: filters.search || undefined,
-        }
-
         const [freqRes, npsRes, benefitsRes, satisfactionRes, cpsRes] = await Promise.all([
           dashboardApi.serviceFrequency(filterParams),
           dashboardApi.serviceNps(filterParams),
@@ -331,6 +364,16 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           dashboardApi.serviceSatisfaction(filterParams),
           dashboardApi.serviceCps(filterParams),
         ])
+
+        const payload = {
+          freqData: freqRes.data,
+          npsData: npsRes.data,
+          benefitsData: benefitsRes.data,
+          satisfactionData: satisfactionRes.data,
+          cpsData: cpsRes.data,
+        }
+
+        serviceDataCache.set(cacheKey, payload)
 
         setFreqData(freqRes.data)
         setNpsData(npsRes.data)

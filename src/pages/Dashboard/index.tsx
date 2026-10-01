@@ -1288,6 +1288,30 @@ export default function DashboardPage() {
       } catch (e: any) {
         console.error('[PPT] SLIDE 3 ERROR:', e);
       }
+      // ─── SLIDE: Vehicle Usage Purpose ──────────────────────────
+      setPptProgress('Generating Slide: Vehicle Usage Purpose...')
+      const slideUsage = pptx.addSlide()
+      slideUsage.background = { fill: 'FFFFFF' }
+      addSlideTitle(slideUsage, 'Vehicle Usage Purpose', 'Vehicle usage purpose distribution by brand')
+
+      try {
+        if (analytics.vehicle_usage && Array.isArray(analytics.vehicle_usage.brands) && analytics.vehicle_usage.brands.length > 0) {
+          slideUsage.addText('Vehicle Usage Purpose Chart', {
+            x: 0.3, y: 0.95, w: 9.4, h: 0.2,
+            fontSize: 9, bold: true, color: '6C63FF', align: 'center'
+          })
+          addVerticalBarChart(slideUsage, analytics.vehicle_usage, 0.3, 1.15, 9.4, 2.0, undefined, 'percent')
+
+          // Bottom: Table with existing brand colors
+          slideUsage.addText('Vehicle Usage Purpose Table', {
+            x: 0.3, y: 3.25, w: 9.4, h: 0.2,
+            fontSize: 9, bold: true, color: '1E293B', align: 'center'
+          })
+          addMatrixTable(slideUsage, analytics.vehicle_usage, 'Vehicle usage', 1.0, 3.48, 9.4, 1.8, true)
+        }
+      } catch (e: any) {
+        console.error('[PPT] SLIDE VEHICLE USAGE ERROR:', e)
+      }
 
       // ─── SLIDE 4: User Profession Distribution ──────────────────
       setPptProgress('Generating Slide 4: User Profession Distribution...')
@@ -3698,13 +3722,14 @@ export default function DashboardPage() {
       }
 
       // Fetch all required data in parallel
-      const [analyticsRes, issuesRes, comparisonRes, topicsRes, npsRes, brandFeedbackRes] = await Promise.all([
+      const [analyticsRes, issuesRes, comparisonRes, topicsRes, npsRes, brandFeedbackRes, l3l4Res] = await Promise.all([
         dashboardApi.analytics(filterParams),
         issuesApi.analysis(filterParams),
         comparisonApi.brandPassiveIssues(filterParams),
         comparisonApi.brandTopics(filterParams),
         dashboardApi.npsData(filterParams),
         dashboardApi.brandNpsFeedback(filterParams),
+        issuesApi.l3l4(filterParams),
       ])
       const brandFeedback = (brandFeedbackRes.data && brandFeedbackRes.data.brands) || []
       // Dynamic brand ordering directly from DB response (TVS brands placed first)
@@ -3819,6 +3844,8 @@ export default function DashboardPage() {
       const analytics = analyticsRes.data || {}
       const issues = (issuesRes.data && issuesRes.data.data) || []
       const issueBrands = (issuesRes.data && issuesRes.data.brands) || []
+      const l3l4Data = (l3l4Res.data && l3l4Res.data.data) || []
+      const l3l4Brands = (l3l4Res.data && l3l4Res.data.brands) || []
       const comparison = (comparisonRes.data && comparisonRes.data.data) || []
       const topics = (topicsRes.data && topicsRes.data.data) || []
       const nps = npsRes.data || {}
@@ -6139,20 +6166,32 @@ export default function DashboardPage() {
         }
 
         // ─── SLIDE N+: City-wise Duration Segmentation (Combined Slide) ───
-        // ─── SLIDE N+: City-wise Duration Segmentation (Combined Slide) ───
+        // ─── SLIDE N+: Duration of Usage Segmentation (Overall + City-wise) ───
         if (nps.city_duration_segmentation && nps.city_duration_segmentation.length > 0) {
-          setPptProgress('Generating Slide: City-wise Duration Segmentation...')
 
           const SLIDE_W = 10
 
-          nps.city_duration_segmentation.forEach((cityObj: any) => {
+          const renderDurationSlide = (cityObj: any) => {
             const cityName = cityObj.city || 'Unknown City'
+            const durations = Array.isArray(cityObj.durations) ? cityObj.durations : []
+
+            // ✅ GUARD: skip if no duration data
+            if (durations.length === 0) {
+              console.warn(`[PPT] Skipping duration slide for ${cityName}: no durations`)
+              return
+            }
+
+            const numBlocks = durations.length
+
             const slideD = pptx.addSlide()
             slideD.background = { fill: 'FFFFFF' }
-            addSlideTitle(slideD, `${cityName} - City-wise Duration of Usage Segmentation`, 'Likelihood to Recommend by usage duration')
 
-            const durations = cityObj.durations || []
-            const numBlocks = durations.length
+            // Title — different for Overall vs per-city
+            const slideTitle = cityName === 'Overall'
+              ? 'Overall - Duration of Usage Segmentation'
+              : `${cityName} - City-wise Duration of Usage Segmentation`
+
+            addSlideTitle(slideD, slideTitle, 'Likelihood to Recommend by usage duration')
 
             // ─── Shared badges ───
             const badgeW = 2.6
@@ -6191,7 +6230,16 @@ export default function DashboardPage() {
               legendXD += legendItemW
             })
 
-            // ─── Tables pinned to outer edges (KEEP AS IS) ───
+            // ─── "Overall" label spanning all duration blocks ───
+            const overallYD = 1.97
+            const overallHD = 0.25
+            slideD.addText('Overall', {
+              x: (SLIDE_W - 2.6) / 2, y: overallYD, w: 2.6, h: overallHD,
+              color: '1E293B', bold: true, align: 'center', fontSize: 10, fontFace: 'Calibri'
+            })
+            const overallBottomYD = overallYD + overallHD
+
+            // ─── Tables pinned to outer edges ───
             const tableW = 1.9
             const tableX_left = 0.3
             const tableX_right = SLIDE_W - 0.3 - tableW
@@ -6200,12 +6248,11 @@ export default function DashboardPage() {
             const ROW_H = 0.22
             const ROW_H_LONG = 0.3
 
-            // ─── INCREASED CHART WIDTH (MAXIMUM) ───
-            const chartWC = 9.6  // INCREASED from 9.0 to 9.6 for maximum width
-            const chartXC = (SLIDE_W - chartWC) / 2  // Center aligned
+            // ─── Chart geometry ───
+            const chartWC = 9.6
+            const chartXC = (SLIDE_W - chartWC) / 2
 
-            // Calculate block width based on fixed total chart width
-            const blockGap = 0.2  // REDUCED from 0.3 to 0.2 for tighter gap
+            const blockGap = 0.2
             const numBrandsD = orderedNpsBrands.length
             const totalChartWidth = chartWC
             const blockW = (totalChartWidth - blockGap * (numBlocks - 1)) / numBlocks
@@ -6213,11 +6260,11 @@ export default function DashboardPage() {
             const totalGroupW = blockW * numBlocks + blockGap * (numBlocks - 1)
             const groupStartX = chartXC + (totalChartWidth - totalGroupW) / 2
 
-            const blockTopY = 2.05
+            const blockTopY = Math.max(2.05, overallBottomYD + 0.12)
             const npsBoxY = blockTopY + 0.3
             const npsBoxH = 0.35
             const barsTopY = npsBoxY + npsBoxH + 0.1
-            const barsH = 2.4  // INCREASED from 2.3 to 2.4 for taller bars
+            const barsH = 2.4
 
             const brandTrend: Record<string, { duration: string; nps: number }[]> = {}
 
@@ -6244,6 +6291,7 @@ export default function DashboardPage() {
                 border: { type: 'solid', color: 'CCCCCC', pt: 1 },
                 line: { color: 'CCCCCC', width: 1 }
               })
+
               let tableRowY = tableTopY + HEADER_H
               const chartDataD: any[] = [
                 { name: 'Promoter', labels: [], values: [] },
@@ -6328,19 +6376,16 @@ export default function DashboardPage() {
                 catAxisLineColor: '6a6a6a',
                 catAxisLabelPos: 'low',
                 catAxisLabelFontSize: 8,
-                barGapWidthPct: 220,   // INCREASED from 200 to 220
-                barOverlapPct: -45,    // INCREASED from -40 to -45
+                barGapWidthPct: 220,
+                barOverlapPct: -45,
               })
 
-              // ─── NPS boxes aligned directly above each bar candle group ───
               const plotX = blockX + PLOT_LAYOUT_D.x * blockW
               const plotW = PLOT_LAYOUT_D.w * blockW
-              const plotH = PLOT_LAYOUT_D.h * barsH
               const groupW = plotW / numBrandsD
 
               npsScoresD.forEach((item, idx) => {
-                // Position NPS box directly above its corresponding bar group
-                const boxW = Math.min(1.2, groupW * 0.9)  // WIDER box to match bar group
+                const boxW = Math.min(1.2, groupW * 0.9)
                 const boxX = plotX + idx * groupW + (groupW - boxW) / 2
                 const isBest = bestBrandD ? item.brand === bestBrandD.brand : false
                 const isTvsBest = isBest && !!bestBrandD && bestBrandD.brand.includes('TVS')
@@ -6382,14 +6427,57 @@ export default function DashboardPage() {
               const summaryY = barsTopY + barsH - 0.1
 
               slideD.addText(summaryText, {
-                x: 0.2, y: summaryY, w: SLIDE_W - 0.4, h: 0.6,
+                x: 0.1, y: 5.3, w: SLIDE_W - 0.4, h: 0.3,
                 fill: { color: 'E8F4FD', transparency: 0 },
-                color: '1E293B', fontSize: 9, align: 'center', valign: 'middle',
+                color: '1E293B', fontSize: 8, align: 'center', valign: 'middle',
                 fontFace: 'Arial',
-                lineSpacingMultiple: 1.3,
-                border: { type: 'solid', color: '90CAF9', pt: 1 },
+                lineSpacingMultiple: 1.2,
+                border: { type: 'solid', color: '90CAF9', pt: 0.2 },
               })
             }
+          }
+
+          // ─── 1) Overall slide: aggregate all cities into one dataset ───
+          setPptProgress('Generating Slide: Overall Duration of Usage Segmentation...')
+
+          const overallAgg: Record<string, Record<string, { yes: number; maybe: number; no: number }>> = {}
+          nps.city_duration_segmentation.forEach((cityObj: any) => {
+            (cityObj.durations || []).forEach((seg: any) => {
+              const durLabel = String(seg.duration || '').trim()
+              if (!durLabel) return
+              if (!overallAgg[durLabel]) overallAgg[durLabel] = {}
+
+                ; (seg.data || []).forEach((d: any) => {
+                  const brand = d.brand
+                  if (!brand) return
+                  if (!overallAgg[durLabel][brand]) overallAgg[durLabel][brand] = { yes: 0, maybe: 0, no: 0 }
+                  overallAgg[durLabel][brand].yes += Number(d.yes || 0)
+                  overallAgg[durLabel][brand].maybe += Number(d.maybe || 0)
+                  overallAgg[durLabel][brand].no += Number(d.no || 0)
+                })
+            })
+          })
+
+          const overallDurations = Object.keys(overallAgg).map((durLabel) => ({
+            duration: durLabel,
+            data: Object.entries(overallAgg[durLabel]).map(([brand, v]) => ({
+              brand,
+              yes: v.yes,
+              maybe: v.maybe,
+              no: v.no,
+            })),
+          }))
+
+          if (overallDurations.length > 0) {
+            renderDurationSlide({ city: 'Overall', durations: overallDurations })
+          } else {
+            console.warn('[PPT] Overall duration slide skipped: no aggregated data')
+          }
+
+          // ─── 2) Per-city slides ───
+          setPptProgress('Generating Slide: City-wise Duration Segmentation...')
+          nps.city_duration_segmentation.forEach((cityObj: any) => {
+            renderDurationSlide(cityObj)
           })
         }
       }
@@ -7030,16 +7118,221 @@ export default function DashboardPage() {
       // ─── DIVIDER 4: Issue with L4,L5 ───
       addDividerSlide('Issue with L4,L5')
 
+      // ═══════════════════════════════════════════════════════════════════
+      // NEW RENDERER: renderL3L4Slide
+      // Data source: GET /issues/l3l4 (l3l4Data / l3l4Brands)
+      //
+      // Counting:
+      //   L3/L4 count = distinct TVS respondents (dedup by response id)
+      //   L5 count    = TVS cell occurrences after comma-split (NOT dedup'd)
+      //   L5 %        = round(L5_tvs / L3_tvs * 100)
+      //
+      // Label format:
+      //   L3 : "${sub_issue} (${tvs_count})"
+      //   L4 : "${follow_up} (${tvs_count})"
+      //   L5 : '"${answer}" (${tvs_count})' when answer != ""
+      //        '(${tvs_count})'             when answer === ""
+      //
+      // Empty-L5 column rule: per-slide. Omit column if ALL answers on
+      // this slide are empty strings.
+
+      setPptProgress('Generating Issue with L4,L5 slides...')
+
+      const renderL3L4Slide = (issueItem: any) => {
+        const subIssues: any[] = (issueItem.sub_issues || []).filter(
+          (s: any) => s.sub_issue &&
+            (s.follow_ups || []).some((fu: any) => (fu.answers || []).length > 0)
+        )
+        if (subIssues.length === 0) return
+
+        const orderedL3L4Brands: string[] = l3l4Brands.length > 0
+          ? l3l4Brands
+          : getOrderedBrands(Array.from(
+              new Set(
+                subIssues.flatMap((s: any) =>
+                  (s.follow_ups || []).flatMap((fu: any) =>
+                    (fu.answers || []).flatMap((a: any) =>
+                      (a.brands || []).map((b: any) => b.name)
+                    )
+                  )
+                ).filter(Boolean)
+              ) as Set<string>
+            ))
+        if (orderedL3L4Brands.length === 0) return
+
+        interface L3L4L5Row {
+          sno: number
+          l3Label: string
+          l3Key: string
+          l4Label: string
+          l4Key: string
+          l5Label: string
+          answerIsEmpty: boolean
+          brandCounts: Record<string, number>
+          subBrands: { name: string; count: number }[]
+        }
+
+        const rows: L3L4L5Row[] = []
+        let sno = 0
+        const subIssueSnoMap = new Map<string, number>()
+
+        subIssues.forEach((sub: any) => {
+          const l3Key = String(sub.sub_issue || '').trim()
+          const l3TvsCount = Number(sub.tvs_count || 0)
+          if (!subIssueSnoMap.has(l3Key)) {
+            sno++
+            subIssueSnoMap.set(l3Key, sno)
+          }
+          const subSno = subIssueSnoMap.get(l3Key)!
+          const l3Label = `${l3Key} (${l3TvsCount})`
+
+          ;(sub.follow_ups || []).forEach((fu: any) => {
+            const l4Key = String(fu.follow_up || '').trim()
+            const l4TvsCount = Number(fu.tvs_count || 0)
+            const l4Label = `${l4Key} (${l4TvsCount})`
+
+            ;(fu.answers || []).forEach((ans: any) => {
+              const answerStr = String(ans.answer || '').trim()
+              const ansTvsCount = Number(ans.tvs_count || 0)
+              const answerIsEmpty = answerStr === ''
+              const l5Label = answerIsEmpty
+                ? ''
+                : `"${answerStr}" (${ansTvsCount})`
+
+              const brandCounts: Record<string, number> = {}
+              orderedL3L4Brands.forEach((b) => {
+                const found = (ans.brands || []).find((br: any) => br.name === b)
+                brandCounts[b] = Number(found?.count || 0)
+              })
+
+              rows.push({ sno: subSno, l3Label, l3Key, l4Label, l4Key, l5Label, answerIsEmpty, brandCounts, subBrands: sub.brands || [] })
+            })
+          })
+        })
+
+        if (rows.length === 0) return
+
+        const tvsTotalCount = Number(issueItem.tvs_total || 0)
+        const cleanTitle = (name: string): string => {
+          const s = String(name || '').trim()
+          return s.split(' ').map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
+        }
+        const mainTitle = `${cleanTitle(issueItem.issue_name)} (${tvsTotalCount})`
+
+        // Grand totals: sum L3 brand respondent counts across all sub-issues
+        const overallBrandGrandTotals: Record<string, number> = {}
+        orderedL3L4Brands.forEach((b) => { overallBrandGrandTotals[b] = 0 })
+        subIssues.forEach((sub: any) => {
+          ;(sub.brands || []).forEach((br: any) => {
+            if (br.name && overallBrandGrandTotals[br.name] !== undefined) {
+              overallBrandGrandTotals[br.name] += Number(br.count || 0)
+            }
+          })
+        })
+
+        const MAX_ROWS = 13
+        const chunks: L3L4L5Row[][] = []
+        for (let i = 0; i < rows.length; i += MAX_ROWS) chunks.push(rows.slice(i, i + MAX_ROWS))
+
+        chunks.forEach((chunk, chunkIdx) => {
+          const isLastChunk = chunkIdx === chunks.length - 1
+
+          // Per-slide empty-L5 detection
+          const showL5Col = chunk.some((r) => !r.answerIsEmpty)
+
+          const hOpts = { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 }
+          const headerRow: any[] = [
+            { text: 'S.No',          options: { ...hOpts } },
+            { text: '(Subtopic)L3',  options: { ...hOpts } },
+            { text: '(Follow-up)L4', options: { ...hOpts } },
+          ]
+          if (showL5Col) headerRow.push({ text: '(Answers)L5', options: { ...hOpts } })
+          orderedL3L4Brands.forEach((b) => headerRow.push({ text: b, options: getBrandHeaderOptions(b) }))
+
+          const l3l4Slide = pptx.addSlide()
+          l3l4Slide.background = { fill: 'FFFFFF' }
+          l3l4Slide.addText(mainTitle, { x: 0.3, y: 0.3, w: 7.0, h: 0.5, fontSize: 18, bold: true, color: '1E293B', fontFace: 'Arial' })
+          l3l4Slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.19, w: 1.0, h: 0.62 })
+          l3l4Slide.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
+
+          const pageRows: any[][] = [headerRow]
+          const fillGray = 'F8F9FA'
+
+          chunk.forEach((row, rowIdx) => {
+            const prevRow = rowIdx > 0 ? chunk[rowIdx - 1] : null
+            const isNewL3 = !prevRow || prevRow.sno !== row.sno
+            const isNewL4 = isNewL3 || !prevRow || prevRow.l3Key !== row.l3Key || prevRow.l4Key !== row.l4Key
+            const cells: any[] = []
+
+            if (isNewL3) {
+              let span = 1
+              while (rowIdx + span < chunk.length && chunk[rowIdx + span].sno === row.sno) span++
+              cells.push({ text: String(row.sno), options: { rowspan: span, bold: true, align: 'center', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray } })
+              cells.push({ text: row.l3Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray, wrap: true } })
+            }
+
+            if (isNewL4) {
+              let span = 1
+              while (rowIdx + span < chunk.length && chunk[rowIdx + span].sno === row.sno && chunk[rowIdx + span].l4Key === row.l4Key) span++
+              cells.push({ text: row.l4Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray, wrap: true } })
+            }
+
+            if (showL5Col) {
+              cells.push({ text: row.l5Label, options: { align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', wrap: true } })
+            }
+
+            orderedL3L4Brands.forEach((b) => {
+              const cnt = row.brandCounts[b] || 0
+              const l3BrandTotal = (row.subBrands.find((br: any) => br.name === b)?.count) || 0
+              const pct = l3BrandTotal > 0 ? Math.round((cnt / l3BrandTotal) * 100) : 0
+              cells.push({ text: cnt === 0 ? '0' : `${cnt} (${pct}%)`, options: { align: 'right', valign: 'middle', fontSize: 7.5, fontFace: 'Arial' } })
+            })
+
+            pageRows.push(cells)
+          })
+
+          if (isLastChunk) {
+            const grandRow: any[] = [
+              { text: '', options: { fill: 'ECEFF1' } },
+              { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7.5 } },
+              { text: '', options: { fill: 'ECEFF1' } },
+            ]
+            if (showL5Col) grandRow.push({ text: '', options: { fill: 'ECEFF1' } })
+            orderedL3L4Brands.forEach((b) => {
+              grandRow.push({ text: String(overallBrandGrandTotals[b] || 0), options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7.5 } })
+            })
+            pageRows.push(grandRow)
+          }
+
+          l3l4Slide.addTable(pageRows, {
+            x: 0.3, y: 0.95, w: 9.4,
+            border: { type: 'solid', color: '000000', size: 1 },
+            fontSize: 7.5, fontFace: 'Arial',
+            rowH: pageRows.map(() => 0.22),
+          })
+        })
+      }
+
+      // ─── Render L3/L4 slides from NEW endpoint data ───
+      if (l3l4Data && l3l4Data.length > 0) {
+        l3l4Data.forEach((issueItem: any) => {
+          renderL3L4Slide(issueItem)
+        })
+      } else {
+        // Fallback: placeholder slide if no l3l4 data
+        const l3l4EmptySlide = pptx.addSlide()
+        l3l4EmptySlide.background = { fill: 'FFFFFF' }
+        l3l4EmptySlide.addText('No L3/L4 data available for the selected filters.', {
+          x: 0.3, y: 2.5, w: 9.4, h: 0.5, fontSize: 14, color: '999999', align: 'center',
+        })
+      }
+
+      // ── OLD Follow-up Questions code (commented out — re-enable by removing /* */ if needed) ──
+      /*
       // ─── Follow-up Questions Slides ──────────────────────────────
       setPptProgress('Generating Follow-up Questions summary slide...')
-      // ─── Build rank map from Overall "Area of Betterments" (TVS only) ───
 
-      // ─── Fully dynamic brand ordering ───
-      // Prefer brands that actually appear in the follow-up data first;
-      // fall back to `issueBrands`, then to `orderedNpsBrands`.
       const fuBrandSet = new Set<string>()
-
-      // 1. Brands present in follow-up answers across all issues
       issues.forEach((issueItem: any) => {
         (issueItem.sub_issues || []).forEach((sub: any) => {
           if (!sub.has_follow_ups || !sub.follow_ups) return
@@ -7052,23 +7345,10 @@ export default function DashboardPage() {
           })
         })
       })
-
-      // 2. Also include any brands from issueBrands
-      issueBrands.forEach((b: string) => {
-        if (b && b !== 'Blank') fuBrandSet.add(b)
-      })
-
-      // 3. Reuse the shared ordered-brand helper (TVS first, then others)
+      issueBrands.forEach((b: string) => { if (b && b !== 'Blank') fuBrandSet.add(b) })
       let orderedFuBrands = getOrderedBrands(Array.from(fuBrandSet))
+      if (orderedFuBrands.length === 0) orderedFuBrands = [...orderedNpsBrands]
 
-      // 4. If nothing found, fall back to NPS brands (which are also dynamic)
-      if (orderedFuBrands.length === 0) {
-        orderedFuBrands = [...orderedNpsBrands]
-      }
-
-      // Title Case formatting helper for Main Issue Titles
-
-      // Build the header row (6 columns)
       const fuHeaderRow: any[] = [
         { text: 'S.No', options: { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 } },
         { text: '(Subtopic)L3', options: { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 } },
@@ -7088,264 +7368,114 @@ export default function DashboardPage() {
       }
 
       let generatedAnySlide = false
-      // ─── Compute total per issue and sort descending ───
       const issuesWithTotals = issues
         .map((issueItem: any) => {
           const validSubIssues = (issueItem.sub_issues || []).filter((sub: any) => {
             if (!sub.has_follow_ups || !sub.follow_ups) return false
             return sub.follow_ups.some((fu: any) => fu.answers && fu.answers.length > 0)
           })
-
           let total = 0
           validSubIssues.forEach((sub: any) => {
             sub.brands?.forEach((br: any) => {
-              if (br.name && br.name !== 'Blank') {
-                total += Number(br.count || 0)
-              }
+              if (br.name && br.name !== 'Blank') total += Number(br.count || 0)
             })
           })
-
-          return {
-            issueItem,
-            total,
-            rank: getBettermentRank(issueItem.issue_name),
-          }
+          return { issueItem, total, rank: getBettermentRank(issueItem.issue_name) }
         })
-        .sort((a, b) => {
-          if (a.rank !== b.rank) return a.rank - b.rank
-          return b.total - a.total
-        })
+        .sort((a, b) => { if (a.rank !== b.rank) return a.rank - b.rank; return b.total - a.total })
 
       issuesWithTotals.forEach(({ issueItem: issue }: { issueItem: any }) => {
         const issueKey = normalizeIssueKeyForAnswers(issue.issue_name)
         if (ANSWER_WISE_CONFIG[issueKey]) return
-        // Find valid sub-issues that actually contain answers
         const validSubIssues = (issue.sub_issues || []).filter((sub: any) => {
           if (!sub.has_follow_ups || !sub.follow_ups) return false
           return sub.follow_ups.some((fu: any) => fu.answers && fu.answers.length > 0)
         })
-
         if (validSubIssues.length === 0) return
-
-        // Sum the TVS count for the Main Issue
         let issueTvsCount = 0
         validSubIssues.forEach((sub: any) => {
           sub.brands?.forEach((br: any) => {
-            if (br.name?.toUpperCase().startsWith("TVS")) {
-              issueTvsCount += br.count || 0
-            }
+            if (br.name?.toUpperCase().startsWith("TVS")) issueTvsCount += br.count || 0
           })
         })
-
-        // Gather all raw rows for this main issue
         const rawRows: RawDataRow[] = []
-
         validSubIssues.forEach((sub: any) => {
           let subTvsCount = 0
           sub.brands?.forEach((br: any) => {
-            if (br.name?.toUpperCase().startsWith("TVS")) {
-              subTvsCount += br.count || 0
-            }
+            if (br.name?.toUpperCase().startsWith("TVS")) subTvsCount += br.count || 0
           })
           const subText = `${sub.sub_issue} (${subTvsCount})`
-
           sub.follow_ups.forEach((fu: any) => {
             if (!fu.answers || fu.answers.length === 0) return
-
-            // Calculate TVS count for this follow-up question
             let fuTvsCount = 0
             fu.answers.forEach((ans: any) => {
               ans.brands?.forEach((br: any) => {
-                if (br.name?.toUpperCase().startsWith("TVS")) {
-                  fuTvsCount += br.count || 0
-                }
+                if (br.name?.toUpperCase().startsWith("TVS")) fuTvsCount += br.count || 0
               })
             })
             const followUpText = fu.follow_up ? `${fu.follow_up} (${fuTvsCount})` : ''
-
             fu.answers.forEach((ans: any) => {
-              const displayAnswer = ans.answer.startsWith('"') && ans.answer.endsWith('"')
-                ? ans.answer
-                : `"${ans.answer}"`
-
-              // Calculate TVS count for this specific answer
+              const displayAnswer = ans.answer.startsWith('"') && ans.answer.endsWith('"') ? ans.answer : `"${ans.answer}"`
               let ansTvsCount = 0
               ans.brands?.forEach((br: any) => {
-                if (br.name?.toUpperCase().startsWith("TVS")) {
-                  ansTvsCount += br.count || 0
-                }
+                if (br.name?.toUpperCase().startsWith("TVS")) ansTvsCount += br.count || 0
               })
               const ansTextWithCount = `${displayAnswer} (${ansTvsCount})`
-
               const vehicleCells = orderedFuBrands.map((b: string) => {
                 const cnt = ans.brands?.find((br: any) => br.name === b)?.count || 0
                 const subBrandTotal = sub.brands?.find((br: any) => br.name === b)?.count || 0
                 const pct = subBrandTotal > 0 ? Math.round((cnt / subBrandTotal) * 100) : 0
                 return { cnt, pct }
               })
-
-              rawRows.push({
-                subTopicText: subText,
-                followUpText: followUpText,
-                answerText: ansTextWithCount,
-                isSplit: !!ans.is_split,
-                vehicleCells
-              })
+              rawRows.push({ subTopicText: subText, followUpText, answerText: ansTextWithCount, isSplit: !!ans.is_split, vehicleCells })
             })
           })
         })
-
         if (rawRows.length === 0) return
-
-        // Split rawRows into chunks of max 14 rows
         const maxRowsPerSlide = 13
         const totalSlidesForIssue = Math.ceil(rawRows.length / maxRowsPerSlide)
-
-        // ─── Sub-topic numbering — assigned ONCE per unique sub-topic, across all slides ───
         const subTopicNumberMap = new Map<string, number>()
-        {
-          let counter = 0
-          let lastSubTopic = ''
+        { let counter = 0; let lastSubTopic = ''
           for (const r of rawRows) {
-            if (r.subTopicText !== lastSubTopic) {
-              counter++
-              subTopicNumberMap.set(r.subTopicText, counter)
-              lastSubTopic = r.subTopicText
-            }
+            if (r.subTopicText !== lastSubTopic) { counter++; subTopicNumberMap.set(r.subTopicText, counter); lastSubTopic = r.subTopicText }
           }
         }
-
         const formatMainIssueTitle = (name: string, count: number): string => {
           const cleaned = cleanIssueName(name)
-          const formatted = cleaned.split(' ').map(word => {
-            if (!word) return ''
-            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-          }).join(' ')
-          return `${formatted}`
+          return cleaned.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
         }
-
-
         for (let slideIdx = 0; slideIdx < totalSlidesForIssue; slideIdx++) {
           const chunk = rawRows.slice(slideIdx * maxRowsPerSlide, (slideIdx + 1) * maxRowsPerSlide)
-          const isLastSlideOfIssue = (slideIdx === totalSlidesForIssue - 1)
-
-          // Create the slide
+          const isLastSlideOfIssue = slideIdx === totalSlidesForIssue - 1
           const fuSlide = pptx.addSlide()
           fuSlide.background = { fill: 'FFFFFF' }
           generatedAnySlide = true
-
-          // Title formatting
           const formattedTitle = formatMainIssueTitle(issue.issue_name, issueTvsCount)
-          const displayTitle = totalSlidesForIssue > 1
-            ? `${formattedTitle} `
-            : formattedTitle
-
-          // Slide Title
-          fuSlide.addText(displayTitle, {
-            x: 0.3, y: 0.3, w: 6.0, h: 0.5,
-            fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
-          })
-
-
-          fuSlide.addImage({
-            path: '/assets/logo.png',
-            x: 8.72, y: 0.19, w: 1.0, h: 0.62,
-          })
-
-          // Divider Line
-          fuSlide.addShape(pptx.shapes.LINE, {
-            x: 0.3, y: 0.85, w: 9.4, h: 0.0,
-            line: { color: '3B82F6', width: 2 }
-          })
-
-          // Build table rows for this slide
+          const displayTitle = totalSlidesForIssue > 1 ? `${formattedTitle} ` : formattedTitle
+          fuSlide.addText(displayTitle, { x: 0.3, y: 0.3, w: 6.0, h: 0.5, fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial' })
+          fuSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.19, w: 1.0, h: 0.62 })
+          fuSlide.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
           const pageTableRows: any[][] = [fuHeaderRow]
-
           for (let i = 0; i < chunk.length; i++) {
-            const row = chunk[i]
-            const rowCells: any[] = []
-
+            const row = chunk[i]; const rowCells: any[] = []
             const isNewSubtopic = (i === 0) || (row.subTopicText !== chunk[i - 1].subTopicText)
             if (isNewSubtopic) {
               let span = 1
-              while (i + span < chunk.length && chunk[i + span].subTopicText === row.subTopicText) {
-                span++
-              }
-
+              while (i + span < chunk.length && chunk[i + span].subTopicText === row.subTopicText) span++
               const subTopicNumber = subTopicNumberMap.get(row.subTopicText) ?? 0
-
-              rowCells.push({
-                text: String(subTopicNumber),
-                options: {
-                  rowspan: span,
-                  valign: 'middle',
-                  align: 'center',
-                  bold: true,
-                  fontSize: 7.5,
-                  fill: 'F8F9FA'
-                }
-              })
-
-              rowCells.push({
-                text: row.subTopicText,
-                options: {
-                  rowspan: span,
-                  valign: 'middle',
-                  align: 'center',
-                  bold: true,
-                  fontSize: 7.5,
-                  fill: 'F8F9FA'
-                }
-              })
+              rowCells.push({ text: String(subTopicNumber), options: { rowspan: span, valign: 'middle', align: 'center', bold: true, fontSize: 7.5, fill: 'F8F9FA' } })
+              rowCells.push({ text: row.subTopicText, options: { rowspan: span, valign: 'middle', align: 'center', bold: true, fontSize: 7.5, fill: 'F8F9FA' } })
             }
-
-            const isNewFollowup = (i === 0) ||
-              (row.subTopicText !== chunk[i - 1].subTopicText) ||
-              (row.followUpText !== chunk[i - 1].followUpText)
+            const isNewFollowup = (i === 0) || (row.subTopicText !== chunk[i - 1].subTopicText) || (row.followUpText !== chunk[i - 1].followUpText)
             if (isNewFollowup) {
               let span = 1
-              while (i + span < chunk.length &&
-                chunk[i + span].subTopicText === row.subTopicText &&
-                chunk[i + span].followUpText === row.followUpText) {
-                span++
-              }
-              rowCells.push({
-                text: row.followUpText,
-                options: {
-                  rowspan: span,
-                  valign: 'middle',
-                  align: 'center',
-                  bold: true,
-                  fontSize: 7.5,
-                  fill: 'F8F9FA'
-                }
-              })
+              while (i + span < chunk.length && chunk[i + span].subTopicText === row.subTopicText && chunk[i + span].followUpText === row.followUpText) span++
+              rowCells.push({ text: row.followUpText, options: { rowspan: span, valign: 'middle', align: 'center', bold: true, fontSize: 7.5, fill: 'F8F9FA' } })
             }
-
-            rowCells.push({
-              text: row.answerText,
-              options: {
-                align: 'left',
-                fontSize: 7.5,
-                fill: row.isSplit ? 'FFFFFF' : 'FFFFFF'
-              }
-            })
-
-            row.vehicleCells.forEach((vc) => {
-              rowCells.push({
-                text: `${vc.cnt} (${vc.pct}%)`,
-                options: {
-                  align: 'right',
-                  fontSize: 7.5,
-                  fill: row.isSplit ? 'FFFFFF' : 'FFFFFF'
-                }
-              })
-            })
-
+            rowCells.push({ text: row.answerText, options: { align: 'left', fontSize: 7.5 } })
+            row.vehicleCells.forEach((vc) => { rowCells.push({ text: `${vc.cnt} (${vc.pct}%)`, options: { align: 'right', fontSize: 7.5 } }) })
             pageTableRows.push(rowCells)
           }
-
-          // Append Grand Total row on the last slide of the issue
           if (isLastSlideOfIssue) {
             const fuGrandRow: any[] = [
               { text: '', options: { fill: 'ECEFF1' } },
@@ -7353,7 +7483,6 @@ export default function DashboardPage() {
               { text: '', options: { fill: 'ECEFF1' } },
               { text: '', options: { fill: 'ECEFF1' } }
             ]
-
             orderedFuBrands.forEach((b: string) => {
               let brandTotalAnswers = 0
               issue.sub_issues?.forEach((subObj: any) => {
@@ -7365,39 +7494,19 @@ export default function DashboardPage() {
               })
               fuGrandRow.push({ text: `${brandTotalAnswers} (100%)`, options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7.5 } })
             })
-
             pageTableRows.push(fuGrandRow)
           }
-
-          fuSlide.addTable(pageTableRows, {
-            x: 0.3,
-            y: 0.95,
-            w: 9.4,
-            border: { type: 'solid', color: '000000', size: 1 },
-            fontSize: 7.5,
-            fontFace: 'Arial',
-            rowH: pageTableRows.map(() => 0.22)
-          })
+          fuSlide.addTable(pageTableRows, { x: 0.3, y: 0.95, w: 9.4, border: { type: 'solid', color: '000000', size: 1 }, fontSize: 7.5, fontFace: 'Arial', rowH: pageTableRows.map(() => 0.22) })
         }
       })
-
       if (!generatedAnySlide) {
         const fuSlide = pptx.addSlide()
         fuSlide.background = { fill: 'FFFFFF' }
-        fuSlide.addText('Main Issue (Count)', {
-          x: 0.3, y: 0.3, w: 6.0, h: 0.5,
-          fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial'
-        })
-
-        fuSlide.addImage({
-          path: '/assets/logo.png',
-          x: 8.72, y: 0.19, w: 1.0, h: 0.62,
-        })
-        fuSlide.addShape(pptx.shapes.LINE, {
-          x: 0.3, y: 0.85, w: 9.4, h: 0.0,
-          line: { color: '3B82F6', width: 2 }
-        })
+        fuSlide.addText('Main Issue (Count)', { x: 0.3, y: 0.3, w: 6.0, h: 0.5, fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial' })
+        fuSlide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.19, w: 1.0, h: 0.62 })
+        fuSlide.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
       }
+      */
 
       // ─── DIVIDER: Feedback from the market ───
       addDividerSlide('Feedback from the market')
@@ -9237,24 +9346,22 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
-      {/* Service Tabs — pass a `initialTab` prop to ServiceDashboardTab */}
-      {activeTabKey === 'service-frequency' && (
-        <ServiceDashboardTab key="svc-0" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={0} />
-      )}
-      {activeTabKey === 'service-nps' && (
-        <ServiceDashboardTab key="svc-1" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={1} />
-      )}
-      {activeTabKey === 'service-benefits' && (
-        <ServiceDashboardTab key="svc-2" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={2} />
-      )}
-      {activeTabKey === 'service-satisfaction' && (
-        <ServiceDashboardTab key="svc-3" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={3} />
-      )}
-      {activeTabKey === 'service-cps' && (
-        <ServiceDashboardTab key="svc-4" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={4} />
-      )}
-      {activeTabKey === 'service-market-feedback' && (
-        <ServiceDashboardTab key="svc-5" filters={filters} onDownloadPPT={handleDownloadServicePPT} pptGenerating={pptGenerating} initialTab={5} />
+      {/* Service Tabs — single stable component instance to keep memory state and prevent unnecessary re-fetching */}
+      {isServiceActive && (
+        <ServiceDashboardTab
+          key="service-dashboard-tab"
+          filters={filters}
+          onDownloadPPT={handleDownloadServicePPT}
+          pptGenerating={pptGenerating}
+          initialTab={
+            activeTabKey === 'service-frequency' ? 0 :
+              activeTabKey === 'service-nps' ? 1 :
+                activeTabKey === 'service-benefits' ? 2 :
+                  activeTabKey === 'service-satisfaction' ? 3 :
+                    activeTabKey === 'service-cps' ? 4 :
+                      activeTabKey === 'service-market-feedback' ? 5 : 0
+          }
+        />
       )}
 
       {/* PPT progress alert

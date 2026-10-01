@@ -129,6 +129,7 @@ export const issuesApi = {
   analysis: (params?: object) => api.get('/issues/analysis', { params }),
   top: (params?: object) => api.get('/issues/top', { params }),
   trend: (params?: object) => api.get('/issues/trend', { params }),
+  l3l4: (params?: object) => api.get('/issues/l3l4', { params }),
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
