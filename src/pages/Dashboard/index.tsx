@@ -4380,7 +4380,7 @@ export default function DashboardPage() {
         'low speed': { mode: 'single', hideSubIssue: true },
         'throttle/accelerator': { mode: 'single', hideSubIssue: true },
         'low mileage': { mode: 'single', hideSubIssue: true },
-        'roof top (soft top)': { mode: 'single' },
+        'roof top (soft top)': { mode: 'single', hideSubIssue: true },
         'faster': { mode: 'single', hideSubIssue: true },
         'chain': { mode: 'single', hideSubIssue: true },
         'chain case': { mode: 'single', hideSubIssue: true },
@@ -4393,8 +4393,10 @@ export default function DashboardPage() {
         'wiper problem': { mode: 'merge', hideSubIssue: true },
 
         // Per-column — keep Sub-Complaint + Answer
-        'battery': { mode: 'per-col' },
-        'running off': { mode: 'per-col' },
+        // 'battery': { mode: 'per-col' },
+        //'running off': { mode: 'per-col' },
+        'part not available': { mode: 'per-col', hideSubIssue: true },
+
       }
 
       const renderAnswerWiseSlide = (
@@ -7314,17 +7316,23 @@ export default function DashboardPage() {
       }
 
       // ─── Render L3/L4 slides from NEW endpoint data ───
+      // ─── Render L3/L4 slides — ordered to match Betterments Next Level ───
       if (l3l4Data && l3l4Data.length > 0) {
-        l3l4Data.forEach((issueItem: any) => {
+        // Sort by the SAME rule used by Betterments Next Level:
+        //   1) betterment rank from TVS "Area of Betterments" chart
+        //   2) tiebreak: total DESC
+        const sortedL3L4 = [...l3l4Data].sort((a: any, b: any) => {
+          const rankA = getBettermentRank(a.issue_name)
+          const rankB = getBettermentRank(b.issue_name)
+          if (rankA !== rankB) return rankA - rankB
+          return Number(b.tvs_total || 0) - Number(a.tvs_total || 0)
+        })
+
+        sortedL3L4.forEach((issueItem: any) => {
           renderL3L4Slide(issueItem)
         })
       } else {
-        // Fallback: placeholder slide if no l3l4 data
-        const l3l4EmptySlide = pptx.addSlide()
-        l3l4EmptySlide.background = { fill: 'FFFFFF' }
-        l3l4EmptySlide.addText('No L3/L4 data available for the selected filters.', {
-          x: 0.3, y: 2.5, w: 9.4, h: 0.5, fontSize: 14, color: '999999', align: 'center',
-        })
+        // placeholder
       }
 
       // ── OLD Follow-up Questions code (commented out — re-enable by removing /* */ if needed) ──
