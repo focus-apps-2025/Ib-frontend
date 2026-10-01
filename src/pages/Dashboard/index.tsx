@@ -7148,16 +7148,16 @@ export default function DashboardPage() {
         const orderedL3L4Brands: string[] = l3l4Brands.length > 0
           ? l3l4Brands
           : getOrderedBrands(Array.from(
-              new Set(
-                subIssues.flatMap((s: any) =>
-                  (s.follow_ups || []).flatMap((fu: any) =>
-                    (fu.answers || []).flatMap((a: any) =>
-                      (a.brands || []).map((b: any) => b.name)
-                    )
+            new Set(
+              subIssues.flatMap((s: any) =>
+                (s.follow_ups || []).flatMap((fu: any) =>
+                  (fu.answers || []).flatMap((a: any) =>
+                    (a.brands || []).map((b: any) => b.name)
                   )
-                ).filter(Boolean)
-              ) as Set<string>
-            ))
+                )
+              ).filter(Boolean)
+            ) as Set<string>
+          ))
         if (orderedL3L4Brands.length === 0) return
 
         interface L3L4L5Row {
@@ -7186,28 +7186,28 @@ export default function DashboardPage() {
           const subSno = subIssueSnoMap.get(l3Key)!
           const l3Label = `${l3Key} (${l3TvsCount})`
 
-          ;(sub.follow_ups || []).forEach((fu: any) => {
-            const l4Key = String(fu.follow_up || '').trim()
-            const l4TvsCount = Number(fu.tvs_count || 0)
-            const l4Label = `${l4Key} (${l4TvsCount})`
+            ; (sub.follow_ups || []).forEach((fu: any) => {
+              const l4Key = String(fu.follow_up || '').trim()
+              const l4TvsCount = Number(fu.tvs_count || 0)
+              const l4Label = `${l4Key} (${l4TvsCount})`
 
-            ;(fu.answers || []).forEach((ans: any) => {
-              const answerStr = String(ans.answer || '').trim()
-              const ansTvsCount = Number(ans.tvs_count || 0)
-              const answerIsEmpty = answerStr === ''
-              const l5Label = answerIsEmpty
-                ? ''
-                : `"${answerStr}" (${ansTvsCount})`
+                ; (fu.answers || []).forEach((ans: any) => {
+                  const answerStr = String(ans.answer || '').trim()
+                  const ansTvsCount = Number(ans.tvs_count || 0)
+                  const answerIsEmpty = answerStr === ''
+                  const l5Label = answerIsEmpty
+                    ? ''
+                    : `"${answerStr}" (${ansTvsCount})`
 
-              const brandCounts: Record<string, number> = {}
-              orderedL3L4Brands.forEach((b) => {
-                const found = (ans.brands || []).find((br: any) => br.name === b)
-                brandCounts[b] = Number(found?.count || 0)
-              })
+                  const brandCounts: Record<string, number> = {}
+                  orderedL3L4Brands.forEach((b) => {
+                    const found = (ans.brands || []).find((br: any) => br.name === b)
+                    brandCounts[b] = Number(found?.count || 0)
+                  })
 
-              rows.push({ sno: subSno, l3Label, l3Key, l4Label, l4Key, l5Label, answerIsEmpty, brandCounts, subBrands: sub.brands || [] })
+                  rows.push({ sno: subSno, l3Label, l3Key, l4Label, l4Key, l5Label, answerIsEmpty, brandCounts, subBrands: sub.brands || [] })
+                })
             })
-          })
         })
 
         if (rows.length === 0) return
@@ -7223,7 +7223,7 @@ export default function DashboardPage() {
         const overallBrandGrandTotals: Record<string, number> = {}
         orderedL3L4Brands.forEach((b) => { overallBrandGrandTotals[b] = 0 })
         subIssues.forEach((sub: any) => {
-          ;(sub.brands || []).forEach((br: any) => {
+          ; (sub.brands || []).forEach((br: any) => {
             if (br.name && overallBrandGrandTotals[br.name] !== undefined) {
               overallBrandGrandTotals[br.name] += Number(br.count || 0)
             }
@@ -7242,8 +7242,8 @@ export default function DashboardPage() {
 
           const hOpts = { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 }
           const headerRow: any[] = [
-            { text: 'S.No',          options: { ...hOpts } },
-            { text: '(Subtopic)L3',  options: { ...hOpts } },
+            { text: 'S.No', options: { ...hOpts } },
+            { text: '(Subtopic)L3', options: { ...hOpts } },
             { text: '(Follow-up)L4', options: { ...hOpts } },
           ]
           if (showL5Col) headerRow.push({ text: '(Answers)L5', options: { ...hOpts } })
@@ -8103,33 +8103,50 @@ export default function DashboardPage() {
           brand, nps: 0, promoters: 0, passives: 0, detractors: 0,
         }
 
-      // ── Duration-based NPS ──
+      // ── Duration-based NPS — aggregated EXACTLY like the Overall duration slide ──
+      // Sums raw yes/maybe/no counts across all cities per (duration, brand),
+      // then computes NPS = round(yes/base*100) − round(no/base*100).
       const aggregateDurationNps = (): Record<string, Record<string, number>> => {
         const map: Record<string, Record<string, number>> = {}
 
+        // 1) sum raw counts per duration per brand
+        const rawCounts: Record<string, Record<string, { yes: number; maybe: number; no: number }>> = {}
+
         nps?.city_duration_segmentation?.forEach((cityObj: any) => {
-          cityObj.durations?.forEach((seg: any) => {
+          (cityObj.durations || []).forEach((seg: any) => {
             const durLabel = String(seg.duration || '').trim()
             if (!durLabel) return
 
-            comparisonBrands.forEach((brand: string) => {
-              const bd = seg.data?.find((d: any) => d.brand === brand)
-              if (!bd) return
-              const base = (bd.yes || 0) + (bd.maybe || 0) + (bd.no || 0)
-              if (base === 0) return
+              ; (seg.data || []).forEach((d: any) => {
+                const brand = d.brand
+                if (!brand) return
+                if (!comparisonBrands.includes(brand)) return
 
-              const npsVal =
-                Math.round((bd.yes / base) * 100) - Math.round((bd.no / base) * 100)
+                if (!rawCounts[durLabel]) rawCounts[durLabel] = {}
+                if (!rawCounts[durLabel][brand]) rawCounts[durLabel][brand] = { yes: 0, maybe: 0, no: 0 }
 
-              if (!map[brand]) map[brand] = {}
-              if (!map[brand][durLabel]) map[brand][durLabel] = npsVal
-              else map[brand][durLabel] = Math.round((map[brand][durLabel] + npsVal) / 2)
-            })
+                rawCounts[durLabel][brand].yes += Number(d.yes || 0)
+                rawCounts[durLabel][brand].maybe += Number(d.maybe || 0)
+                rawCounts[durLabel][brand].no += Number(d.no || 0)
+              })
+          })
+        })
+
+        // 2) convert to NPS the same way the Overall duration slide does
+        Object.entries(rawCounts).forEach(([durLabel, brandMap]) => {
+          Object.entries(brandMap).forEach(([brand, v]) => {
+            const base = v.yes + v.maybe + v.no
+            if (base === 0) return
+            const npsVal = Math.round((v.yes / base) * 100) - Math.round((v.no / base) * 100)
+
+            if (!map[brand]) map[brand] = {}
+            map[brand][durLabel] = npsVal
           })
         })
 
         return map
       }
+
 
       const durationNpsMap = aggregateDurationNps()
 
