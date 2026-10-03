@@ -392,8 +392,8 @@ export default function DashboardPage() {
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
 
         //Hero
-        'Hero': '124712',
-        'Hero Zoom 125': '124712',
+        'Hero': '#00B050',
+        'Hero Zoom 125': '#00B050',
       }
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
         'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
@@ -402,7 +402,7 @@ export default function DashboardPage() {
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#124712', 'Hero zoom': '#124712'
+        'Hero': '#00B050', 'Hero zoom': '#00B050'
       }
 
       const hashBrand = (str: string): number => {
@@ -450,7 +450,7 @@ export default function DashboardPage() {
         if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '124712'
+        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -471,7 +471,7 @@ export default function DashboardPage() {
         if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '#124712'
+        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
@@ -3907,7 +3907,7 @@ export default function DashboardPage() {
         //Haojue
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
         //Hero
-        'Hero': '#124712', 'Hero zoom': '#124712'
+        'Hero': '#00B050', 'Hero zoom': '#00B050'
       }
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
@@ -3917,7 +3917,7 @@ export default function DashboardPage() {
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#124712', 'Hero zoom': '#124712'
+        'Hero': '#00B050', 'Hero zoom': '#00B050'
 
       }
 
@@ -3960,7 +3960,7 @@ export default function DashboardPage() {
         if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '#124712'
+        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -3980,7 +3980,7 @@ export default function DashboardPage() {
         if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'FCE6C2'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '#124712'
+        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
 
 
 
