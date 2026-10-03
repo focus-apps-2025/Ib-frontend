@@ -45,6 +45,7 @@ const BRAND_COLORS = [
   '#F97316',
   '#10B981',
   '#8B5CF6',
+  '#124712',
 ]
 const SPECIFIC_BRAND_COLORS: Record<string, string> = {
   // TVS
@@ -71,7 +72,11 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
   'Suzuki': '#2A9D8F',
 
   'Haojue': '#B38901',
-  'Haojue 125': '#B38901'
+  'Haojue 125': '#B38901',
+
+  //Hero
+  'Hero': '#124712',
+  'Hero Zoom 125': '#124712',
 }
 const FALLBACK_BRAND_COLORS = [
   '#00B4D8', '#7C3AED', '#FF5A00', '#1E3A8A', '#2A9D8F',
@@ -99,6 +104,7 @@ const getBrandColor = (brand: string, index: number): string => {
   if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
   if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
   if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
+  if (lower.includes('hero') || lower.includes('hero zoom')) return '#124712'
   // Deterministic hash so the same unknown brand always gets the same color
   // (don't use `index` here — index changes per chart and breaks consistency)
   return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]
