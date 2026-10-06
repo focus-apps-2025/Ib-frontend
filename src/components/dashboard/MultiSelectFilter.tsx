@@ -266,90 +266,90 @@ export default function MultiSelectFilter({
           (searchable ? [...visibleTvs, ...visibleOther] : options).map(renderOption)}
 
         {/* Nested mode: TVS + Other */}
-        {nestedBrandMode && (
-          <>
-            {visibleTvs.map(renderOption)}
+        {nestedBrandMode && [
+          ...visibleTvs.map(renderOption),
 
-            {otherOptions.length > 0 && (
-              <Box
-                key="other-header"
-                role="presentation"
-                // Only stop propagation on the wrapper. Do NOT preventDefault,
-                // otherwise clicks on children never register.
-                onMouseDown={(e) => {
-                  e.stopPropagation()
-                }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setOtherOpen((prev) => !prev)
-                }}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  px: 1.5,
-                  py: 1,
-                  cursor: 'pointer',
-                  borderTop: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'background.paper',
-                  position: 'sticky',
-                  top: searchable ? searchBoxHeight : 0,
-                  zIndex: 3,
-                  '&:hover': { bgcolor: 'action.hover' },
-                }}
-              >
+          ...(otherOptions.length > 0
+            ? [
                 <Box
+                  key="other-header"
+                  role="presentation"
+                  // Only stop propagation on the wrapper. Do NOT preventDefault,
+                  // otherwise clicks on children never register.
                   onMouseDown={(e) => {
-                    // The master checkbox should NOT toggle expand/collapse,
-                    // only select/deselect all "Other" brands.
-                    e.preventDefault()
                     e.stopPropagation()
                   }}
                   onClick={(e) => {
-                    e.preventDefault()
                     e.stopPropagation()
-                    toggleAllOther()
+                    setOtherOpen((prev) => !prev)
                   }}
                   sx={{
-                    width: 18,
-                    height: 18,
-                    flexShrink: 0,
-                    mr: 1,
-                    borderRadius: '3px',
-                    border: '2px solid',
-                    borderColor: allOtherSelected || someOtherSelected ? '#6C63FF' : 'rgba(0,0,0,0.4)',
-                    background: allOtherSelected || someOtherSelected ? '#6C63FF' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    px: 1.5,
+                    py: 1,
                     cursor: 'pointer',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: 'background.paper',
+                    position: 'sticky',
+                    top: searchable ? searchBoxHeight : 0,
+                    zIndex: 3,
+                    '&:hover': { bgcolor: 'action.hover' },
                   }}
                 >
-                  {allOtherSelected && (
-                    <svg viewBox="0 0 24 24" width="14" height="14" style={{ display: 'block', fill: '#fff' }}>
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg>
-                  )}
-                  {!allOtherSelected && someOtherSelected && (
-                    <Box sx={{ width: 10, height: 2, background: '#fff', borderRadius: 1 }} />
-                  )}
-                </Box>
-                <Box sx={{ flex: 1, fontWeight: 600 }}>
-                  Other
                   <Box
-                    component="span"
-                    sx={{ ml: 1, color: 'text.secondary', fontWeight: 400, fontSize: '0.75rem' }}
+                    onMouseDown={(e) => {
+                      // The master checkbox should NOT toggle expand/collapse,
+                      // only select/deselect all "Other" brands.
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      toggleAllOther()
+                    }}
+                    sx={{
+                      width: 18,
+                      height: 18,
+                      flexShrink: 0,
+                      mr: 1,
+                      borderRadius: '3px',
+                      border: '2px solid',
+                      borderColor: allOtherSelected || someOtherSelected ? '#6C63FF' : 'rgba(0,0,0,0.4)',
+                      background: allOtherSelected || someOtherSelected ? '#6C63FF' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
                   >
-                    {selectedOtherIds.length}/{otherIds.length} selected
+                    {allOtherSelected && (
+                      <svg viewBox="0 0 24 24" width="14" height="14" style={{ display: 'block', fill: '#fff' }}>
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg>
+                    )}
+                    {!allOtherSelected && someOtherSelected && (
+                      <Box sx={{ width: 10, height: 2, background: '#fff', borderRadius: 1 }} />
+                    )}
                   </Box>
-                </Box>
-                {otherExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-              </Box>
-            )}
+                  <Box sx={{ flex: 1, fontWeight: 600 }}>
+                    Other
+                    <Box
+                      component="span"
+                      sx={{ ml: 1, color: 'text.secondary', fontWeight: 400, fontSize: '0.75rem' }}
+                    >
+                      {selectedOtherIds.length}/{otherIds.length} selected
+                    </Box>
+                  </Box>
+                  {otherExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+                </Box>,
+              ]
+            : []),
 
-            {otherExpanded && visibleOther.map(renderOption)}
-          </>
-        )}
+          ...(otherExpanded ? visibleOther.map(renderOption) : []),
+        ]}
       </Select>
     </FormControl>
   )

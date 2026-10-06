@@ -596,18 +596,37 @@ export default function UploadPage() {
                       {uploadHistory.map((u, idx) => (
                         <TableRow key={u.id} sx={{ '&:hover': { background: c.tableHover } }}>
                           <TableCell>{idx + 1}</TableCell>
-                          <TableCell sx={{ maxWidth: 150 }}>
+                          <TableCell sx={{ maxWidth: 180, whiteSpace: 'normal', wordBreak: 'break-word' }}>
                             <Tooltip title={u.file_name}>
-                              <Typography variant="caption" sx={{ color: c.textPrimary }} noWrap>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  color: c.textPrimary,
+                                  display: 'block',
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word',
+                                  lineHeight: 1.3,
+                                }}
+                              >
                                 {u.file_name}
                               </Typography>
                             </Tooltip>
                           </TableCell>
                           {user?.role === 'super_admin' && (
-                            <TableCell sx={{ maxWidth: 140 }}>
+                            <TableCell sx={{ maxWidth: 160, whiteSpace: 'normal', wordBreak: 'break-word' }}>
                               <Tooltip title={u.assigned_admin_email || historyAdminUsername(u) || historyAdminName(u)}>
-                                <span>
-                                  <Typography variant="caption" sx={{ color: c.textPrimary, display: 'block', fontWeight: 600 }} noWrap>
+                                <Box>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      color: c.textPrimary,
+                                      display: 'block',
+                                      fontWeight: 600,
+                                      whiteSpace: 'normal',
+                                      wordBreak: 'break-word',
+                                      lineHeight: 1.3,
+                                    }}
+                                  >
                                     {historyAdminName(u)}
                                   </Typography>
                                   {historyAdminUsername(u) && (
@@ -615,7 +634,7 @@ export default function UploadPage() {
                                       {historyAdminUsername(u)}
                                     </Typography>
                                   )}
-                                </span>
+                                </Box>
                               </Tooltip>
                             </TableCell>
                           )}

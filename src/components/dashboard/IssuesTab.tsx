@@ -54,6 +54,10 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
   //Hero
   'Hero': '#00B050',
   'Hero Zoom 125': '#00B050',
+
+  //Power
+  'Power ': '#723654', 'Power K': '#723654',
+
 }
 
 const FALLBACK_BRAND_COLORS = [
@@ -83,6 +87,7 @@ const getBrandColor = (brandName: string, index: number): string => {
   if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
   if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
   if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+  if (lower.includes('power') || lower.includes('Power K')) return '#723654'
 
   // Deterministic hash so a brand always gets the same color everywhere
   return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]
@@ -296,7 +301,7 @@ export default function IssuesTab({ filters }: { filters: FilterState }) {
                     <CartesianGrid strokeDasharray="3 3" stroke={c.chartGrid} />
                     <XAxis type="number" tick={{ fill: c.chartTick, fontSize: 11 }} />
                     <YAxis type="category" dataKey="issue_name" tick={{ fill: c.chartTick, fontSize: 10 }} width={100} tickFormatter={(value: string) => cleanIssueName(value)} />
-                    <Tooltip contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8 }} labelStyle={{ color: c.textPrimary }} formatter={(value: number) => [value.toLocaleString(), 'Complaints']} labelFormatter={(label: string) => cleanIssueName(label)} />
+                    <Tooltip contentStyle={{ background: c.chartTooltipBg, border: `1px solid ${c.borderStrong}`, borderRadius: 8, }} labelStyle={{ color: c.chartTick, fontWeight: 600 }} itemStyle={{ color: c.chartTick, fontWeight: 600 }} formatter={(value: number) => [value.toLocaleString(), 'Complaints']} labelFormatter={(label: string) => cleanIssueName(label)} />
                     <Bar dataKey="total_complaints" radius={[0, 4, 4, 0]}>
                       {topIssues.map((_, i) => (
                         <Cell key={i} fill={ISSUE_COLORS[i % ISSUE_COLORS.length]} />

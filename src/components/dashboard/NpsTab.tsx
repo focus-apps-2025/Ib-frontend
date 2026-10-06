@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import {
   Box, Card, CardContent, Typography, CircularProgress, Alert, Grid,
-  Select, MenuItem, FormControl, InputLabel,
+  Select, FormControl, InputLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 } from '@mui/material'
 import {
@@ -116,6 +116,17 @@ export default function NpsTab() {
 
   if (!data) return null
 
+  // Native <select> styling. The browser draws the option list itself, so it
+  // is always placed correctly (no dependency on MUI Popover positioning,
+  // which breaks when an ancestor uses CSS zoom/transform).
+  const nativeSelectSx = {
+    color: c.textPrimary,
+    '& option': {
+      backgroundColor: c.bgPaper,
+      color: c.textPrimary,
+    },
+  }
+
   const renderPieLabel = (props: any) => {
     const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -129,7 +140,7 @@ export default function NpsTab() {
     );
   };
 
-  const currentCityData = data.city_duration_segmentation?.find((c: any) => c.city === selectedDurationCity)
+  const currentCityData = data.city_duration_segmentation?.find((city: any) => city.city === selectedDurationCity)
   const selectedDurationData = currentCityData?.durations?.find((d: any) => d.duration === selectedDuration)?.data || []
 
   return (
@@ -141,7 +152,7 @@ export default function NpsTab() {
             Will you recommend your vehicle? (Brand-wise)
           </Typography>
           <Grid container spacing={3}>
-            <Grid size={{xs: 12, md: 3}}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: c.bgPaper, borderColor: c.border, borderRadius: 1, overflow: 'hidden' }}>
                 <Table size="small" sx={{ borderCollapse: 'collapse', '& .MuiTableCell-root': { border: `1px solid ${c.border}` } }}>
                   <TableHead sx={{ bgcolor: `${c.primary}10` }}>
@@ -161,7 +172,7 @@ export default function NpsTab() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Grid size={{xs: 12, md: 9}}>
+            <Grid size={{ xs: 12, md: 9 }}>
               <Grid container spacing={2}>
                 {data.recommend_vehicle_pie.map((item: any) => {
                   const pieData = [
@@ -169,7 +180,7 @@ export default function NpsTab() {
                     { name: 'No', value: item.no }
                   ]
                   return (
-                    <Grid size={{xs: 12, sm: 6, md: 4}} key={item.brand}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.brand}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <Typography variant="subtitle2" sx={{ color: c.textSecondary }}>{item.brand}</Typography>
                         <PieChart width={200} height={200}>
@@ -206,7 +217,7 @@ export default function NpsTab() {
             Likelihood to Recommend (Overall)
           </Typography>
           <Grid container spacing={3}>
-            <Grid size={{xs: 12, md: 3}}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: c.bgPaper, borderColor: c.border, borderRadius: 1, overflow: 'hidden' }}>
                 <Table size="small" sx={{ borderCollapse: 'collapse', '& .MuiTableCell-root': { border: `1px solid ${c.border}` } }}>
                   <TableHead sx={{ bgcolor: `${c.primary}10` }}>
@@ -226,12 +237,12 @@ export default function NpsTab() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Grid size={{xs: 12, md: 9}} sx={{ minWidth: 0 }}>
+            <Grid size={{ xs: 12, md: 9 }} sx={{ minWidth: 0 }}>
               <Grid container spacing={2}>
                 {data.recommend_category_bar.map((item: any) => {
                   const chartData = [item]
                   return (
-                    <Grid size={{xs: 12, sm: 6, md: 4}} key={item.brand}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.brand}>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', height: 250 }}>
                         <Typography variant="subtitle2" sx={{ color: c.textSecondary, mb: 1, textAlign: 'center' }}>{item.brand}</Typography>
                         <ResponsiveContainer width="99%" height="100%">
@@ -258,94 +269,268 @@ export default function NpsTab() {
       {/* 3. City-wise Grid and Chart */}
       <Card sx={{ bgcolor: c.bgPaper, border: `1px solid ${c.border}` }}>
         <CardContent>
-          <Typography variant="h6" sx={{ color: c.textPrimary, mb: 2, fontWeight: 600 }}>
-            City-wise Likelihood to Recommend
-          </Typography>
-          <Box className="ag-theme-alpine" sx={{ height: 300, width: '100%', '--ag-background-color': c.bgPaper, '--ag-header-background-color': `${c.primary}10`, '--ag-border-color': c.border, '--ag-header-foreground-color': c.textPrimary, '--ag-data-color': c.textSecondary, '& .ag-header-cell': { fontWeight: 600 }, mb: 4 }}>
-            <AgGridReact
-              rowData={data.city_grid}
-              columnDefs={cityColDefs}
-              defaultColDef={{ resizable: true, sortable: true, filter: true }}
-              suppressFieldDotNotation={true}
-            />
-          </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ color: c.textPrimary, fontWeight: 600 }}>
-              Overall City-wise Trend
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Select Brand</InputLabel>
-              <Select
-                value={selectedCityChartBrand}
-                label="Select Brand"
-                onChange={(e) => setSelectedCityChartBrand(e.target.value)}
+          {/* ── 3A: City-wise Grid with its own header bar ────────────── */}
+          <Paper
+            elevation={0}
+            sx={{
+              border: `1px solid ${c.border}`,
+              borderRadius: 2,
+              backgroundColor: c.bgPaper,
+              mb: 3,
+              '& > :first-of-type': {
+                borderTopLeftRadius: 8,
+                borderTopRightRadius: 8,
+              },
+            }}
+          >
+            {/* Header Bar */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 1.5,
+                px: 2,
+                py: 1.5,
+                backgroundColor: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                borderBottom: `1px solid ${c.border}`,
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ color: c.textPrimary, fontWeight: 700 }}>
+                City-wise Likelihood to Recommend
+              </Typography>
+            </Box>
+
+            {/* AG Grid */}
+            <Box
+              className="ag-theme-alpine"
+              sx={{
+                height: 320,
+                width: '100%',
+                minWidth: 0,
+                '--ag-background-color': c.bgPaper,
+                '--ag-header-background-color': `${c.primary}10`,
+                '--ag-border-color': c.border,
+                '--ag-header-foreground-color': c.textPrimary,
+                '--ag-data-color': c.textSecondary,
+                '& .ag-header-cell': { fontWeight: 600 },
+                '& .ag-root-wrapper': { border: 'none' },
+              }}
+            >
+              <AgGridReact
+                rowData={data.city_grid}
+                columnDefs={cityColDefs}
+                defaultColDef={{
+                  resizable: true,
+                  sortable: true,
+                  filter: true,
+                  flex: 1,
+                  minWidth: 90,
+                }}
+                suppressFieldDotNotation={true}
+                domLayout="normal"
+              />
+            </Box>
+          </Paper>
+
+          {/* ── 3B: Overall City-wise Trend ── */}
+          <Paper
+            elevation={0}
+            sx={{
+              border: `1px solid ${c.border}`,
+              borderRadius: 2,
+              backgroundColor: c.bgPaper,
+              '& > :first-of-type': {
+                borderTopLeftRadius: 8,
+                borderTopRightRadius: 8,
+              },
+            }}
+          >
+            {/* Header Bar */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 1.5,
+                px: 2,
+                py: 1.5,
+                backgroundColor: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                borderBottom: `1px solid ${c.border}`,
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ color: c.textPrimary, fontWeight: 700 }}>
+                Overall City-wise Trend
+              </Typography>
+
+              <FormControl
+                size="small"
+                sx={{ minWidth: 220, width: { xs: '100%', sm: 220 } }}
+                variant="outlined"
               >
-                <MenuItem value="All Brands">All Brands</MenuItem>
-                {data.brands?.map((b: string) => (
-                  <MenuItem key={b} value={b}>{b}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-          <Box sx={{ width: '100%', height: 400 }}>
-            <ResponsiveContainer width="99%" height={400}>
-              <BarChart data={cityChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={c.border} vertical={false} />
-                <XAxis dataKey="city" stroke={c.textSecondary} tick={{ fill: c.textSecondary }} angle={-45} textAnchor="end" />
-                <YAxis stroke={c.textSecondary} tick={{ fill: c.textSecondary }} />
-                <RechartsTooltip contentStyle={{ backgroundColor: c.bgPaper, borderColor: c.border, color: c.textPrimary }} />
-                <Legend verticalAlign="top" height={36} />
-                <Bar dataKey="yes" name="Yes (9-10)" fill={COLORS.Yes} />
-                <Bar dataKey="maybe" name="Maybe (7-8)" fill={COLORS.Maybe} />
-                <Bar dataKey="no" name="No (0-6)" fill={COLORS.No} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Box>
-        </CardContent>
-      </Card>
+                <InputLabel shrink htmlFor="city-brand-select">Select Brand</InputLabel>
+                <Select
+                  native
+                  value={selectedCityChartBrand}
+                  label="Select Brand"
+                  onChange={(e) => setSelectedCityChartBrand(e.target.value as string)}
+                  inputProps={{ id: 'city-brand-select' }}
+                  sx={nativeSelectSx}
+                >
+                  <option value="All Brands">All Brands</option>
+                  {data.brands?.map((b: string) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
 
-      {/* 4. Duration of Usage Segmentation */}
-      <Card sx={{ bgcolor: c.bgPaper, border: `1px solid ${c.border}` }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ color: c.textPrimary, fontWeight: 600 }}>
-              Duration of Usage Segmentation
-            </Typography>
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel>Select Duration</InputLabel>
-              <Select
-                value={selectedDuration}
-                label="Select Duration"
-                onChange={(e) => setSelectedDuration(e.target.value)}
-              >
-                {data.duration_segmentation?.map((d: any) => (
-                  <MenuItem key={d.duration} value={d.duration}>{d.duration}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          <Box sx={{ width: '100%', height: 400 }}>
-            {selectedDurationData.length > 0 ? (
-              <ResponsiveContainer width="99%" height={400}>
-                <BarChart data={selectedDurationData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            {/* Chart area */}
+            <Box
+              sx={{
+                width: '100%',
+                height: 400,
+                p: 2,
+                borderBottomLeftRadius: 8,
+                borderBottomRightRadius: 8,
+              }}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={cityChartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke={c.border} vertical={false} />
-                  <XAxis dataKey="brand" stroke={c.textSecondary} tick={{ fill: c.textSecondary }} angle={-45} textAnchor="end" />
+                  <XAxis
+                    dataKey="city"
+                    stroke={c.textSecondary}
+                    tick={{ fill: c.textSecondary }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={70}
+                  />
                   <YAxis stroke={c.textSecondary} tick={{ fill: c.textSecondary }} />
-                  <RechartsTooltip contentStyle={{ backgroundColor: c.bgPaper, borderColor: c.border, color: c.textPrimary }} />
+                  <RechartsTooltip
+                    contentStyle={{
+                      backgroundColor: c.bgPaper,
+                      borderColor: c.border,
+                      color: c.textPrimary,
+                    }}
+                  />
                   <Legend verticalAlign="top" height={36} />
                   <Bar dataKey="yes" name="Yes (9-10)" fill={COLORS.Yes} />
                   <Bar dataKey="maybe" name="Maybe (7-8)" fill={COLORS.Maybe} />
                   <Bar dataKey="no" name="No (0-6)" fill={COLORS.No} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
-              <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography color="textSecondary">No data available for this duration.</Typography>
-              </Box>
-            )}
-          </Box>
+            </Box>
+          </Paper>
+
+        </CardContent>
+      </Card>
+
+      {/* 4. Duration of Usage Segmentation */}
+      <Card sx={{ bgcolor: c.bgPaper, border: `1px solid ${c.border}` }}>
+        <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+          <Paper
+            elevation={0}
+            sx={{
+              border: `1px solid ${c.border}`,
+              borderRadius: 2,
+              backgroundColor: c.bgPaper,
+              '& > :first-of-type': {
+                borderTopLeftRadius: 8,
+                borderTopRightRadius: 8,
+              },
+            }}
+          >
+            {/* Header Bar */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 1.5,
+                px: 2,
+                py: 1.5,
+                backgroundColor: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                borderBottom: `1px solid ${c.border}`,
+              }}
+            >
+              <Typography variant="h6" sx={{ color: c.textPrimary, fontWeight: 600 }}>
+                Duration of Usage Segmentation
+              </Typography>
+
+              <FormControl
+                size="small"
+                sx={{ minWidth: 220, width: { xs: '100%', sm: 'auto' } }}
+              >
+                <InputLabel shrink htmlFor="duration-select">Select Duration</InputLabel>
+                <Select
+                  native
+                  value={selectedDuration}
+                  label="Select Duration"
+                  onChange={(e) => setSelectedDuration(e.target.value as string)}
+                  inputProps={{ id: 'duration-select' }}
+                  sx={nativeSelectSx}
+                >
+                  {data.duration_segmentation?.map((d: any) => (
+                    <option key={d.duration} value={d.duration}>{d.duration}</option>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Chart area */}
+            <Box
+              sx={{
+                width: '100%',
+                height: 400,
+                p: 2,
+                borderBottomLeftRadius: 8,
+                borderBottomRightRadius: 8,
+              }}
+            >
+              {selectedDurationData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={selectedDurationData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={c.border} vertical={false} />
+                    <XAxis
+                      dataKey="brand"
+                      stroke={c.textSecondary}
+                      tick={{ fill: c.textSecondary }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={70}
+                    />
+                    <YAxis stroke={c.textSecondary} tick={{ fill: c.textSecondary }} />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: c.bgPaper,
+                        borderColor: c.border,
+                        color: c.textPrimary,
+                      }}
+                    />
+                    <Legend verticalAlign="top" height={36} />
+                    <Bar dataKey="yes" name="Yes (9-10)" fill={COLORS.Yes} />
+                    <Bar dataKey="maybe" name="Maybe (7-8)" fill={COLORS.Maybe} />
+                    <Bar dataKey="no" name="No (0-6)" fill={COLORS.No} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="textSecondary">No data available for this duration.</Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
         </CardContent>
       </Card>
     </Box>

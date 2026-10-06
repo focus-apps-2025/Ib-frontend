@@ -77,6 +77,9 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
   //Hero
   'Hero': '#00B050',
   'Hero Zoom 125': '#00B050',
+
+  //Power
+  'Power ': '#723654', 'Power K': '#723654',
 }
 const FALLBACK_BRAND_COLORS = [
   '#00B4D8', '#7C3AED', '#FF5A00', '#1E3A8A', '#2A9D8F',
@@ -105,6 +108,7 @@ const getBrandColor = (brand: string, index: number): string => {
   if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
   if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
   if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+  if (lower.includes('power') || lower.includes('Power K')) return '#723654'
   // Deterministic hash so the same unknown brand always gets the same color
   // (don't use `index` here — index changes per chart and breaks consistency)
   return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]
@@ -993,30 +997,67 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           </Box>
 
           {/* Sub-segment selector */}
-          <Box sx={{ mb: 3, borderBottom: `1px solid ${c.border}` }}>
-            <Tabs
-              value={activeSegment}
-              onChange={(_, val) => setActiveSegment(val)}
-              textColor="primary"
-              indicatorColor="primary"
+          {/* Sub-segment selector — segmented pill control */}
+          {/* Sub-segment selector — responsive segmented pill control */}
+          <Box sx={{ mb: 3 }}>
+            <Paper
+              elevation={0}
               sx={{
-                minHeight: 40,
-                '& .MuiTab-root': {
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  fontSize: 13,
-                  minHeight: 40,
-                  px: 2.5,
-                }
+                display: 'flex',
+                flexWrap: 'wrap',              // ✅ wraps to next line on small screens
+                gap: 0.5,
+                p: 0.5,
+                width: { xs: '100%', sm: 'auto' }, // ✅ full width on mobile
+                borderRadius: 2.5,
+                border: `1px solid ${c.border}`,
+                backgroundColor: c.isDarkTheme ? 'rgba(255,255,255,0.03)' : '#F1F5F9',
               }}
             >
-              <Tab label="Overall Brand-wise Analysis" value="overall" />
-              <Tab label="Promoter-wise Analysis" value="promoter" />
-              <Tab label="Passive-wise Analysis" value="passive" />
-              <Tab label="Detractor-wise Analysis" value="detractor" />
-            </Tabs>
+              {[
+                { label: 'Overall', shortLabel: 'Overall', value: 'overall' },
+                { label: 'Promoter-wise Analysis', shortLabel: 'Promoter', value: 'promoter' },
+                { label: 'Passive-wise Analysis', shortLabel: 'Passive', value: 'passive' },
+                { label: 'Detractor-wise Analysis', shortLabel: 'Detractor', value: 'detractor' },
+              ].map((seg) => {
+                const isActive = activeSegment === seg.value
+                return (
+                  <Box
+                    key={seg.value}
+                    onClick={() => setActiveSegment(seg.value)}
+                    sx={{
+                      // ✅ 2 per row on mobile, auto on larger screens
+                      flex: { xs: '1 1 calc(50% - 4px)', sm: '0 0 auto' },
+                      textAlign: 'center',
+                      px: { xs: 1, sm: 2 },
+                      py: 0.85,
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      fontSize: { xs: 11.5, sm: 12.5 },
+                      fontWeight: isActive ? 700 : 600,
+                      color: isActive ? '#FFFFFF' : c.textSecondary,
+                      backgroundColor: isActive ? themeColor : 'transparent',
+                      boxShadow: isActive ? `0 2px 8px ${themeColor}40` : 'none',
+                      transition: 'all 0.2s ease',
+                      whiteSpace: 'nowrap',
+                      '&:hover': {
+                        backgroundColor: isActive ? themeColor : `${themeColor}15`,
+                        color: isActive ? '#FFFFFF' : themeColor,
+                      },
+                    }}
+                  >
+                    {/* Show short label on mobile, full label on desktop */}
+                    <Box component="span" sx={{ display: { xs: 'inline', sm: 'none' } }}>
+                      {seg.shortLabel}
+                    </Box>
+                    <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                      {seg.label}
+                    </Box>
+                  </Box>
+                )
+              })}
+            </Paper>
           </Box>
-
           {/* Benefits & Issues Side by Side Layout */}
           <Grid container spacing={3}>
             {/* Left Side: Top 10 Benefits */}

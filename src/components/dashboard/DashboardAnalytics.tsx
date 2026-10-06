@@ -50,6 +50,7 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
     'Suzuki Gixxer': '#2A9D8F', 'Suzuki': '#2A9D8F',
     'Haojue': '#B38901', 'Haojue 125': '#B38901',
     'Hero': '#00B050', 'Hero Zoom 125': '#00B050',
+    'Power ': '#723654', 'Power K': '#723654',
 }
 
 const BRAND_COLOR_PALETTE = [
@@ -82,6 +83,7 @@ const getBrandColor = (brand: string): string => {
     if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
     if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
     if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+    if (lower.includes('Power') || lower.includes('Power K')) return '#723654'
 
     return BRAND_COLOR_PALETTE[hashBrandName(clean.toUpperCase()) % BRAND_COLOR_PALETTE.length]
 }

@@ -39,6 +39,18 @@ import MarketFeedbackTab, { DEFAULT_TVS_TOP_ISSUES, getSortedFormattedKmBreakdow
 import MultiSelectFilter from '../../components/dashboard/MultiSelectFilter'
 
 import { getColumnHeader } from '../../utils/columnHeaders'
+import { ISSUE_COLUMN_RANGE_MAPPING } from '../../data/issueColumnRanges'
+import {
+  excelLetterToNum,
+  excelNumToLetter,
+  letterRange,
+  stripHtml,
+  isValidCell,
+  extractBracketContent,
+  removeBrackets,
+  splitAnswers,
+  EXCEL_HEADER_STYLE,
+} from '../../utils/excelHelpers'
 
 // ─── Month/Year Date Pickers ─────────────────────────────────────────────────
 import dayjs from 'dayjs'
@@ -49,6 +61,247 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker'
 // Allow parsing of the store's 'YYYY-MM' values (e.g. "2025-03") into dayjs.
 dayjs.extend(customParseFormat)
 const TOTAL_EXPECTED_COLUMNS = 449
+
+const PRODUCT_RAW_LETTERS = [
+  ...letterRange('B', 'BL').filter((l) => l !== 'AM'),
+  ...letterRange('DF', 'OJ'),
+]
+
+const SERVICE_RAW_LETTERS = [
+  ...letterRange('B', 'V'),
+  ...letterRange('BN', 'DE'),
+  ...letterRange('OK', 'QG'),
+]
+
+const PRODUCT_TGR_POSITIVE_LETTERS = letterRange('AU', 'BK')
+const SERVICE_TGR_POSITIVE_LETTERS = letterRange('OK', 'OW')
+const SERVICE_TGW_COMPLAINT_LETTERS = letterRange('OX', 'PL')
+
+const PRODUCT_TGR_REMARKS_COL = 'X'    // Product: 0-10 recommendation
+const SERVICE_TGR_REMARKS_COL = 'BS'   // Service: A2 rating scale
+
+const TGR_HEADERS = [
+  'Brand', 'City', 'Remarks', 'vin_no',
+  'complain',
+  'positive_points_for_sub_points',
+  'sub_complain',
+]
+
+const TGW_HEADERS = [
+  'Brand', 'City', 'Remarks', 'VIN No',
+  'Main Complaint',
+  'Main Complaint for (L1)',
+  'Main Complaint for Customer Answer (L2)',
+  'Category (L1)',
+  'Category (L1) FOR Answer(L2)',
+  'Customer Answer (L2)',
+  'Sub-Category (L3)',
+  'L6',
+]
+
+const buildRawSheet = (
+  responses: any[],
+  letters: string[],
+): XLSX.WorkSheet => {
+  const maxIdx = Math.max(...letters.map((L) => excelLetterToNum(L) - 1))
+  const headers = letters.map((col) => stripHtml(getColumnHeader(col)))
+  const dataRows: string[][] = []
+
+  for (const r of responses) {
+    const fullData = r.full_data || {}
+    const row = letters.map((col) => {
+      const val = fullData[col]
+      if (!isValidCell(val)) return ''
+      return String(val).trim()
+    })
+    const isBlank = row.every((c) => c === '')
+    if (!isBlank) {
+      dataRows.push(row)
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+
+  headers.forEach((_, colIdx) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+    if (!ws[addr]) ws[addr] = { t: 's', v: headers[colIdx] }
+    ws[addr].s = EXCEL_HEADER_STYLE
+  })
+
+  if (!ws['!rows']) ws['!rows'] = []
+  ws['!rows'][0] = { hpt: 75, hpx: 100 }
+
+  const colWidths = headers.map((header, colIdx) => {
+    let maxLen = header.length
+    for (let i = 0; i < dataRows.length; i++) {
+      const v = dataRows[i][colIdx] ?? ''
+      if (v.length > maxLen) maxLen = v.length
+    }
+    return { wch: Math.min(40, Math.max(12, maxLen + 2)) }
+  })
+  ws['!cols'] = colWidths
+
+  return ws
+}
+
+const buildTgrSheet = (
+  responses: any[],
+  positiveLetters: string[],
+  remarksCol: string,
+): XLSX.WorkSheet => {
+  const dataRows: string[][] = []
+
+  for (const r of responses) {
+    const fullData = r.full_data || {}
+    const brand = isValidCell(fullData['E'])
+      ? String(fullData['E']).trim()
+      : (isValidCell(r.brand_model) ? String(r.brand_model).trim() : '')
+    const city = isValidCell(fullData['D'])
+      ? String(fullData['D']).trim()
+      : (isValidCell(r.survey_location) ? String(r.survey_location).trim() : '')
+    const remarks = isValidCell(fullData[remarksCol])
+      ? String(fullData[remarksCol]).trim()
+      : ''
+    const vinNo = isValidCell(fullData['F'])
+      ? String(fullData['F']).trim()
+      : (isValidCell(r.vin_number) ? String(r.vin_number).trim() : '')
+
+    for (const letter of positiveLetters) {
+      const rawVal = fullData[letter]
+      if (!isValidCell(rawVal)) continue
+
+      const H = stripHtml(getColumnHeader(letter))
+      const parts = splitAnswers(String(rawVal)).filter((p) => isValidCell(p))
+      if (parts.length === 0) continue
+
+      dataRows.push([brand, city, remarks, vinNo, H, H, parts[0]])
+      for (let k = 1; k < parts.length; k++) {
+        dataRows.push(['', '', '', '', '', H, parts[k]])
+      }
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([TGR_HEADERS, ...dataRows])
+
+  TGR_HEADERS.forEach((_, colIdx) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+    if (!ws[addr]) ws[addr] = { t: 's', v: TGR_HEADERS[colIdx] }
+    ws[addr].s = EXCEL_HEADER_STYLE
+  })
+
+  if (!ws['!rows']) ws['!rows'] = []
+  ws['!rows'][0] = { hpt: 75, hpx: 100 }
+
+  const colWidths = TGR_HEADERS.map((header, colIdx) => {
+    let maxLen = header.length
+    for (let i = 0; i < dataRows.length; i++) {
+      const v = dataRows[i][colIdx] ?? ''
+      if (v.length > maxLen) maxLen = v.length
+    }
+    return { wch: Math.min(40, Math.max(12, maxLen + 2)) }
+  })
+  ws['!cols'] = colWidths
+
+  return ws
+}
+
+const buildTgwSheet = (
+  responses: any[],
+  remarksCol: string,
+): XLSX.WorkSheet => {
+  const dataRows: string[][] = []
+
+  for (const r of responses) {
+    if (!r.complaint_groups || !Array.isArray(r.complaint_groups) || r.complaint_groups.length === 0) {
+      continue
+    }
+
+    const fullData = r.full_data || {}
+    const brand = isValidCell(fullData['E'])
+      ? String(fullData['E']).trim()
+      : (isValidCell(r.brand_model) ? String(r.brand_model).trim() : '')
+    const city = isValidCell(fullData['D'])
+      ? String(fullData['D']).trim()
+      : (isValidCell(r.survey_location) ? String(r.survey_location).trim() : '')
+    const remarks = isValidCell(fullData[remarksCol])
+      ? String(fullData[remarksCol]).trim()
+      : ''
+    const vin = isValidCell(fullData['F'])
+      ? String(fullData['F']).trim()
+      : (isValidCell(r.vin_number) ? String(r.vin_number).trim() : '')
+
+    for (const complaint of r.complaint_groups) {
+      const range = ISSUE_COLUMN_RANGE_MAPPING[complaint]
+      if (!range) continue
+      const cols = letterRange(range.start, range.end)
+      let isFirstRowOfComplaint = true
+
+      for (const col of cols) {
+        const rawVal = fullData[col]
+        if (!isValidCell(rawVal)) continue
+
+        const header = stripHtml(getColumnHeader(col))
+        const L1 = removeBrackets(header)
+        const L3 = header
+        const L6 = extractBracketContent(header)
+        const parts = splitAnswers(String(rawVal)).filter((p) => isValidCell(p))
+        if (parts.length === 0) continue
+
+        for (let k = 0; k < parts.length; k++) {
+          const part = parts[k]
+          if (k === 0) {
+            if (isFirstRowOfComplaint) {
+              // Rule 1 — Very first row for this complaint (first non-empty cell, first split part):
+              dataRows.push([
+                brand, city, remarks, vin,
+                complaint, complaint, complaint,
+                L1, L1, part, L3, L6,
+              ])
+              isFirstRowOfComplaint = false
+            } else {
+              // Rule 2 — First row of a new sub-issue (not very first cell, but first split part):
+              dataRows.push([
+                brand, city, remarks, vin,
+                '', complaint, complaint,
+                L1, L1, part, L3, L6,
+              ])
+            }
+          } else {
+            // Rule 3 — Subsequent split parts (k > 0):
+            dataRows.push([
+              brand, city, remarks, vin,
+              '', '', complaint,
+              '', L1, part, L3, L6,
+            ])
+          }
+        }
+      }
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([TGW_HEADERS, ...dataRows])
+
+  TGW_HEADERS.forEach((_, colIdx) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+    if (!ws[addr]) ws[addr] = { t: 's', v: TGW_HEADERS[colIdx] }
+    ws[addr].s = EXCEL_HEADER_STYLE
+  })
+
+  if (!ws['!rows']) ws['!rows'] = []
+  ws['!rows'][0] = { hpt: 75, hpx: 100 }
+
+  const colWidths = TGW_HEADERS.map((header, colIdx) => {
+    let maxLen = header.length
+    for (let i = 0; i < dataRows.length; i++) {
+      const v = dataRows[i][colIdx] ?? ''
+      if (v.length > maxLen) maxLen = v.length
+    }
+    return { wch: Math.min(40, Math.max(12, maxLen + 2)) }
+  })
+  ws['!cols'] = colWidths
+
+  return ws
+}
 
 
 /** Parse a stored 'YYYY-MM' string into a Dayjs object (null when empty). */
@@ -143,6 +396,8 @@ export default function DashboardPage() {
   const [toastMessage, setToastMessage] = useState('')
   const [toastOpen, setToastOpen] = useState(false)
   const [toastSeverity, setToastSeverity] = useState<'success' | 'error' | 'info'>('success')
+  const [exportingProduct, setExportingProduct] = useState(false)
+  const [exportingService, setExportingService] = useState(false)
 
   const cleanIssueName = (name: string): string => {
     let cleaned = name.replace(/\s+issues$/i, '')
@@ -394,6 +649,9 @@ export default function DashboardPage() {
         //Hero
         'Hero': '#00B050',
         'Hero Zoom 125': '#00B050',
+
+        //Power
+        'Power ': '#723654', 'Power K': '#723654',
       }
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
         'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
@@ -402,7 +660,10 @@ export default function DashboardPage() {
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#00B050', 'Hero zoom': '#00B050'
+        'Hero': '#00B050', 'Hero zoom': '#00B050',
+        'Power ': '#723654', 'Power K': '#723654',
+
+
       }
 
       const hashBrand = (str: string): number => {
@@ -451,6 +712,7 @@ export default function DashboardPage() {
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+        if (lower.includes('power') || lower.includes('power k')) return '#723654'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -472,6 +734,7 @@ export default function DashboardPage() {
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+        if (lower.includes('power') || lower.includes('power k')) return '#723654'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
@@ -3907,7 +4170,10 @@ export default function DashboardPage() {
         //Haojue
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
         //Hero
-        'Hero': '#00B050', 'Hero zoom': '#00B050'
+        'Hero': '#00B050', 'Hero zoom': '#00B050',
+
+        //Power
+        'Power k': '#723654', 'Power ': '#723654',
       }
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
@@ -3917,7 +4183,8 @@ export default function DashboardPage() {
         'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
         'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#00B050', 'Hero zoom': '#00B050'
+        'Hero': '#00B050', 'Hero zoom': '#00B050',
+        'Power': '#723654', 'Power K': '#723654',
 
       }
 
@@ -3961,6 +4228,8 @@ export default function DashboardPage() {
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+        if (lower.includes('power') || lower.includes('power k')) return '#723654'
+
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -3981,6 +4250,8 @@ export default function DashboardPage() {
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'FCE6C2'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
+        if (lower.includes('power') || lower.includes('power k')) return '#723654'
+
 
 
 
@@ -8952,6 +9223,106 @@ export default function DashboardPage() {
     }
   }
 
+  const fetchAllResponsesForExport = async (): Promise<any[]> => {
+    const baseParams = {
+      region_id: toParam(filters.regionId),
+      country_id: toParam(filters.countryId),
+      ib_version_id: toParam(filters.ibVersionId),
+      brand_model: toParam(filters.brandModel),
+      survey_location: toParam(filters.surveyLocation),
+      date_from: filters.dateFrom || undefined,
+      date_to: filters.dateTo || undefined,
+      search: filters.search || undefined,
+    }
+
+    try {
+      const res = await responsesApi.list({
+        page: 1,
+        page_size: 200000,
+        ...baseParams,
+      })
+      return res.data.data || []
+    } catch (apiErr: any) {
+      if (apiErr?.response?.status === 422) {
+        // Fallback for backends enforcing page_size <= 100
+        let allResponses: any[] = []
+        let currentPage = 1
+        let totalPages = 1
+        while (currentPage <= totalPages) {
+          const pageRes = await responsesApi.list({
+            page: currentPage,
+            page_size: 100,
+            ...baseParams,
+          })
+          const items = pageRes.data.data || []
+          allResponses = allResponses.concat(items)
+          totalPages = pageRes.data.total_pages || 1
+          currentPage++
+        }
+        return allResponses
+      }
+      throw apiErr
+    }
+  }
+
+  const handleDownloadProductExcel = async () => {
+    try {
+      setExportingProduct(true)
+      const responses = await fetchAllResponsesForExport()
+
+      const wb = XLSX.utils.book_new()
+      const rawWs = buildRawSheet(responses, PRODUCT_RAW_LETTERS)
+      XLSX.utils.book_append_sheet(wb, rawWs, 'Raw Data')
+      const tgrWs = buildTgrSheet(responses, PRODUCT_TGR_POSITIVE_LETTERS, PRODUCT_TGR_REMARKS_COL)
+      XLSX.utils.book_append_sheet(wb, tgrWs, 'TGR')
+      const tgwWs = buildTgwSheet(responses, PRODUCT_TGR_REMARKS_COL)
+      XLSX.utils.book_append_sheet(wb, tgwWs, 'TGW')
+
+      const today = dayjs().format('YYYY-MM-DD')
+      XLSX.writeFile(wb, `product_${today}.xlsx`)
+
+      setToastSeverity('success')
+      setToastMessage('Product Excel downloaded successfully!')
+      setToastOpen(true)
+    } catch (err) {
+      console.error('Download Product Excel failed:', err)
+      setToastSeverity('error')
+      setToastMessage('Product Excel export failed.')
+      setToastOpen(true)
+    } finally {
+      setExportingProduct(false)
+    }
+  }
+
+  const handleDownloadServiceExcel = async () => {
+    try {
+      setExportingService(true)
+      const responses = await fetchAllResponsesForExport()
+
+      const wb = XLSX.utils.book_new()
+      const rawWs = buildRawSheet(responses, SERVICE_RAW_LETTERS)
+      XLSX.utils.book_append_sheet(wb, rawWs, 'Raw Data')
+      const tgrWs = buildTgrSheet(responses, SERVICE_TGR_POSITIVE_LETTERS, SERVICE_TGR_REMARKS_COL)
+      XLSX.utils.book_append_sheet(wb, tgrWs, 'TGR')
+      const tgwWs = buildTgrSheet(responses, SERVICE_TGW_COMPLAINT_LETTERS, SERVICE_TGR_REMARKS_COL)
+      XLSX.utils.book_append_sheet(wb, tgwWs, 'TGW')
+
+      const today = dayjs().format('YYYY-MM-DD')
+      XLSX.writeFile(wb, `service_${today}.xlsx`)
+
+      setToastSeverity('success')
+      setToastMessage('Service Excel downloaded successfully!')
+      setToastOpen(true)
+    } catch (err) {
+      console.error('Download Service Excel failed:', err)
+      setToastSeverity('error')
+      setToastMessage('Service Excel export failed.')
+      setToastOpen(true)
+    } finally {
+      setExportingService(false)
+    }
+  }
+
   const showProduct = analysisMode.length === 0 || analysisMode.includes('product')
   const showService = analysisMode.length === 0 || analysisMode.includes('service')
 
@@ -9218,6 +9589,49 @@ export default function DashboardPage() {
                 Generating PPT Presentation: {pptProgress}
               </Alert>
             )} */}
+
+            <Tooltip title="Download Product Excel (Raw Data + TGR + TGW)">
+              <span>
+                <Button
+                  id="download-product-excel-btn"
+                  variant="outlined"
+                  size="small"
+                  disabled={exportingProduct}
+                  onClick={handleDownloadProductExcel}
+                  startIcon={exportingProduct ? <CircularProgress size={16} /> : <FileDownload />}
+                  sx={{
+                    borderColor: '#10B981',
+                    color: '#10B981',
+                    '&:hover': { borderColor: '#34D399', background: 'rgba(16,185,129,0.04)' },
+                    ml: 1,
+                  }}
+                >
+                  Download Product Excel
+                </Button>
+              </span>
+            </Tooltip>
+
+            <Tooltip title="Download Service Excel (Raw Data + TGR + TGW)">
+              <span>
+                <Button
+                  id="download-service-excel-btn"
+                  variant="outlined"
+                  size="small"
+                  disabled={exportingService}
+                  onClick={handleDownloadServiceExcel}
+                  startIcon={exportingService ? <CircularProgress size={16} /> : <FileDownload />}
+                  sx={{
+                    borderColor: '#3B82F6',
+                    color: '#3B82F6',
+                    '&:hover': { borderColor: '#60A5FA', background: 'rgba(59,130,246,0.04)' },
+                    ml: 1,
+                  }}
+                >
+                  Download Service Excel
+                </Button>
+              </span>
+            </Tooltip>
+
             <Tooltip title="Reset Filters">
               <IconButton id="reset-filters-btn" size="small" onClick={() => {
                 filters.resetFilters()
