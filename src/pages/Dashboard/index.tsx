@@ -753,6 +753,24 @@ export default function DashboardPage() {
         return brands.map(b => getBrandColor(b))
       }
 
+      const getNpsBoxColor = (
+        brandName: string,
+        brandNps: number,
+        allScores: { brand: string; nps: number }[]
+      ): string => {
+        const isTvs = String(brandName || '').trim().toUpperCase().startsWith('TVS')
+        if (!isTvs) return '999999'   // neutral gray for non-TVS brands
+
+        const bestNonTvs = allScores
+          .filter((s) => !String(s.brand || '').trim().toUpperCase().startsWith('TVS'))
+          .reduce((max, s) => (s.nps > max ? s.nps : max), -Infinity)
+
+        // If there is no non-TVS brand to compare against, show gray (nothing to beat)
+        if (bestNonTvs === -Infinity) return '999999'
+
+        return brandNps > bestNonTvs ? '4CAF50' : 'F44336'   // green / red
+      }
+
       function matrixToChartData(matrix: any, type: 'count' | 'percent' = 'percent') {
         if (!matrix || !Array.isArray(matrix.chart) || matrix.chart.length === 0) return []
         const { brands } = matrix
@@ -2161,9 +2179,7 @@ export default function DashboardPage() {
         npsScoresOverall.forEach((item, idx) => {
           const boxW = Math.min(1.4, groupWOverall * 0.85)
           const boxX = plotXOverall + idx * groupWOverall + (groupWOverall - boxW) / 2
-          const isBest = bestBrandOverall ? item.brand === bestBrandOverall.brand : false
-          const isTvsBest = isBest && !!bestBrandOverall && bestBrandOverall.brand.includes('TVS')
-          const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+          const boxColor = getNpsBoxColor(item.brand, item.nps, npsScoresOverall)
 
           slideNpsOverall.addText(`NPS ${item.nps}%`, {
             x: boxX, y: npsBoxYOverall, w: boxW, h: npsBoxHOverall,
@@ -4276,6 +4292,23 @@ export default function DashboardPage() {
       const getBrandColorsArray = (brands: string[]): string[] => {
         return brands.map(b => getBrandColor(b))
       }
+      const getNpsBoxColor = (
+        brandName: string,
+        brandNps: number,
+        allScores: { brand: string; nps: number }[]
+      ): string => {
+        const isTvs = String(brandName || '').trim().toUpperCase().startsWith('TVS')
+        if (!isTvs) return '999999'   // neutral gray for non-TVS brands
+
+        const bestNonTvs = allScores
+          .filter((s) => !String(s.brand || '').trim().toUpperCase().startsWith('TVS'))
+          .reduce((max, s) => (s.nps > max ? s.nps : max), -Infinity)
+
+        // If there is no non-TVS brand to compare against, show gray (nothing to beat)
+        if (bestNonTvs === -Infinity) return '999999'
+
+        return brandNps >= bestNonTvs ? '4CAF50' : 'F44336'   // green / red
+      }
 
 
 
@@ -6257,9 +6290,7 @@ export default function DashboardPage() {
         npsScores6.forEach((item, idx) => {
           const boxW = Math.min(1.4, groupW6 * 0.85)
           const boxX = plotX6 + idx * groupW6 + (groupW6 - boxW) / 2
-          const isBest = bestBrand6 ? item.brand === bestBrand6.brand : false
-          const isTvsBest = isBest && !!bestBrand6 && bestBrand6.brand.includes('TVS')
-          const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+          const boxColor = getNpsBoxColor(item.brand, item.nps, npsScores6)
 
           slide6.addText(`NPS ${item.nps}%`, {
             x: boxX, y: npsBoxY, w: boxW, h: npsBoxH,
@@ -6439,9 +6470,7 @@ export default function DashboardPage() {
             npsScoresC.forEach((item, idx) => {
               const boxW = Math.min(1.4, groupWC * 0.85)
               const boxX = plotXC + idx * groupWC + (groupWC - boxW) / 2
-              const isBest = bestBrandC ? item.brand === bestBrandC.brand : false
-              const isTvsBest = isBest && !!bestBrandC && bestBrandC.brand.includes('TVS')
-              const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+              const boxColor = getNpsBoxColor(item.brand, item.nps, npsScoresC)
 
               slideC.addText(`NPS ${item.nps}%`, {
                 x: boxX, y: npsBoxYC, w: boxW, h: npsBoxHC,
@@ -6675,9 +6704,7 @@ export default function DashboardPage() {
               npsScoresD.forEach((item, idx) => {
                 const boxW = Math.min(1.2, groupW * 0.9)
                 const boxX = plotX + idx * groupW + (groupW - boxW) / 2
-                const isBest = bestBrandD ? item.brand === bestBrandD.brand : false
-                const isTvsBest = isBest && !!bestBrandD && bestBrandD.brand.includes('TVS')
-                const boxColor = isBest ? (isTvsBest ? '4CAF50' : 'F44336') : '999999'
+                const boxColor = getNpsBoxColor(item.brand, item.nps, npsScoresD)
 
                 slideD.addText(`NPS ${item.nps}%`, {
                   x: boxX, y: npsBoxY, w: boxW, h: npsBoxH,
@@ -9278,8 +9305,32 @@ export default function DashboardPage() {
       const tgwWs = buildTgwSheet(responses, PRODUCT_TGR_REMARKS_COL)
       XLSX.utils.book_append_sheet(wb, tgwWs, 'TGW')
 
+      // ─── Build filename: {country}_{product}_{date}.xlsx ───
+      const productCountryIds = Array.isArray(filters.countryId)
+        ? filters.countryId
+        : (filters.countryId ? [filters.countryId] : [])
+      const productRegionIds = Array.isArray(filters.regionId)
+        ? filters.regionId
+        : (filters.regionId ? [filters.regionId] : [])
+
+      let productCountryName = 'Overall'
+      if (productCountryIds.length > 0) {
+        const found = countries.find(
+          (c) => c.id === productCountryIds[0] || c.name === productCountryIds[0]
+        )
+        productCountryName = found ? found.name : productCountryIds[0]
+      } else if (productRegionIds.length > 0) {
+        const found = regions.find(
+          (r) => r.id === productRegionIds[0] || r.name === productRegionIds[0]
+        )
+        productCountryName = found ? found.name : productRegionIds[0]
+      }
+
+      const cleanProductCountry =
+        productCountryName.trim().replace(/[/\\?%*:|"<>]/g, '').replace(/\s+/g, '_') || 'Overall'
+
       const today = dayjs().format('YYYY-MM-DD')
-      XLSX.writeFile(wb, `product_${today}.xlsx`)
+      XLSX.writeFile(wb, `${cleanProductCountry}_product_${today}.xlsx`)
 
       setToastSeverity('success')
       setToastMessage('Product Excel downloaded successfully!')
@@ -9307,8 +9358,32 @@ export default function DashboardPage() {
       const tgwWs = buildTgrSheet(responses, SERVICE_TGW_COMPLAINT_LETTERS, SERVICE_TGR_REMARKS_COL)
       XLSX.utils.book_append_sheet(wb, tgwWs, 'TGW')
 
+      // ─── Build filename: {country}_{service}_{date}.xlsx ───
+      const serviceCountryIds = Array.isArray(filters.countryId)
+        ? filters.countryId
+        : (filters.countryId ? [filters.countryId] : [])
+      const serviceRegionIds = Array.isArray(filters.regionId)
+        ? filters.regionId
+        : (filters.regionId ? [filters.regionId] : [])
+
+      let serviceCountryName = 'Overall'
+      if (serviceCountryIds.length > 0) {
+        const found = countries.find(
+          (c) => c.id === serviceCountryIds[0] || c.name === serviceCountryIds[0]
+        )
+        serviceCountryName = found ? found.name : serviceCountryIds[0]
+      } else if (serviceRegionIds.length > 0) {
+        const found = regions.find(
+          (r) => r.id === serviceRegionIds[0] || r.name === serviceRegionIds[0]
+        )
+        serviceCountryName = found ? found.name : serviceRegionIds[0]
+      }
+
+      const cleanServiceCountry =
+        serviceCountryName.trim().replace(/[/\\?%*:|"<>]/g, '').replace(/\s+/g, '_') || 'Overall'
+
       const today = dayjs().format('YYYY-MM-DD')
-      XLSX.writeFile(wb, `service_${today}.xlsx`)
+      XLSX.writeFile(wb, `${cleanServiceCountry}_service_${today}.xlsx`)
 
       setToastSeverity('success')
       setToastMessage('Service Excel downloaded successfully!')
