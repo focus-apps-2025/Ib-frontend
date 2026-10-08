@@ -98,21 +98,94 @@ const TGW_HEADERS = [
   'Sub-Category (L3)',
   'L6',
 ]
+// Columns excluded from the Raw Data sheet only (TGR / TGW unaffected)
+const RAW_DATA_EXCLUDED_HEADERS = new Set<string>([
+  'alternate mobile number',
+  'mobile number',
+  'please take a picture of the vin no. and upload it here. (qualifying question)',
+  'user name'
+])
+
+// Normalize: lowercase, strip HTML tags, collapse whitespace
+const normalizeRawHeader = (text: string): string =>
+  stripHtml(String(text || ''))
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isExcludedRawHeader = (headerText: string): boolean =>
+  RAW_DATA_EXCLUDED_HEADERS.has(normalizeRawHeader(headerText))
+// ─── Header names that need ISO timestamp trimming ───
+const DATE_TRIM_HEADERS = new Set<string>([
+  'date of purchasing the vehicle from dealer / previous owner',
+])
+
+const normalizeHeaderKey = (text: string): string =>
+  stripHtml(String(text || ''))
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isDateTrimHeader = (headerText: string): boolean =>
+  DATE_TRIM_HEADERS.has(normalizeHeaderKey(headerText))
+
+/**
+ * Collapse "2026-01-24T00:00:00" (or "2026-01-24T00:00:00.000Z", etc.)
+ * down to "2026-01-24". Leaves anything that doesn't match the ISO prefix alone.
+ */
+const trimIsoDateString = (value: unknown): string => {
+  if (value === null || value === undefined) return ''
+  const s = String(value).trim()
+  if (!s) return ''
+
+  // Leading YYYY-MM-DD at the start of an ISO datetime
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(T.*)?$/)
+  if (m) {
+    const [, yyyy, mm, dd] = m
+    return `${dd}-${mm}-${yyyy}`
+  }
+
+  // Bare YYYY-MM-DD with no time component
+  const bare = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (bare) {
+    const [, yyyy, mm, dd] = bare
+    return `${dd}-${mm}-${yyyy}`
+  }
+
+  // If it starts with a date but has junk after, still reformat the date part
+  const prefix = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (prefix) {
+    const [, yyyy, mm, dd] = prefix
+    return `${dd}-${mm}-${yyyy}`
+  }
+
+  return s
+}
 
 const buildRawSheet = (
   responses: any[],
   letters: string[],
 ): XLSX.WorkSheet => {
-  const maxIdx = Math.max(...letters.map((L) => excelLetterToNum(L) - 1))
-  const headers = letters.map((col) => stripHtml(getColumnHeader(col)))
+  // ── Drop excluded columns ──
+  const keptLetters = letters.filter((col) => {
+    const header = stripHtml(getColumnHeader(col))
+    return !isExcludedRawHeader(header)
+  })
+
+  const headers = keptLetters.map((col) => stripHtml(getColumnHeader(col)))
+
+  // ── Flag which kept columns are date-trim columns ──
+  const trimFlags: boolean[] = headers.map((h) => isDateTrimHeader(h))
+
   const dataRows: string[][] = []
 
   for (const r of responses) {
     const fullData = r.full_data || {}
-    const row = letters.map((col) => {
+    const row = keptLetters.map((col, idx) => {
       const val = fullData[col]
       if (!isValidCell(val)) return ''
-      return String(val).trim()
+      const raw = String(val).trim()
+      return trimFlags[idx] ? trimIsoDateString(raw) : raw
     })
     const isBlank = row.every((c) => c === '')
     if (!isBlank) {
@@ -122,11 +195,27 @@ const buildRawSheet = (
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
 
+  // ── Header style: merge EXCEL_HEADER_STYLE + Arial ──
+  const headerStyle = {
+    ...EXCEL_HEADER_STYLE,
+    font: { ...(EXCEL_HEADER_STYLE as any).font, name: 'Arial' },
+  }
+
   headers.forEach((_, colIdx) => {
     const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
     if (!ws[addr]) ws[addr] = { t: 's', v: headers[colIdx] }
-    ws[addr].s = EXCEL_HEADER_STYLE
+    ws[addr].s = headerStyle
   })
+
+  // ── Arial style for every data cell ──
+  const DATA_CELL_STYLE = { font: { name: 'Arial', sz: 10 } }
+  for (let r = 1; r <= dataRows.length; r++) {
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      if (!ws[addr]) continue
+      ws[addr].s = DATA_CELL_STYLE
+    }
+  }
 
   if (!ws['!rows']) ws['!rows'] = []
   ws['!rows'][0] = { hpt: 75, hpx: 100 }
@@ -143,7 +232,34 @@ const buildRawSheet = (
 
   return ws
 }
+const applyArialToSheet = (
+  ws: XLSX.WorkSheet,
+  headers: string[],
+  dataRows: string[][],
+  baseHeaderStyle: any,
+) => {
+  // ── Header style: preserve fills/colors, add Arial ──
+  const headerStyle = {
+    ...baseHeaderStyle,
+    font: { ...(baseHeaderStyle?.font || {}), name: 'Arial' },
+  }
 
+  headers.forEach((_, colIdx) => {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+    if (!ws[addr]) ws[addr] = { t: 's', v: headers[colIdx] }
+    ws[addr].s = headerStyle
+  })
+
+  // ── Data cell style ──
+  const DATA_CELL_STYLE = { font: { name: 'Arial', sz: 10 } }
+  for (let r = 1; r <= dataRows.length; r++) {
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      if (!ws[addr]) continue
+      ws[addr].s = DATA_CELL_STYLE
+    }
+  }
+}
 const buildTgrSheet = (
   responses: any[],
   positiveLetters: string[],
@@ -183,11 +299,7 @@ const buildTgrSheet = (
 
   const ws = XLSX.utils.aoa_to_sheet([TGR_HEADERS, ...dataRows])
 
-  TGR_HEADERS.forEach((_, colIdx) => {
-    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
-    if (!ws[addr]) ws[addr] = { t: 's', v: TGR_HEADERS[colIdx] }
-    ws[addr].s = EXCEL_HEADER_STYLE
-  })
+  applyArialToSheet(ws, TGR_HEADERS, dataRows, EXCEL_HEADER_STYLE)
 
   if (!ws['!rows']) ws['!rows'] = []
   ws['!rows'][0] = { hpt: 75, hpx: 100 }
@@ -281,11 +393,7 @@ const buildTgwSheet = (
 
   const ws = XLSX.utils.aoa_to_sheet([TGW_HEADERS, ...dataRows])
 
-  TGW_HEADERS.forEach((_, colIdx) => {
-    const addr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
-    if (!ws[addr]) ws[addr] = { t: 's', v: TGW_HEADERS[colIdx] }
-    ws[addr].s = EXCEL_HEADER_STYLE
-  })
+  applyArialToSheet(ws, TGW_HEADERS, dataRows, EXCEL_HEADER_STYLE)
 
   if (!ws['!rows']) ws['!rows'] = []
   ws['!rows'][0] = { hpt: 75, hpx: 100 }
@@ -9291,6 +9399,8 @@ export default function DashboardPage() {
       throw apiErr
     }
   }
+
+
 
   const handleDownloadProductExcel = async () => {
     try {
