@@ -118,6 +118,7 @@ const isExcludedRawHeader = (headerText: string): boolean =>
 // ─── Header names that need ISO timestamp trimming ───
 const DATE_TRIM_HEADERS = new Set<string>([
   'date of purchasing the vehicle from dealer / previous owner',
+  'survey date'
 ])
 
 const normalizeHeaderKey = (text: string): string =>
