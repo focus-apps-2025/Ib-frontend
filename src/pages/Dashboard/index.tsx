@@ -19,9 +19,7 @@ import * as XLSX from 'xlsx-js-style'
 
 
 // Recharts imports for hidden slide capture
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer
-} from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts'
 
 import PptxGenJS from 'pptxgenjs'
 import html2canvas from 'html2canvas'
@@ -41,10 +39,7 @@ import MultiSelectFilter from '../../components/dashboard/MultiSelectFilter'
 import { getColumnHeader } from '../../utils/columnHeaders'
 import { ISSUE_COLUMN_RANGE_MAPPING } from '../../data/issueColumnRanges'
 import {
-  excelLetterToNum,
-  excelNumToLetter,
-  letterRange,
-  stripHtml,
+  excelLetterToNum, excelNumToLetter, letterRange, stripHtml,
   isValidCell,
   extractBracketContent,
   removeBrackets,
@@ -63,7 +58,7 @@ dayjs.extend(customParseFormat)
 const TOTAL_EXPECTED_COLUMNS = 449
 
 const PRODUCT_RAW_LETTERS = [
-  ...letterRange('B', 'BL').filter((l) => l !== 'AM'),
+  ...letterRange('B', 'BM').filter((l) => l !== 'AM'),
   ...letterRange('DF', 'OJ'),
 ]
 
@@ -3155,7 +3150,7 @@ export default function DashboardPage() {
       addDividerSlide('Why are not approaching Authorized outlets reasons')
 
       // Render PGM (Private Garage Mechanic) Benefits & Betterments slides
-      renderCorporateBenefitsBettermentsSlides('PGM (Private Garage Mechanic)', 'pgm')
+      renderCorporateBenefitsBettermentsSlides('Reason for not choosing the Authorized Service Centers', 'pgm')
 
       // ─── DIVIDER: PGM Customer NPS ───
       addDividerSlide('PGM Customer NPS')
