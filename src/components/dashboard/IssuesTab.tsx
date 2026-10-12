@@ -58,6 +58,9 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
   //Power
   'Power ': '#723654', 'Power K': '#723654',
 
+  //Bajaj BM 125
+  'Bajaj BM 125': '#545454'
+
 }
 
 const FALLBACK_BRAND_COLORS = [
@@ -88,6 +91,7 @@ const getBrandColor = (brandName: string, index: number): string => {
   if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
   if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
   if (lower.includes('power') || lower.includes('Power K')) return '#723654'
+  if (lower.includes('Bajaj BM 125')) return '#545454'
 
   // Deterministic hash so a brand always gets the same color everywhere
   return FALLBACK_BRAND_COLORS[hashBrandName(clean.toUpperCase()) % FALLBACK_BRAND_COLORS.length]

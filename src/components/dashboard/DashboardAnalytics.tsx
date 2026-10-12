@@ -51,6 +51,7 @@ const SPECIFIC_BRAND_COLORS: Record<string, string> = {
     'Haojue': '#B38901', 'Haojue 125': '#B38901',
     'Hero': '#00B050', 'Hero Zoom 125': '#00B050',
     'Power ': '#723654', 'Power K': '#723654',
+    'Bajaj BM 125': '#545454'
 }
 
 const BRAND_COLOR_PALETTE = [
@@ -84,6 +85,7 @@ const getBrandColor = (brand: string): string => {
     if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
     if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
     if (lower.includes('Power') || lower.includes('Power K')) return '#723654'
+    if (lower.includes('Bajaj BM 125')) return '#545454'
 
     return BRAND_COLOR_PALETTE[hashBrandName(clean.toUpperCase()) % BRAND_COLOR_PALETTE.length]
 }
