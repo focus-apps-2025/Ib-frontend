@@ -769,7 +769,7 @@ export default function DashboardPage() {
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
         'Hero': '#00B050', 'Hero zoom': '#00B050',
         'Power ': '#723654', 'Power K': '#723654',
-        'Bajaj BM 125': "#545454",
+        'Bajaj BM 125': "#545454", 'Bajaj 125 BM': '#545454'
 
 
       }
@@ -821,7 +821,7 @@ export default function DashboardPage() {
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
         if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('Bajaj BM 125')) return '#545454'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
@@ -844,7 +844,7 @@ export default function DashboardPage() {
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
         if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('Bajaj BM 125')) return '#545454'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
 
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
@@ -4302,7 +4302,7 @@ export default function DashboardPage() {
         'Power k': '#723654', 'Power ': '#723654',
 
         //Bajaj BM 125
-        'Bajaj 125 BM': "#545454"
+        'Bajaj 125 BM': "#545454", 'Bajaj BM 125': "#545454"
       }
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
@@ -4314,7 +4314,7 @@ export default function DashboardPage() {
         'Haojue': 'B38901', 'Haojue 125': 'B38901',
         'Hero': '#00B050', 'Hero zoom': '#00B050',
         'Power': '#723654', 'Power K': '#723654',
-        'Bajaj BM 125': '#545454'
+        'Bajaj BM 125': '#545454', 'Bajaj 125 BM': '#545454'
       }
 
       // ─── Slide counter + TOC tracking (for internal hyperlinks) ───
@@ -4358,7 +4358,7 @@ export default function DashboardPage() {
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
         if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('Bajaj 125 BM')) return '#545454'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
 
 
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
@@ -4381,7 +4381,7 @@ export default function DashboardPage() {
         if (lower.includes('haojue') || lower.includes('haojue 125')) return 'FCE6C2'
         if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
         if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('Bajaj BM 125')) return '#545454'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
 
 
 
