@@ -777,13 +777,13 @@ export default function DashboardPage() {
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
         'Bajaj BM 150': '#545454',
-        'Bajaj RE': '#7C3AED',
-        'Bajaj CT 125': '#372268ff',
-        'Bajaj CT125': '#372268ff',
+        'Bajaj RE': '#265308',
+        'Bajaj CT 125': '#7C3AED',
+        'Bajaj CT125': '#7C3AED',
         'Bajaj 125 BM': '#545454',
-        'Bajaj 100 Qlink 125': '#7C3AED',
-        'Bajaj Daylong 125': '#7C3AED',
-        'Bajaj Kawasaki KW50': '#7C3AED',
+        'Bajaj 100 Qlink 125': '#265308',
+        'Bajaj Daylong 125': '#265308',
+        'Bajaj Kawasaki KW50': '#265308',
 
         // ─── Yamaha — orange/red family ───
         'Yamaha': '#FF5A00',
@@ -890,13 +890,13 @@ export default function DashboardPage() {
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
         'Bajaj BM 150': '#545454',
-        'Bajaj RE': '#7C3AED',
-        'Bajaj CT 125': '#372268ff',
-        'Bajaj CT125': '#372268ff',
+        'Bajaj RE': '#265308',
+        'Bajaj CT 125': '#7C3AED',
+        'Bajaj CT125': '#7C3AED',
         'Bajaj 125 BM': '#545454',
-        'Bajaj 100 Qlink 125': '#7C3AED',
-        'Bajaj Daylong 125': '#7C3AED',
-        'Bajaj Kawasaki KW50': '#7C3AED',
+        'Bajaj 100 Qlink 125': '#265308',
+        'Bajaj Daylong 125': '#265308',
+        'Bajaj Kawasaki KW50': '#265308',
 
         // ─── Yamaha — orange/red family ───
         'Yamaha': '#FF5A00',
@@ -995,8 +995,10 @@ export default function DashboardPage() {
         const clean = String(brandName).trim()
 
         // 1️⃣ EXACT model match first (per-model unique color)
+        // NOTE: strip '#' — pptxgenjs writes chart colors verbatim into <a:srgbClr val="...">,
+        // and a leading '#' produces invalid XML that PowerPoint silently removes on repair.
         if (SPECIFIC_BRAND_COLORS[clean]) {
-          return SPECIFIC_BRAND_COLORS[clean]
+          return SPECIFIC_BRAND_COLORS[clean].replace(/^#/, '')
         }
 
         const lower = clean.toLowerCase()
@@ -1025,7 +1027,7 @@ export default function DashboardPage() {
 
         // 1️⃣ EXACT model match first
         if (SPECIFIC_LIGHT_COLORS[clean]) {
-          return SPECIFIC_LIGHT_COLORS[clean]
+          return SPECIFIC_LIGHT_COLORS[clean].replace(/^#/, '')
         }
 
         const lower = clean.toLowerCase()
@@ -4709,8 +4711,8 @@ export default function DashboardPage() {
         'Bajaj BM 100': '#545454',
         'Bajaj BM 150': '#545454',
         'Bajaj RE': '#7C3AED',
-        'Bajaj CT 125': '#372268ff',
-        'Bajaj CT125': '#372268ff',
+        'Bajaj CT 125': '#265308',
+        'Bajaj CT125': '#265308',
         'Bajaj 125 BM': '#545454',
         'Bajaj 100 Qlink 125': '#7C3AED',
         'Bajaj Daylong 125': '#7C3AED',
@@ -4821,13 +4823,13 @@ export default function DashboardPage() {
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
         'Bajaj BM 150': '#545454',
-        'Bajaj RE': '#7C3AED',
-        'Bajaj CT 125': '#372268ff',
-        'Bajaj CT125': '#372268ff',
+        'Bajaj RE': '#265308',
+        'Bajaj CT 125': '#7C3AED',
+        'Bajaj CT125': '#7C3AED',
         'Bajaj 125 BM': '#545454',
-        'Bajaj 100 Qlink 125': '#7C3AED',
-        'Bajaj Daylong 125': '#7C3AED',
-        'Bajaj Kawasaki KW50': '#7C3AED',
+        'Bajaj 100 Qlink 125': '#265308',
+        'Bajaj Daylong 125': '#265308',
+        'Bajaj Kawasaki KW50': '#265308',
 
         // ─── Yamaha — orange/red family ───
         'Yamaha': '#FF5A00',
