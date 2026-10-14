@@ -41,17 +41,116 @@ interface MatrixData {
     chart: Record<string, number | string>[]
 }
 
-// ─── Unified brand palette (matches PPT handlers + ServiceDashboardTab) ───
 const SPECIFIC_BRAND_COLORS: Record<string, string> = {
-    'TVS Raider': '#00B4D8', 'TVS Apache': '#00B4D8', 'TVS': '#00B4D8',
-    'Bajaj Pulsar': '#7C3AED', 'Bajaj': '#7C3AED',
-    'Yamaha FZ': '#FF5A00', 'Yamaha': '#FF5A00',
-    'Honda CB': '#1E3A8A', 'Honda': '#1E3A8A',
-    'Suzuki Gixxer': '#2A9D8F', 'Suzuki': '#2A9D8F',
-    'Haojue': '#B38901', 'Haojue 125': '#B38901',
-    'Hero': '#00B050', 'Hero Zoom 125': '#00B050',
-    'Power ': '#723654', 'Power K': '#723654',
-    'Bajaj BM 125': '#545454'
+    // ─── TVS — cyan/blue family (each model distinct) ───
+    'TVS': '#00B4D8',
+    'TVS Raider': '#00B4D8',
+    'TVS Raider 125': '#00B4D8',
+    'TVS Raider 125 FI': '#00B4D8',
+    'TVS Raider 125 EFI': '#00B4D8',
+    'TVS Raider 125 Carb': '#00B4D8',
+    'TVS Raider 125 Carb.': '#00B4D8',
+    'TVS Apache': '#00B4D8',
+    'TVS Apache 160': '#00B4D8',
+    'TVS Apache 160 4V EFI': '#00B4D8',
+    'TVS Apache 200': '#00B4D8',
+    'TVS Apache 200 Carb.': '#00B4D8',
+    'TVS Apache 200 Carb': '#00B4D8',
+    'TVS Ntorq': '#00B4D8',
+    'TVS Ntorq 125': '#00B4D8',
+    'TVS NTORQ XP FI': '#00B4D8',
+    'TVS Jupiter': '#00B4D8',
+    'TVS Jupiter 110 EFI': '#00B4D8',
+    'TVS Jupiter 125 EFI': '#00B4D8',
+    'TVS XL100': '#00B4D8',
+    'TVS HLX': '#00B4D8',
+    'TVS HLX 125': '#00B4D8',
+    'TVS HLX 125 4G': '#00B4D8',
+    'TVS HLX 125 5G': '#00B4D8',
+    'TVS HLX 150': '#00B4D8',
+    'TVS Deluxe': '#00B4D8',
+    'TVS Deluxe Plus': '#00B4D8',
+    'TVS Neo NX': '#00B4D8',
+    'TVS RockZ': '#00B4D8',
+    'TVS Star LX': '#00B4D8',
+
+    // ─── Bajaj — purple family ───
+    'Bajaj': '#7C3AED',
+    'Bajaj Pulsar': '#bd4b4bff',
+    'Bajaj Pulsar N 160': '#bd4b4bff',
+    'Bajaj Pulsar NS 125': '#bd4b4bff',
+    'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+    'Bajaj Discover 125': '#bda9eaff',
+    'Bajaj BM 125': '#545454',
+    'Bajaj BM 125 HD': '#545454',
+    'Bajaj BM 100': '#545454',
+    'Bajaj BM 150': '#545454',
+    'Bajaj RE': '#7C3AED',
+    'Bajaj CT 125': '#372268ff',
+    'Bajaj CT125': '#372268ff',
+    'Bajaj 125 BM': '#545454',
+    'Bajaj 100 Qlink 125': '#7C3AED',
+    'Bajaj Daylong 125': '#7C3AED',
+    'Bajaj Kawasaki KW50': '#7C3AED',
+
+    // ─── Yamaha — orange/red family ───
+    'Yamaha': '#FF5A00',
+    'Yamaha FZ': '#FF5A00',
+    'Yamaha FZ EFI': '#FF5A00',
+    'Yamaha Yama Ray ZR FI': '#FF5A00',
+    'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
+
+    // ─── Honda — navy/blue family ───
+    'Honda': '#1E3A8A',
+    'Honda CB': '#1E3A8A',
+    'Honda CB 125': '#1E3A8A',
+    'Honda CB 125 F': '#1E3A8A',
+    'Honda SP 125': '#1E3A8A',
+    'Honda Hero Super Splendor': '#1E3A8A',
+    'Honda Dio 125 EFI': '#1E3A8A',
+    'Honda Dio 110 EFI': '#1E3A8A',
+    'Honda Activa 125 EFI': '#1E3A8A',
+
+    // ─── Suzuki — teal family ───
+    'Suzuki': '#1E7268',
+    'Suzuki Gixxer': '#1E7268',
+    'Suzuki Gixxer 150': '#1E7268',
+    'Suzuki Gixxer 155': '#1E7268',
+    'Suzuki Gixxer 250': '#1E7268',
+
+    // ─── Haojue — amber/gold family ───
+    'Haojue': '#B38901',
+    'Haojue 125': '#B38901',
+    'Haojue Express 125': '#B38901',
+    'Haojue Express 150': '#B38901',
+    'Haojue Lucky': '#B38901',
+    'Haojue Express 125/ Heroo Express 125': '#B38901',
+
+    // ─── Hero — green family ───
+    'Hero': '#00B050',
+    'Hero Zoom 125': '#00B050',
+    'Hero Zoom 110': '#00B050',
+    'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+    'Hero Xtreme 125 EFI': '#00B050',
+    'Hero Super Splendor': '#00B050',
+    'Heroo Dia 125 EFI': '#00B050',
+    'Heroo Express 125': '#00B050',
+
+    // ─── Power — maroon family ───
+    'Power': '#723654',
+    'Power K': '#723654',
+    'Power K 125': '#8B4468',
+
+    // ─── Torito — brown/rust family ───
+    'Torito': '#92400E',
+    'Torito Bajaj RE': '#92400E',
+    'Torito Bajaj RE 200': '#92400E',
+
+    // ─── Rouser — red family ───
+    'Rouser NS': '#DC2626',
+    'Rouser NS 125': '#DC2626',
+    'Rouser NS (Ls) 125': '#DC2626',
+    'Rouser NS 200': '#DC2626',
 }
 
 const BRAND_COLOR_PALETTE = [
@@ -74,19 +173,26 @@ const hashBrandName = (str: string): number => {
 const getBrandColor = (brand: string): string => {
     if (!brand) return '#475569'
     const clean = String(brand).trim()
+
+    // 1️⃣ Exact model match first
     if (SPECIFIC_BRAND_COLORS[clean]) return SPECIFIC_BRAND_COLORS[clean]
 
     const lower = clean.toLowerCase()
-    if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '#00B4D8'
-    if (lower.includes('pulsar') || lower.includes('bajaj')) return '#7C3AED'
-    if (lower.includes('yamaha') || lower.includes('fz')) return '#FF5A00'
-    if (lower.includes('honda') || lower.includes('cb')) return '#1E3A8A'
-    if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
-    if (lower.includes('haojue') || lower.includes('haojue 125')) return '#B38901'
-    if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
-    if (lower.includes('Power') || lower.includes('Power K')) return '#723654'
-    if (lower.includes('Bajaj BM 125')) return '#545454'
 
+    // 2️⃣ Brand-family fallback
+    if (lower.includes('apache') || lower.includes('raider') || lower.includes('ntorq') || lower.includes('jupiter') || lower.includes('hlx') || lower.includes('tvs')) return '#00B4D8'
+    if (lower.includes('pulsar') || lower.includes('discover') || lower.includes('bajaj') || lower.includes('qlink') || lower.includes('daylong') || lower.includes('kawasaki')) return '#7C3AED'
+    if (lower.includes('yamaha') || lower.includes('fz') || lower.includes('ray zr')) return '#FF5A00'
+    if (lower.includes('honda') || lower.includes('cb') || lower.includes('dio') || lower.includes('activa') || lower.includes('splendor')) return '#1E3A8A'
+    if (lower.includes('gixxer') || lower.includes('suzuki')) return '#2A9D8F'
+    if (lower.includes('haojue')) return '#B38901'
+    if (lower.includes('hero') || lower.includes('zoom') || lower.includes('xtreme') || lower.includes('heroo')) return '#00B050'
+    if (lower.includes('power')) return '#723654'
+    if (lower.includes('torito')) return '#92400E'
+    if (lower.includes('rouser')) return '#DC2626'
+    if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
+
+    // 3️⃣ Deterministic hash fallback
     return BRAND_COLOR_PALETTE[hashBrandName(clean.toUpperCase()) % BRAND_COLOR_PALETTE.length]
 }
 
@@ -99,9 +205,8 @@ const hexToRgba = (hex: string, alpha = 0.15): string => {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-const getBrandColorLight = (brand: string): string => {
-    return hexToRgba(getBrandColor(brand), 0.15)
-}
+const getBrandColorLight = (brand: string): string =>
+    hexToRgba(getBrandColor(brand), 0.15)
 
 // ─── Custom Card Header ─────────────────────────────────────────────
 const CardHeader = ({ title, icon, subtitle, color }: {

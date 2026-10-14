@@ -49,42 +49,117 @@ const BRAND_COLORS = [
   '#545454'
 ]
 const SPECIFIC_BRAND_COLORS: Record<string, string> = {
-  // TVS
-  'TVS Raider': '#00B4D8',
-  'TVS Apache': '#00B4D8',
-  'Apache RTR 160 4V CARB': '#00B4D8',
+  // ─── TVS — cyan/blue family (each model distinct) ───
   'TVS': '#00B4D8',
+  'TVS Raider': '#00B4D8',
+  'TVS Raider 125': '#00B4D8',
+  'TVS Raider 125 FI': '#00B4D8',
+  'TVS Raider 125 EFI': '#00B4D8',
+  'TVS Raider 125 Carb': '#00B4D8',
+  'TVS Raider 125 Carb.': '#00B4D8',
+  'TVS Apache': '#00B4D8',
+  'TVS Apache 160': '#00B4D8',
+  'TVS Apache 160 4V EFI': '#00B4D8',
+  'TVS Apache 200': '#00B4D8',
+  'TVS Apache 200 Carb.': '#00B4D8',
+  'TVS Apache 200 Carb': '#00B4D8',
+  'TVS Ntorq': '#00B4D8',
+  'TVS Ntorq 125': '#00B4D8',
+  'TVS NTORQ XP FI': '#00B4D8',
+  'TVS Jupiter': '#00B4D8',
+  'TVS Jupiter 110 EFI': '#00B4D8',
+  'TVS Jupiter 125 EFI': '#00B4D8',
+  'TVS XL100': '#00B4D8',
+  'TVS HLX': '#00B4D8',
+  'TVS HLX 125': '#00B4D8',
+  'TVS HLX 125 4G': '#00B4D8',
+  'TVS HLX 125 5G': '#00B4D8',
+  'TVS HLX 150': '#00B4D8',
+  'TVS Deluxe': '#00B4D8',
+  'TVS Deluxe Plus': '#00B4D8',
+  'TVS Neo NX': '#00B4D8',
+  'TVS RockZ': '#00B4D8',
+  'TVS Star LX': '#00B4D8',
 
-  // Bajaj
-  'Bajaj Pulsar': '#7C3AED',
+  // ─── Bajaj — purple family ───
   'Bajaj': '#7C3AED',
+  'Bajaj Pulsar': '#bd4b4bff',
+  'Bajaj Pulsar N 160': '#bd4b4bff',
+  'Bajaj Pulsar NS 125': '#bd4b4bff',
+  'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+  'Bajaj Discover 125': '#bda9eaff',
+  'Bajaj BM 125': '#545454',
+  'Bajaj BM 125 HD': '#545454',
+  'Bajaj BM 100': '#545454',
+  'Bajaj BM 150': '#545454',
+  'Bajaj RE': '#7C3AED',
+  'Bajaj CT 125': '#372268ff',
+  'Bajaj CT125': '#372268ff',
+  'Bajaj 125 BM': '#545454',
+  'Bajaj 100 Qlink 125': '#7C3AED',
+  'Bajaj Daylong 125': '#7C3AED',
+  'Bajaj Kawasaki KW50': '#7C3AED',
 
-  // Yamaha
-  'Yamaha FZ': '#FF5A00',
-  'Yamaha FZ version 3': '#FF5A00',
+  // ─── Yamaha — orange/red family ───
   'Yamaha': '#FF5A00',
+  'Yamaha FZ': '#FF5A00',
+  'Yamaha FZ EFI': '#FF5A00',
+  'Yamaha Yama Ray ZR FI': '#FF5A00',
+  'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
 
-  // Honda
-  'Honda CB': '#1E3A8A',
+  // ─── Honda — navy/blue family ───
   'Honda': '#1E3A8A',
+  'Honda CB': '#1E3A8A',
+  'Honda CB 125': '#1E3A8A',
+  'Honda CB 125 F': '#1E3A8A',
+  'Honda SP 125': '#1E3A8A',
+  'Honda Hero Super Splendor': '#1E3A8A',
+  'Honda Dio 125 EFI': '#1E3A8A',
+  'Honda Dio 110 EFI': '#1E3A8A',
+  'Honda Activa 125 EFI': '#1E3A8A',
 
-  // Suzuki
-  'Suzuki Gixxer': '#2A9D8F',
-  'Suzuki': '#2A9D8F',
+  // ─── Suzuki — teal family ───
+  'Suzuki': '#1E7268',
+  'Suzuki Gixxer': '#1E7268',
+  'Suzuki Gixxer 150': '#1E7268',
+  'Suzuki Gixxer 155': '#1E7268',
+  'Suzuki Gixxer 250': '#1E7268',
 
+  // ─── Haojue — amber/gold family ───
   'Haojue': '#B38901',
   'Haojue 125': '#B38901',
+  'Haojue Express 125': '#B38901',
+  'Haojue Express 150': '#B38901',
+  'Haojue Lucky': '#B38901',
+  'Haojue Express 125/ Heroo Express 125': '#B38901',
 
-  //Hero
+  // ─── Hero — green family ───
   'Hero': '#00B050',
   'Hero Zoom 125': '#00B050',
+  'Hero Zoom 110': '#00B050',
+  'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+  'Hero Xtreme 125 EFI': '#00B050',
+  'Hero Super Splendor': '#00B050',
+  'Heroo Dia 125 EFI': '#00B050',
+  'Heroo Express 125': '#00B050',
 
-  //Power
-  'Power ': '#723654', 'Power K': '#723654',
+  // ─── Power — maroon family ───
+  'Power': '#723654',
+  'Power K': '#723654',
+  'Power K 125': '#8B4468',
 
-  //Bajaj BM 125
-  'Bajaj BM 125': '#545454'
+  // ─── Torito — brown/rust family ───
+  'Torito': '#92400E',
+  'Torito Bajaj RE': '#92400E',
+  'Torito Bajaj RE 200': '#92400E',
+
+  // ─── Rouser — red family ───
+  'Rouser NS': '#DC2626',
+  'Rouser NS 125': '#DC2626',
+  'Rouser NS (Ls) 125': '#DC2626',
+  'Rouser NS 200': '#DC2626',
 }
+
 const FALLBACK_BRAND_COLORS = [
   '#00B4D8', '#7C3AED', '#FF5A00', '#1E3A8A', '#2A9D8F',
   '#10B981', '#EC4899', '#3B82F6', '#6366F1', '#8B5CF6', '#B38901'
@@ -158,8 +233,8 @@ const serviceDataCache = new Map<string, {
   benefitsData: any
   satisfactionData: any
   cpsData: any
+  csiData: any          // ← ADD
 }>()
-
 export const clearServiceCache = () => {
   serviceDataCache.clear()
 }
@@ -188,6 +263,9 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
   const [benefitsData, setBenefitsData] = useState<any>(null)
   const [satisfactionData, setSatisfactionData] = useState<any>(null)
   const [cpsData, setCpsData] = useState<any>(null)
+  const [csiData, setCsiData] = useState<any>(null)      // ← ADD
+  const [csiSegment, setCsiSegment] = useState<'all' | 'authorized' | 'pgm'>('all')  // ← ADD
+  const [csiBrandFilter, setCsiBrandFilter] = useState<string>('all')                // ← ADD
 
   const [authSubSegment, setAuthSubSegment] = useState<string>('overall')
   const [pgmSubSegment, setPgmSubSegment] = useState<string>('overall')
@@ -356,7 +434,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
         search: filters.search || undefined,
       }
 
-      const cacheKey = JSON.stringify(filterParams)
+      const cacheKey = JSON.stringify({ v: 2, ...filterParams })   // ← bump version
       const cached = serviceDataCache.get(cacheKey)
 
       if (cached) {
@@ -366,18 +444,21 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
         setSatisfactionData(cached.satisfactionData)
         setCpsData(cached.cpsData)
         setLoading(false)
+        setCsiData(cached.csiData)     // ← ADD
+
         return
       }
 
       setLoading(true)
       setError(null)
       try {
-        const [freqRes, npsRes, benefitsRes, satisfactionRes, cpsRes] = await Promise.all([
+        const [freqRes, npsRes, benefitsRes, satisfactionRes, cpsRes, csiRes] = await Promise.all([
           dashboardApi.serviceFrequency(filterParams),
           dashboardApi.serviceNps(filterParams),
           dashboardApi.serviceBenefitsBetterments(filterParams),
           dashboardApi.serviceSatisfaction(filterParams),
           dashboardApi.serviceCps(filterParams),
+          dashboardApi.serviceCsiScore(filterParams),        // ← ADD
         ])
 
         const payload = {
@@ -386,8 +467,8 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
           benefitsData: benefitsRes.data,
           satisfactionData: satisfactionRes.data,
           cpsData: cpsRes.data,
+          csiData: csiRes.data,           // ← ADD
         }
-
         serviceDataCache.set(cacheKey, payload)
 
         setFreqData(freqRes.data)
@@ -395,6 +476,8 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
         setBenefitsData(benefitsRes.data)
         setSatisfactionData(satisfactionRes.data)
         setCpsData(cpsRes.data)
+        setCsiData(csiRes.data)        // ← ADD THIS LINE
+
       } catch (err: any) {
         console.error('Failed to fetch Service Dashboard data:', err)
         setError(err?.response?.data?.detail || err?.message || 'Failed to load Service Dashboard data.')
@@ -2223,6 +2306,168 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
       </Box>
     )
   }
+  // ─── CSI Score Tab Renderer ─────────────────────────────────
+  const renderCsiScoreTab = () => {
+    if (!csiData) return null
+
+    const breakdown =
+      csiSegment === 'authorized' ? (csiData.authorized_brand_breakdown || [])
+        : csiSegment === 'pgm' ? (csiData.pgm_brand_breakdown || [])
+          : (csiData.brand_breakdown || [])
+
+    const filtered = csiBrandFilter === 'all'
+      ? breakdown
+      : breakdown.filter((b: any) => b.brand === csiBrandFilter)
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* Header */}
+        <Card sx={{ border: `1px solid ${c.border}` }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+              <Box sx={{ p: 1, borderRadius: 2, backgroundColor: 'rgba(59,130,246,0.1)', color: '#3B82F6', display: 'flex' }}>
+                <Star />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: c.textPrimary }}>
+                  CSI Score (Customer Satisfaction Index)
+                </Typography>
+                <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                  Merged from Q2-1 / Q2-2 / Q2-3 (Columns Y, Z, AA) · Average by Brand
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Filters */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <FormControl fullWidth size="small">
+                  <Select value={csiSegment} onChange={(e) => setCsiSegment(e.target.value as any)}>
+                    <MenuItem value="all">All (Authorized + PGM)</MenuItem>
+                    <MenuItem value="authorized">Authorized Only</MenuItem>
+                    <MenuItem value="pgm">PGM Only</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <FormControl fullWidth size="small">
+                  <Select value={csiBrandFilter} onChange={(e) => setCsiBrandFilter(e.target.value)}>
+                    <MenuItem value="all">All Brands</MenuItem>
+                    {breakdown.map((b: any) => (
+                      <MenuItem key={b.brand} value={b.brand}>{b.brand}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+
+            {/* KPI Cards */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>Overall CSI</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: c.primary }}>
+                    {csiData.overall_avg_csi}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                    n = {csiData.overall_count}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>Authorized CSI</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#08A9DD' }}>
+                    {csiData.authorized_avg_csi}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                    n = {csiData.authorized_count}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid size={{ xs: 6, sm: 3 }}>
+                <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                  <Typography variant="caption" sx={{ color: c.textSecondary, fontWeight: 600 }}>PGM CSI</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#7030A0' }}>
+                    {csiData.pgm_avg_csi}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: c.textSecondary }}>
+                    n = {csiData.pgm_count}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Base Table + Bar Chart */}
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 12, md: 5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: c.textPrimary }}>
+                  Base Table — Brand-wise CSI
+                </Typography>
+                <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: c.tableHeaderBg }}>
+                        <TableCell sx={{ fontWeight: 700, fontSize: 11 }}>Brand</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11 }}>Avg CSI</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: 11 }}>Base</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filtered.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} align="center" sx={{ py: 2, color: c.textSecondary }}>
+                            No CSI data available
+                          </TableCell>
+                        </TableRow>
+                      ) : filtered.map((row: any) => (
+                        <TableRow key={row.brand} hover>
+                          <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>{row.brand}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: 12, fontWeight: 700, color: c.primary }}>
+                            {row.avg_csi}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontSize: 12, color: c.textSecondary }}>
+                            {row.count}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 7 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: c.textPrimary }}>
+                  Bar Chart — Average CSI by Brand
+                </Typography>
+                <Paper elevation={0} sx={{ p: 2, border: `1px solid ${c.border}`, borderRadius: 2 }}>
+                  <Box sx={{ height: 340, width: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={filtered} margin={{ top: 20, right: 20, left: 5, bottom: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={c.borderMuted} />
+                        <XAxis dataKey="brand" tick={{ fill: c.textSecondary, fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={55} />
+                        <YAxis domain={[0, 10]} tick={{ fill: c.textSecondary, fontSize: 10 }} />
+                        <RechartsTooltip
+                          formatter={(val: number) => [val, 'Avg CSI']}
+                          contentStyle={{ backgroundColor: c.cardBg, borderColor: c.border, borderRadius: 8 }}
+                        />
+                        <Bar dataKey="avg_csi" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                          <LabelList dataKey="avg_csi" position="top" style={{ fill: c.textPrimary, fontSize: 10, fontWeight: 700 }} />
+                          {filtered.map((row: any, idx: number) => (
+                            <Cell key={row.brand} fill={getBrandColor(row.brand, idx)} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      </Box>
+    )
+  }
 
   // ─── Feedback from Market (Service) Tab Renderer ─────────────────────────
   const renderMarketFeedbackServiceTab = () => {
@@ -3744,6 +3989,9 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
       {/* Tab 5: Feedback from market(Service) */}
       {activeTab === 5 && renderMarketFeedbackServiceTab()}
+
+      {activeTab === 6 && renderCsiScoreTab()}
+
     </Box>
   )
 } 

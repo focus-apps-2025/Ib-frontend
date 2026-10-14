@@ -156,6 +156,8 @@ export const dashboardApi = {
   serviceSatisfaction: (params?: object) => api.get('/dashboard/service-satisfaction', { params }),
   serviceCps: (params?: object) => api.get('/dashboard/service-cps', { params }),
   ibSummaryTable: (params?: object) => api.get('/dashboard/ib-summary-table', { params }),
+  serviceCsiScore: (params?: any) => api.get('/dashboard/service-csi-score', { params }),
+
 }
 
 // ─── Comparison ──────────────────────────────────────────────────────────────

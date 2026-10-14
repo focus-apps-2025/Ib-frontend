@@ -679,13 +679,14 @@ export default function DashboardPage() {
         search: filters.search || undefined,
       }
 
-      const [analyticsRes, serviceRes, npsRes, benefitsRes, satisfactionRes, cpsRes] = await Promise.all([
+      const [analyticsRes, serviceRes, npsRes, benefitsRes, satisfactionRes, cpsRes, csiRes] = await Promise.all([
         dashboardApi.analytics(filterParams),
         dashboardApi.serviceFrequency(filterParams),
         dashboardApi.serviceNps(filterParams),
         dashboardApi.serviceBenefitsBetterments(filterParams),
         dashboardApi.serviceSatisfaction(filterParams),
         dashboardApi.serviceCps(filterParams),
+        dashboardApi.serviceCsiScore(filterParams),        // ← ADD
       ])
       console.log('serviceFrequency raw:', JSON.stringify(serviceRes.data, null, 2))
 
@@ -695,6 +696,8 @@ export default function DashboardPage() {
       const serviceBenefitsData = benefitsRes.data || {}
       const satisfactionData = satisfactionRes.data || {}
       const cpsData = cpsRes.data || {}
+      const csiData = csiRes.data || {}          // ← ADD
+
 
       const kmsDataAll = serviceData.kms_frequency || { total_responses: 0, categories: [], brand_breakdown: [] }
       const timeDataAll = serviceData.time_frequency || { total_responses: 0, categories: [], brand_breakdown: [] }
@@ -730,49 +733,231 @@ export default function DashboardPage() {
 
       const BRAND_COLORS_LIST = ['00B4D8', '7C3AED', 'F97316', '10B981', 'EF4444', '3B82F6', '8B5CF6', 'EC4899', 'F59E0B', '06B6D4']
       const LIGHT_COLORS_LIST = ['B3E5FC', 'D1C4E9', 'FFE0B2', 'D1FAE5', 'FEE2E2', 'DBEAFE', 'EDE9FE', 'FCE7F3', 'FEF3C7', 'CFFAFE']
-
       const SPECIFIC_BRAND_COLORS: Record<string, string> = {
-        // TVS — cyan
-        'TVS Raider': '00B4D8', 'TVS Apache': '00B4D8', 'TVS': '00B4D8',
+        // ─── TVS — cyan/blue family (each model distinct) ───
+        'TVS': '#00B4D8',
+        'TVS Raider': '#00B4D8',
+        'TVS Raider 125': '#00B4D8',
+        'TVS Raider 125 FI': '#00B4D8',
+        'TVS Raider 125 EFI': '#00B4D8',
+        'TVS Raider 125 Carb': '#00B4D8',
+        'TVS Raider 125 Carb.': '#00B4D8',
+        'TVS Apache': '#00B4D8',
+        'TVS Apache 160': '#00B4D8',
+        'TVS Apache 160 4V EFI': '#00B4D8',
+        'TVS Apache 200': '#00B4D8',
+        'TVS Apache 200 Carb.': '#00B4D8',
+        'TVS Apache 200 Carb': '#00B4D8',
+        'TVS Ntorq': '#00B4D8',
+        'TVS Ntorq 125': '#00B4D8',
+        'TVS NTORQ XP FI': '#00B4D8',
+        'TVS Jupiter': '#00B4D8',
+        'TVS Jupiter 110 EFI': '#00B4D8',
+        'TVS Jupiter 125 EFI': '#00B4D8',
+        'TVS XL100': '#00B4D8',
+        'TVS HLX': '#00B4D8',
+        'TVS HLX 125': '#00B4D8',
+        'TVS HLX 125 4G': '#00B4D8',
+        'TVS HLX 125 5G': '#00B4D8',
+        'TVS HLX 150': '#00B4D8',
+        'TVS Deluxe': '#00B4D8',
+        'TVS Deluxe Plus': '#00B4D8',
+        'TVS Neo NX': '#00B4D8',
+        'TVS RockZ': '#00B4D8',
+        'TVS Star LX': '#00B4D8',
 
-        // Bajaj — purple
-        'Bajaj Pulsar': '7C3AED', 'Bajaj': '7C3AED',
+        // ─── Bajaj — purple family ───
+        'Bajaj': '#7C3AED',
+        'Bajaj Pulsar': '#bd4b4bff',
+        'Bajaj Pulsar N 160': '#bd4b4bff',
+        'Bajaj Pulsar NS 125': '#bd4b4bff',
+        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj BM 125': '#545454',
+        'Bajaj BM 125 HD': '#545454',
+        'Bajaj BM 100': '#545454',
+        'Bajaj BM 150': '#545454',
+        'Bajaj RE': '#7C3AED',
+        'Bajaj CT 125': '#372268ff',
+        'Bajaj CT125': '#372268ff',
+        'Bajaj 125 BM': '#545454',
+        'Bajaj 100 Qlink 125': '#7C3AED',
+        'Bajaj Daylong 125': '#7C3AED',
+        'Bajaj Kawasaki KW50': '#7C3AED',
 
-        // Yamaha — orange
-        'Yamaha FZ': 'FF5A00', 'Yamaha': 'FF5A00',
+        // ─── Yamaha — orange/red family ───
+        'Yamaha': '#FF5A00',
+        'Yamaha FZ': '#FF5A00',
+        'Yamaha FZ EFI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
 
-        // Honda — navy
-        'Honda CB': '1E3A8A', 'Honda': '1E3A8A',
+        // ─── Honda — navy/blue family ───
+        'Honda': '#1E3A8A',
+        'Honda CB': '#1E3A8A',
+        'Honda CB 125': '#1E3A8A',
+        'Honda CB 125 F': '#1E3A8A',
+        'Honda SP 125': '#1E3A8A',
+        'Honda Hero Super Splendor': '#1E3A8A',
+        'Honda Dio 125 EFI': '#1E3A8A',
+        'Honda Dio 110 EFI': '#1E3A8A',
+        'Honda Activa 125 EFI': '#1E3A8A',
 
-        // Suzuki — teal
-        'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
+        // ─── Suzuki — teal family ───
+        'Suzuki': '#1E7268',
+        'Suzuki Gixxer': '#1E7268',
+        'Suzuki Gixxer 150': '#1E7268',
+        'Suzuki Gixxer 155': '#1E7268',
+        'Suzuki Gixxer 250': '#1E7268',
 
-        //Haojue
-        'Haojue': 'B38901', 'Haojue 125': 'B38901',
+        // ─── Haojue — amber/gold family ───
+        'Haojue': '#B38901',
+        'Haojue 125': '#B38901',
+        'Haojue Express 125': '#B38901',
+        'Haojue Express 150': '#B38901',
+        'Haojue Lucky': '#B38901',
+        'Haojue Express 125/ Heroo Express 125': '#B38901',
 
-        //Hero
+        // ─── Hero — green family ───
         'Hero': '#00B050',
         'Hero Zoom 125': '#00B050',
+        'Hero Zoom 110': '#00B050',
+        'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+        'Hero Xtreme 125 EFI': '#00B050',
+        'Hero Super Splendor': '#00B050',
+        'Heroo Dia 125 EFI': '#00B050',
+        'Heroo Express 125': '#00B050',
 
-        //Power
-        'Power ': '#723654', 'Power K': '#723654',
+        // ─── Power — maroon family ───
+        'Power': '#723654',
+        'Power K': '#723654',
+        'Power K 125': '#8B4468',
 
-        // Bajaj BM 125
-        'Bajaj 125 BM': "#545454"
+        // ─── Torito — brown/rust family ───
+        'Torito': '#92400E',
+        'Torito Bajaj RE': '#92400E',
+        'Torito Bajaj RE 200': '#92400E',
+
+        // ─── Rouser — red family ───
+        'Rouser NS': '#DC2626',
+        'Rouser NS 125': '#DC2626',
+        'Rouser NS (Ls) 125': '#DC2626',
+        'Rouser NS 200': '#DC2626',
       }
+
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
-        'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
-        'Bajaj Pulsar': 'D1C4E9', 'Bajaj': 'D1C4E9',
-        'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
-        'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
-        'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
-        'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#00B050', 'Hero zoom': '#00B050',
-        'Power ': '#723654', 'Power K': '#723654',
-        'Bajaj BM 125': "#545454", 'Bajaj 125 BM': '#545454'
 
+        // ─── TVS — cyan/blue family (each model distinct) ───
+        'TVS': '#00B4D8',
+        'TVS Raider': '#00B4D8',
+        'TVS Raider 125': '#00B4D8',
+        'TVS Raider 125 FI': '#00B4D8',
+        'TVS Raider 125 EFI': '#00B4D8',
+        'TVS Raider 125 Carb': '#00B4D8',
+        'TVS Raider 125 Carb.': '#00B4D8',
+        'TVS Apache': '#00B4D8',
+        'TVS Apache 160': '#00B4D8',
+        'TVS Apache 160 4V EFI': '#00B4D8',
+        'TVS Apache 200': '#00B4D8',
+        'TVS Apache 200 Carb.': '#00B4D8',
+        'TVS Apache 200 Carb': '#00B4D8',
+        'TVS Ntorq': '#00B4D8',
+        'TVS Ntorq 125': '#00B4D8',
+        'TVS NTORQ XP FI': '#00B4D8',
+        'TVS Jupiter': '#00B4D8',
+        'TVS Jupiter 110 EFI': '#00B4D8',
+        'TVS Jupiter 125 EFI': '#00B4D8',
+        'TVS XL100': '#00B4D8',
+        'TVS HLX': '#00B4D8',
+        'TVS HLX 125': '#00B4D8',
+        'TVS HLX 125 4G': '#00B4D8',
+        'TVS HLX 125 5G': '#00B4D8',
+        'TVS HLX 150': '#00B4D8',
+        'TVS Deluxe': '#00B4D8',
+        'TVS Deluxe Plus': '#00B4D8',
+        'TVS Neo NX': '#00B4D8',
+        'TVS RockZ': '#00B4D8',
+        'TVS Star LX': '#00B4D8',
 
+        // ─── Bajaj — purple family ───
+        'Bajaj': '#7C3AED',
+        'Bajaj Pulsar': '#bd4b4bff',
+        'Bajaj Pulsar N 160': '#bd4b4bff',
+        'Bajaj Pulsar NS 125': '#bd4b4bff',
+        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj BM 125': '#545454',
+        'Bajaj BM 125 HD': '#545454',
+        'Bajaj BM 100': '#545454',
+        'Bajaj BM 150': '#545454',
+        'Bajaj RE': '#7C3AED',
+        'Bajaj CT 125': '#372268ff',
+        'Bajaj CT125': '#372268ff',
+        'Bajaj 125 BM': '#545454',
+        'Bajaj 100 Qlink 125': '#7C3AED',
+        'Bajaj Daylong 125': '#7C3AED',
+        'Bajaj Kawasaki KW50': '#7C3AED',
+
+        // ─── Yamaha — orange/red family ───
+        'Yamaha': '#FF5A00',
+        'Yamaha FZ': '#FF5A00',
+        'Yamaha FZ EFI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
+
+        // ─── Honda — navy/blue family ───
+        'Honda': '#1E3A8A',
+        'Honda CB': '#1E3A8A',
+        'Honda CB 125': '#1E3A8A',
+        'Honda CB 125 F': '#1E3A8A',
+        'Honda SP 125': '#1E3A8A',
+        'Honda Hero Super Splendor': '#1E3A8A',
+        'Honda Dio 125 EFI': '#1E3A8A',
+        'Honda Dio 110 EFI': '#1E3A8A',
+        'Honda Activa 125 EFI': '#1E3A8A',
+
+        // ─── Suzuki — teal family ───
+        'Suzuki': '#1E7268',
+        'Suzuki Gixxer': '#1E7268',
+        'Suzuki Gixxer 150': '#1E7268',
+        'Suzuki Gixxer 155': '#1E7268',
+        'Suzuki Gixxer 250': '#1E7268',
+
+        // ─── Haojue — amber/gold family ───
+        'Haojue': '#B38901',
+        'Haojue 125': '#B38901',
+        'Haojue Express 125': '#B38901',
+        'Haojue Express 150': '#B38901',
+        'Haojue Lucky': '#B38901',
+        'Haojue Express 125/ Heroo Express 125': '#B38901',
+
+        // ─── Hero — green family ───
+        'Hero': '#00B050',
+        'Hero Zoom 125': '#00B050',
+        'Hero Zoom 110': '#00B050',
+        'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+        'Hero Xtreme 125 EFI': '#00B050',
+        'Hero Super Splendor': '#00B050',
+        'Heroo Dia 125 EFI': '#00B050',
+        'Heroo Express 125': '#00B050',
+
+        // ─── Power — maroon family ───
+        'Power': '#723654',
+        'Power K': '#723654',
+        'Power K 125': '#8B4468',
+
+        // ─── Torito — brown/rust family ───
+        'Torito': '#92400E',
+        'Torito Bajaj RE': '#92400E',
+        'Torito Bajaj RE 200': '#92400E',
+
+        // ─── Rouser — red family ───
+        'Rouser NS': '#DC2626',
+        'Rouser NS 125': '#DC2626',
+        'Rouser NS (Ls) 125': '#DC2626',
+        'Rouser NS 200': '#DC2626',
       }
+
 
       const hashBrand = (str: string): number => {
         let hash = 0
@@ -808,44 +993,57 @@ export default function DashboardPage() {
       const getBrandColor = (brandName: string): string => {
         if (!brandName) return '475569'
         const clean = String(brandName).trim()
+
+        // 1️⃣ EXACT model match first (per-model unique color)
         if (SPECIFIC_BRAND_COLORS[clean]) {
           return SPECIFIC_BRAND_COLORS[clean]
         }
+
         const lower = clean.toLowerCase()
 
-        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return '00B4D8'
-        if (lower.includes('pulsar') || lower.includes('bajaj')) return '7C3AED'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'FF5A00'
-        if (lower.includes('honda') || lower.includes('cb')) return '1E3A8A'   // ← navy
+        // 2️⃣ Fallback: brand-family color (same family, still distinct within family)
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('ntorq') || lower.includes('jupiter') || lower.includes('hlx') || lower.includes('tvs')) return '00B4D8'
+        if (lower.includes('pulsar') || lower.includes('discover') || lower.includes('bajaj') || lower.includes('qlink') || lower.includes('daylong') || lower.includes('kawasaki')) return '7C3AED'
+        if (lower.includes('yamaha') || lower.includes('fz') || lower.includes('ray zr')) return 'FF5A00'
+        if (lower.includes('honda') || lower.includes('cb') || lower.includes('dio') || lower.includes('activa') || lower.includes('splendor')) return '1E3A8A'
         if (lower.includes('gixxer') || lower.includes('suzuki')) return '2A9D8F'
-        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
-        if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
+        if (lower.includes('haojue')) return 'B38901'
+        if (lower.includes('hero') || lower.includes('zoom') || lower.includes('xtreme') || lower.includes('heroo')) return '00B050'
+        if (lower.includes('power')) return '723654'
+        if (lower.includes('torito')) return '92400E'
+        if (lower.includes('rouser')) return 'DC2626'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '545454'
 
+        // 3️⃣ Last resort: deterministic hash
         const idx = hashBrand(clean.toUpperCase()) % BRAND_COLORS_LIST.length
         return BRAND_COLORS_LIST[idx]
       }
 
-      // Dynamic light color palette assignment
       const getAgeGroupLightColor = (brandName: string): string => {
         if (!brandName) return 'ECEFF1'
         const clean = String(brandName).trim()
+
+        // 1️⃣ EXACT model match first
         if (SPECIFIC_LIGHT_COLORS[clean]) {
           return SPECIFIC_LIGHT_COLORS[clean]
         }
+
         const lower = clean.toLowerCase()
 
-        if (lower.includes('apache') || lower.includes('raider') || lower.includes('tvs')) return 'B3E5FC'
-        if (lower.includes('pulsar') || lower.includes('bajaj')) return 'D1C4E9'
-        if (lower.includes('yamaha') || lower.includes('fz')) return 'FFE0CC'
-        if (lower.includes('honda') || lower.includes('cb')) return 'DBEAFE'   // ← navy light
+        // 2️⃣ Fallback: brand-family light tint
+        if (lower.includes('apache') || lower.includes('raider') || lower.includes('ntorq') || lower.includes('jupiter') || lower.includes('hlx') || lower.includes('tvs')) return 'B3E5FC'
+        if (lower.includes('pulsar') || lower.includes('discover') || lower.includes('bajaj') || lower.includes('qlink') || lower.includes('daylong') || lower.includes('kawasaki')) return 'D1C4E9'
+        if (lower.includes('yamaha') || lower.includes('fz') || lower.includes('ray zr')) return 'FFE0CC'
+        if (lower.includes('honda') || lower.includes('cb') || lower.includes('dio') || lower.includes('activa') || lower.includes('splendor')) return 'DBEAFE'
         if (lower.includes('gixxer') || lower.includes('suzuki')) return 'D1F0EC'
-        if (lower.includes('haojue') || lower.includes('haojue 125')) return 'B38901'
-        if (lower.includes('hero') || lower.includes('hero zoom')) return '#00B050'
-        if (lower.includes('power') || lower.includes('power k')) return '#723654'
-        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return '#545454'
+        if (lower.includes('haojue')) return 'FCE6C2'
+        if (lower.includes('hero') || lower.includes('zoom') || lower.includes('xtreme') || lower.includes('heroo')) return 'C8E6C9'
+        if (lower.includes('power')) return 'E1BEE7'
+        if (lower.includes('torito')) return 'FFE0B2'
+        if (lower.includes('rouser')) return 'FEE2E2'
+        if (lower.includes('bajaj 125 bm') || lower.includes('bajaj bm 125')) return 'CFD8DC'
 
+        // 3️⃣ Last resort: deterministic hash
         const idx = hashBrand(clean.toUpperCase()) % LIGHT_COLORS_LIST.length
         return LIGHT_COLORS_LIST[idx]
       }
@@ -3149,6 +3347,195 @@ export default function DashboardPage() {
       setPptProgress('Generating Slide: Section 10 (Delivery as per promised time)...')
       renderIndividualSectionSlide('10')
 
+      // ═══════════════════════════════════════════════════════════════════
+      // SLIDE: CSI Score — Authorised Workshop (All Brands Only)
+      // ═══════════════════════════════════════════════════════════════════
+      setPptProgress('Generating Slide: CSI Score — Authorised Workshop...')
+      const renderCsiScoreSlide = () => {
+        const authBreakdown = csiData?.authorized_brand_breakdown || []
+
+        const validRows = authBreakdown
+          .filter((r: any) => r && r.brand && Number(r.count || 0) > 0)
+          .map((r: any) => ({
+            brand: String(r.brand),
+            avg_csi: Number(r.avg_csi || 0),
+            count: Number(r.count || 0),
+          }))
+
+        const slide = pptx.addSlide()
+        slide.background = { fill: 'FFFFFF' }
+        addSlideTitle(slide, 'CSI Score — Authorised Workshop', '')
+
+        const overallAuthCount = Number(csiData?.authorized_count || 0)
+
+        const orderedRows = getOrderedBrands(validRows.map((r) => r.brand))
+          .map((b) => validRows.find((r) => r.brand === b))
+          .filter(Boolean) as { brand: string; avg_csi: number; count: number }[]
+
+        if (orderedRows.length === 0) {
+          slide.addText('No CSI data available for Authorised Workshop.', {
+            x: 0.5, y: 2.5, w: 9.0, h: 0.5,
+            fontSize: 14, color: '94A3B8', align: 'center', valign: 'middle', fontFace: 'Arial',
+          })
+          return
+        }
+
+        // ═════════════════════════════════════════════════════════
+        // 1) TOP-LEFT: MODEL / BASE table (smaller + bordered)
+        // ═════════════════════════════════════════════════════════
+        const tableStartX = 0.3
+        const tableStartY = 1.05
+        const modelColW = 1.5
+        const baseColW = 0.7
+        const tableRowH = 0.22
+
+        // Border style — thin gray
+        const cellBorder = [
+          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
+          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
+          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
+          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
+        ]
+
+        // Header row
+        slide.addText('MODEL', {
+          x: tableStartX, y: tableStartY, w: modelColW, h: tableRowH,
+          fill: 'D9D9D9', color: '333333', bold: true,
+          align: 'center', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+          line: { color: 'B0B0B0', width: 0.75 },
+        })
+        slide.addText('BASE', {
+          x: tableStartX + modelColW, y: tableStartY, w: baseColW, h: tableRowH,
+          fill: 'D9D9D9', color: '333333', bold: true,
+          align: 'center', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+          line: { color: 'B0B0B0', width: 0.75 },
+        })
+
+        // Data rows
+        let modelRowY = tableStartY + tableRowH
+        orderedRows.forEach((row) => {
+          slide.addText(row.brand, {
+            x: tableStartX, y: modelRowY, w: modelColW, h: tableRowH,
+            fill: getBrandColor(row.brand), color: 'FFFFFF', bold: true,
+            align: 'center', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+            line: { color: 'B0B0B0', width: 0.75 },
+          })
+          slide.addText(String(row.count), {
+            x: tableStartX + modelColW, y: modelRowY, w: baseColW, h: tableRowH,
+            fill: 'FFFFFF', color: '333333', bold: true,
+            align: 'center', valign: 'middle', fontSize: 8, fontFace: 'Arial',
+            line: { color: 'B0B0B0', width: 0.75 },
+          })
+          modelRowY += tableRowH
+        })
+
+        // ═════════════════════════════════════════════════════════
+        // 2) TOP-CENTER: "Overall" label
+        // ═════════════════════════════════════════════════════════
+        slide.addText('Overall', {
+          x: 4.1, y: 1.15, w: 2.4, h: 0.28,
+          color: '1E293B', bold: true,
+          align: 'center', valign: 'middle', fontSize: 11, fontFace: 'Calibri',
+        })
+
+        // ═════════════════════════════════════════════════════════
+        // 3) CENTER: Column chart — with axis lines
+        // ═════════════════════════════════════════════════════════
+        const chartX = 1.4
+        const chartY = 2.25
+        const chartW = 8.0
+        const chartH = 2.8
+
+        const chartSeries = [
+          {
+            name: 'Avg CSI',
+            labels: orderedRows.map((r) => r.brand),
+            values: orderedRows.map((r) => Number(r.avg_csi.toFixed(2))),
+          },
+        ]
+        const brandChartColors = orderedRows.map((r) => getBrandColor(r.brand))
+
+        try {
+          slide.addChart(pptx.ChartType.bar, chartSeries, {
+            x: chartX, y: chartY, w: chartW, h: chartH,
+            barDir: 'col',
+            barGrouping: 'clustered',
+            chartColors: brandChartColors,
+            chartColorsOpacity: 100,
+            showTitle: false,
+            showLegend: true,
+            legendPos: 'b',
+            legendFontSize: 9,
+            legendFontFace: 'Arial',
+            showValue: true,
+            dataLabelPosition: 'outEnd',
+            dataLabelFormatCode: '0.0',
+            dataLabelFontSize: 11,
+            dataLabelColor: '333333',
+            dataLabelFontFace: 'Arial',
+
+            // ── Category (x) axis — hide brand names ──
+            catAxisLabelFontSize: 1,
+            catAxisLabelColor: 'FFFFFF',
+            catAxisLabelFontFace: 'Arial',
+            catAxisLabelPos: 'low',
+            catAxisLineShow: true,
+            catAxisLineColor: '6a6a6a',
+            catAxisLineSize: 1,
+            catGridLine: { style: 'none' },
+
+            // ── Value (y) axis — show line ──
+            valAxisHidden: false,
+            valAxisMinVal: 0,
+            valAxisMaxVal: 10,
+            valAxisMajorUnit: 2.5,
+            valAxisLabelFontSize: 10,
+            valAxisLabelColor: '333333',
+            valAxisLabelFontFace: 'Arial',
+            valAxisLabelFormatCode: '0.0',
+            valAxisLineShow: true,
+            valAxisLineColor: '6a6a6a',
+            valAxisLineSize: 1,
+            valAxisMajorTickMark: 'none',
+            valAxisMinorTickMark: 'none',
+            valGridLine: { style: 'none' },
+
+            barGapWidthPct: 220,
+          })
+        } catch (err) {
+          console.error('[PPT] Error adding CSI chart:', err)
+          slide.addText('Chart could not be rendered', {
+            x: chartX, y: chartY, w: chartW, h: chartH,
+            fontSize: 12, color: 'CC0000', align: 'center', valign: 'middle',
+          })
+        }
+
+        // ─── MANUAL "CSI Score" label — drawn below the chart, above legend ───
+        slide.addText('CSI Score', {
+          x: chartX,
+          y: chartY + chartH - 0.50,       // ← tweak this if position needs shifting
+          w: chartW,
+          h: 0.30,
+          color: '333333',
+          bold: false,
+          align: 'center',
+          valign: 'middle',
+          fontSize: 11,
+          fontFace: 'Arial',
+        })
+        // ═════════════════════════════════════════════════════════
+        // 4) BOTTOM-LEFT: Overall Authorized Workshop count
+        // ═════════════════════════════════════════════════════════
+        slide.addText(`Overall Authorized Workshop : ${overallAuthCount}`, {
+          x: 0.3, y: 5.25, w: 4.0, h: 0.28,
+          color: '1E293B', bold: false,
+          align: 'left', valign: 'middle',
+          fontSize: 8, fontFace: 'Arial',
+        })
+      }
+      renderCsiScoreSlide()
+
+
       // ─── DIVIDER: Section B ───
       addDividerSlide('Section B')
 
@@ -4278,44 +4665,230 @@ export default function DashboardPage() {
 
 
       const SPECIFIC_BRAND_COLORS: Record<string, string> = {
-        // TVS — cyan
-        'TVS Raider': '00B4D8', 'TVS Apache': '00B4D8', 'TVS': '00B4D8',
+        // ─── TVS — cyan/blue family (each model distinct) ───
+        'TVS': '#00B4D8',
+        'TVS Raider': '#00B4D8',
+        'TVS Raider 125': '#00B4D8',
+        'TVS Raider 125 FI': '#00B4D8',
+        'TVS Raider 125 EFI': '#00B4D8',
+        'TVS Raider 125 Carb': '#00B4D8',
+        'TVS Raider 125 Carb.': '#00B4D8',
+        'TVS Apache': '#00B4D8',
+        'TVS Apache 160': '#00B4D8',
+        'TVS Apache 160 4V EFI': '#00B4D8',
+        'TVS Apache 200': '#00B4D8',
+        'TVS Apache 200 Carb.': '#00B4D8',
+        'TVS Apache 200 Carb': '#00B4D8',
+        'TVS Ntorq': '#00B4D8',
+        'TVS Ntorq 125': '#00B4D8',
+        'TVS NTORQ XP FI': '#00B4D8',
+        'TVS Jupiter': '#00B4D8',
+        'TVS Jupiter 110 EFI': '#00B4D8',
+        'TVS Jupiter 125 EFI': '#00B4D8',
+        'TVS XL100': '#00B4D8',
+        'TVS HLX': '#00B4D8',
+        'TVS HLX 125': '#00B4D8',
+        'TVS HLX 125 4G': '#00B4D8',
+        'TVS HLX 125 5G': '#00B4D8',
+        'TVS HLX 150': '#00B4D8',
+        'TVS Deluxe': '#00B4D8',
+        'TVS Deluxe Plus': '#00B4D8',
+        'TVS Neo NX': '#00B4D8',
+        'TVS RockZ': '#00B4D8',
+        'TVS Star LX': '#00B4D8',
 
-        // Bajaj — purple
-        'Bajaj Pulsar': '7C3AED', 'Bajaj': '7C3AED',
+        // ─── Bajaj — purple family ───
+        'Bajaj': '#7C3AED',
+        'Bajaj Pulsar': '#bd4b4bff',
+        'Bajaj Pulsar N 160': '#bd4b4bff',
+        'Bajaj Pulsar NS 125': '#bd4b4bff',
+        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj BM 125': '#545454',
+        'Bajaj BM 125 HD': '#545454',
+        'Bajaj BM 100': '#545454',
+        'Bajaj BM 150': '#545454',
+        'Bajaj RE': '#7C3AED',
+        'Bajaj CT 125': '#372268ff',
+        'Bajaj CT125': '#372268ff',
+        'Bajaj 125 BM': '#545454',
+        'Bajaj 100 Qlink 125': '#7C3AED',
+        'Bajaj Daylong 125': '#7C3AED',
+        'Bajaj Kawasaki KW50': '#7C3AED',
 
-        // Yamaha — orange
-        'Yamaha FZ': 'FF5A00', 'Yamaha': 'FF5A00',
+        // ─── Yamaha — orange/red family ───
+        'Yamaha': '#FF5A00',
+        'Yamaha FZ': '#FF5A00',
+        'Yamaha FZ EFI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
 
-        // Honda — navy
-        'Honda CB': '1E3A8A', 'Honda': '1E3A8A',
+        // ─── Honda — navy/blue family ───
+        'Honda': '#1E3A8A',
+        'Honda CB': '#1E3A8A',
+        'Honda CB 125': '#1E3A8A',
+        'Honda CB 125 F': '#1E3A8A',
+        'Honda SP 125': '#1E3A8A',
+        'Honda Hero Super Splendor': '#1E3A8A',
+        'Honda Dio 125 EFI': '#1E3A8A',
+        'Honda Dio 110 EFI': '#1E3A8A',
+        'Honda Activa 125 EFI': '#1E3A8A',
 
-        // Suzuki — teal
-        'Suzuki Gixxer': '2A9D8F', 'Suzuki': '2A9D8F',
+        // ─── Suzuki — teal family ───
+        'Suzuki': '#1E7268',
+        'Suzuki Gixxer': '#1E7268',
+        'Suzuki Gixxer 150': '#1E7268',
+        'Suzuki Gixxer 155': '#1E7268',
+        'Suzuki Gixxer 250': '#1E7268',
 
-        //Haojue
-        'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        //Hero
-        'Hero': '#00B050', 'Hero zoom': '#00B050',
+        // ─── Haojue — amber/gold family ───
+        'Haojue': '#B38901',
+        'Haojue 125': '#B38901',
+        'Haojue Express 125': '#B38901',
+        'Haojue Express 150': '#B38901',
+        'Haojue Lucky': '#B38901',
+        'Haojue Express 125/ Heroo Express 125': '#B38901',
 
-        //Power
-        'Power k': '#723654', 'Power ': '#723654',
+        // ─── Hero — green family ───
+        'Hero': '#00B050',
+        'Hero Zoom 125': '#00B050',
+        'Hero Zoom 110': '#00B050',
+        'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+        'Hero Xtreme 125 EFI': '#00B050',
+        'Hero Super Splendor': '#00B050',
+        'Heroo Dia 125 EFI': '#00B050',
+        'Heroo Express 125': '#00B050',
 
-        //Bajaj BM 125
-        'Bajaj 125 BM': "#545454", 'Bajaj BM 125': "#545454"
+        // ─── Power — maroon family ───
+        'Power': '#723654',
+        'Power K': '#723654',
+        'Power K 125': '#8B4468',
+
+        // ─── Torito — brown/rust family ───
+        'Torito': '#92400E',
+        'Torito Bajaj RE': '#92400E',
+        'Torito Bajaj RE 200': '#92400E',
+
+        // ─── Rouser — red family ───
+        'Rouser NS': '#DC2626',
+        'Rouser NS 125': '#DC2626',
+        'Rouser NS (Ls) 125': '#DC2626',
+        'Rouser NS 200': '#DC2626',
       }
+
 
       const SPECIFIC_LIGHT_COLORS: Record<string, string> = {
-        'TVS Raider': 'B3E5FC', 'TVS Apache': 'B3E5FC', 'TVS': 'B3E5FC',
-        'Bajaj Pulsar': 'D1C4E9', 'Bajaj': 'D1C4E9',
-        'Yamaha FZ': 'FFE0CC', 'Yamaha': 'FFE0CC',
-        'Honda CB': 'DBEAFE', 'Honda': 'DBEAFE',          // ← navy light
-        'Suzuki Gixxer': 'D1F0EC', 'Suzuki': 'D1F0EC',
-        'Haojue': 'B38901', 'Haojue 125': 'B38901',
-        'Hero': '#00B050', 'Hero zoom': '#00B050',
-        'Power': '#723654', 'Power K': '#723654',
-        'Bajaj BM 125': '#545454', 'Bajaj 125 BM': '#545454'
+        // ─── TVS — cyan/blue family (each model distinct) ───
+        'TVS': '#00B4D8',
+        'TVS Raider': '#00B4D8',
+        'TVS Raider 125': '#00B4D8',
+        'TVS Raider 125 FI': '#00B4D8',
+        'TVS Raider 125 EFI': '#00B4D8',
+        'TVS Raider 125 Carb': '#00B4D8',
+        'TVS Raider 125 Carb.': '#00B4D8',
+        'TVS Apache': '#00B4D8',
+        'TVS Apache 160': '#00B4D8',
+        'TVS Apache 160 4V EFI': '#00B4D8',
+        'TVS Apache 200': '#00B4D8',
+        'TVS Apache 200 Carb.': '#00B4D8',
+        'TVS Apache 200 Carb': '#00B4D8',
+        'TVS Ntorq': '#00B4D8',
+        'TVS Ntorq 125': '#00B4D8',
+        'TVS NTORQ XP FI': '#00B4D8',
+        'TVS Jupiter': '#00B4D8',
+        'TVS Jupiter 110 EFI': '#00B4D8',
+        'TVS Jupiter 125 EFI': '#00B4D8',
+        'TVS XL100': '#00B4D8',
+        'TVS HLX': '#00B4D8',
+        'TVS HLX 125': '#00B4D8',
+        'TVS HLX 125 4G': '#00B4D8',
+        'TVS HLX 125 5G': '#00B4D8',
+        'TVS HLX 150': '#00B4D8',
+        'TVS Deluxe': '#00B4D8',
+        'TVS Deluxe Plus': '#00B4D8',
+        'TVS Neo NX': '#00B4D8',
+        'TVS RockZ': '#00B4D8',
+        'TVS Star LX': '#00B4D8',
+
+        // ─── Bajaj — purple family ───
+        'Bajaj': '#7C3AED',
+        'Bajaj Pulsar': '#bd4b4bff',
+        'Bajaj Pulsar N 160': '#bd4b4bff',
+        'Bajaj Pulsar NS 125': '#bd4b4bff',
+        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
+        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj BM 125': '#545454',
+        'Bajaj BM 125 HD': '#545454',
+        'Bajaj BM 100': '#545454',
+        'Bajaj BM 150': '#545454',
+        'Bajaj RE': '#7C3AED',
+        'Bajaj CT 125': '#372268ff',
+        'Bajaj CT125': '#372268ff',
+        'Bajaj 125 BM': '#545454',
+        'Bajaj 100 Qlink 125': '#7C3AED',
+        'Bajaj Daylong 125': '#7C3AED',
+        'Bajaj Kawasaki KW50': '#7C3AED',
+
+        // ─── Yamaha — orange/red family ───
+        'Yamaha': '#FF5A00',
+        'Yamaha FZ': '#FF5A00',
+        'Yamaha FZ EFI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI': '#FF5A00',
+        'Yamaha Yama Ray ZR FI/ Heroo Dia 125 EFI': '#FF5A00',
+
+        // ─── Honda — navy/blue family ───
+        'Honda': '#1E3A8A',
+        'Honda CB': '#1E3A8A',
+        'Honda CB 125': '#1E3A8A',
+        'Honda CB 125 F': '#1E3A8A',
+        'Honda SP 125': '#1E3A8A',
+        'Honda Hero Super Splendor': '#1E3A8A',
+        'Honda Dio 125 EFI': '#1E3A8A',
+        'Honda Dio 110 EFI': '#1E3A8A',
+        'Honda Activa 125 EFI': '#1E3A8A',
+
+        // ─── Suzuki — teal family ───
+        'Suzuki': '#1E7268',
+        'Suzuki Gixxer': '#1E7268',
+        'Suzuki Gixxer 150': '#1E7268',
+        'Suzuki Gixxer 155': '#1E7268',
+        'Suzuki Gixxer 250': '#1E7268',
+
+        // ─── Haojue — amber/gold family ───
+        'Haojue': '#B38901',
+        'Haojue 125': '#B38901',
+        'Haojue Express 125': '#B38901',
+        'Haojue Express 150': '#B38901',
+        'Haojue Lucky': '#B38901',
+        'Haojue Express 125/ Heroo Express 125': '#B38901',
+
+        // ─── Hero — green family ───
+        'Hero': '#00B050',
+        'Hero Zoom 125': '#00B050',
+        'Hero Zoom 110': '#00B050',
+        'Hero Zoom 110/ Honda Dio 110 EFI': '#00B050',
+        'Hero Xtreme 125 EFI': '#00B050',
+        'Hero Super Splendor': '#00B050',
+        'Heroo Dia 125 EFI': '#00B050',
+        'Heroo Express 125': '#00B050',
+
+        // ─── Power — maroon family ───
+        'Power': '#723654',
+        'Power K': '#723654',
+        'Power K 125': '#8B4468',
+
+        // ─── Torito — brown/rust family ───
+        'Torito': '#92400E',
+        'Torito Bajaj RE': '#92400E',
+        'Torito Bajaj RE 200': '#92400E',
+
+        // ─── Rouser — red family ───
+        'Rouser NS': '#DC2626',
+        'Rouser NS 125': '#DC2626',
+        'Rouser NS (Ls) 125': '#DC2626',
+        'Rouser NS 200': '#DC2626',
       }
+
 
       // ─── Slide counter + TOC tracking (for internal hyperlinks) ───
       let slideCounter = 0
@@ -4918,10 +5491,37 @@ export default function DashboardPage() {
         }
 
         const mainTitle = formatMainIssueTitle(issueItem.issue_name, issueTvsCount)
+
+        // ─── Total number of complaints for this issue (all brands) ───
+        let issueTotalComplaints = 0
+        subIssues.forEach((sub: any) => {
+          if (Array.isArray(sub.brands) && sub.brands.length > 0) {
+            sub.brands.forEach((b: any) => {
+              if (b.name && b.name !== 'Blank') {
+                issueTotalComplaints += Number(b.count || 0)
+              }
+            })
+          } else {
+            Object.values(sub.answer_values || {}).forEach((info: any) => {
+              issueTotalComplaints += Number(info?.total || 0)
+            })
+          }
+        })
+        const complaintsSubtitle = `Above Mentioned Is Number of Complaints`
+        const addComplaintsSubtitle = (s: any) => {
+          // Bottom-left of the slide (below the table)
+          s.addText(complaintsSubtitle, {
+            x: 0.3, y: 5.15, w: 4.4, h: 0.3,
+            fontSize: 10, bold: true, color: '2B5797', fontFace: 'Arial',
+            align: 'left', valign: 'middle',
+          })
+        }
+
         slide.addText(mainTitle, {
           x: 0.3, y: 0.3, w: 6.0, h: 0.5,
           fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial',
         })
+        addComplaintsSubtitle(slide)
         slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
         slide.addShape(pptx.shapes.LINE, {
           x: 0.3, y: 0.85, w: 9.4, h: 0.0,
@@ -5047,6 +5647,7 @@ export default function DashboardPage() {
             const s = pptx.addSlide()
             s.background = { fill: 'FFFFFF' }
             s.addText(mainTitle, { x: 0.3, y: 0.3, w: 6.0, h: 0.5, fontSize: 22, bold: true, color: '1E293B', fontFace: 'Arial' })
+            addComplaintsSubtitle(s)
             s.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.25, w: 1.0, h: 0.52 })
             s.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
             return s
@@ -7314,6 +7915,12 @@ export default function DashboardPage() {
 
           const mainTitle = formatIssueTitleByBrand(issueItem.issue_name)
 
+          // ─── Total number of complaints for this issue (all brands) ───
+          const totalComplaints = currentBrands.reduce(
+            (sum, b) => sum + Number(brandGrandTotals[b] || 0), 0
+          )
+          const complaintsSubtitle = `Above Mentioned Is Number of Complaints`
+
           // Chunk sub-issues into groups of max SUB_ISSUES_PER_SLIDE per slide
           for (let i = 0; i < subIssues.length; i += SUB_ISSUES_PER_SLIDE) {
             const chunkSubIssues = subIssues.slice(i, i + SUB_ISSUES_PER_SLIDE)
@@ -7323,6 +7930,13 @@ export default function DashboardPage() {
             slideBNL.background = { fill: 'FFFFFF' }
 
             addSlideTitle(slideBNL, mainTitle, '')
+
+            // ─── Number of Complaints (bottom-left, below the table) ───
+            slideBNL.addText(complaintsSubtitle, {
+              x: 0.3, y: 5.15, w: 4.4, h: 0.3,
+              fontSize: 10, bold: true, color: '2B5797', fontFace: 'Arial',
+              align: 'left', valign: 'middle',
+            })
 
             // ─── LEFT SIDE: TABLE ───
             const tableX = 0.3
@@ -7660,17 +8274,100 @@ export default function DashboardPage() {
           })
         })
 
+        // ─── Total number of complaints for this issue (all brands) ───
+        const l3l4TotalComplaints = orderedL3L4Brands.reduce(
+          (sum, b) => sum + Number(overallBrandGrandTotals[b] || 0), 0
+        )
+        const l3l4ComplaintsText = `Above Mentioned Is Number of Complaints`
+
         const MAX_ROWS = 13
-        const chunks: L3L4L5Row[][] = []
-        for (let i = 0; i < rows.length; i += MAX_ROWS) chunks.push(rows.slice(i, i + MAX_ROWS))
+        // ─── Layout constants ───
+        const TABLE_X = 0.3
+        const TABLE_W = 9.4
+        const TABLE_TOP = 0.95
+        const TABLE_BOTTOM = 5.05          // "Above Mentioned…" text sits at y = 5.15
+        const HEADER_H = 0.3
+        const GRAND_ROW_H = 0.24
+        const FONT_PT = 7.5
+        const LINE_H = (FONT_PT * 1.25) / 72   // ≈ 0.13 in per text line
+        const CELL_PAD = 0.1                   // top + bottom cell margins
+        const MIN_ROW_H = 0.22
+        const CHAR_W = 0.058                   // avg bold Arial char width at 7.5pt (inches)
 
-        chunks.forEach((chunk, chunkIdx) => {
+        // Column L5 shown if ANY row on this issue has an answer (keeps widths consistent across slides)
+        const showL5Global = rows.some((r) => !r.answerIsEmpty)
+
+        // ─── Explicit column widths ───
+        const W_SNO = 0.55
+        const W_L3 = 2.3
+        const W_L4 = 1.5
+        const W_L5 = showL5Global ? 1.6 : 0
+        const brandAreaW = TABLE_W - W_SNO - W_L3 - W_L4 - W_L5
+        const W_BRAND = Math.max(0.8, brandAreaW / orderedL3L4Brands.length)
+
+        const colW: number[] = [W_SNO, W_L3, W_L4]
+        if (showL5Global) colW.push(W_L5)
+        orderedL3L4Brands.forEach(() => colW.push(W_BRAND))
+        const realTableW = colW.reduce((a, b) => a + b, 0)
+
+        // ─── Text → line-count estimate ───
+        const linesFor = (text: string, width: number): number => {
+          if (!text) return 1
+          const cpl = Math.max(4, Math.floor((width - 0.12) / CHAR_W))
+          // word-wrap simulation (more accurate than length / cpl)
+          let lines = 1
+          let cur = 0
+          String(text).split(/\s+/).forEach((word) => {
+            const len = word.length
+            if (cur === 0) cur = len
+            else if (cur + 1 + len <= cpl) cur += 1 + len
+            else { lines++; cur = len }
+            while (cur > cpl) { lines++; cur -= cpl }   // very long single word
+          })
+          return lines
+        }
+
+        // ─── Group sizes (so merged L3/L4 cells share their height across rows) ───
+        const l3Span: Record<number, number> = {}
+        const l4Span: Record<string, number> = {}
+        rows.forEach((r) => {
+          l3Span[r.sno] = (l3Span[r.sno] || 0) + 1
+          const k = `${r.sno}||${r.l4Key}`
+          l4Span[k] = (l4Span[k] || 0) + 1
+        })
+
+        // ─── Estimated height for every row ───
+        const rowHeights: number[] = rows.map((r) => {
+          const l5Need = showL5Global ? linesFor(r.l5Label, W_L5) * LINE_H + CELL_PAD : 0
+          const l3Need = (linesFor(r.l3Label, W_L3) * LINE_H + CELL_PAD) / l3Span[r.sno]
+          const l4Need = (linesFor(r.l4Label, W_L4) * LINE_H + CELL_PAD) / l4Span[`${r.sno}||${r.l4Key}`]
+          return Math.max(MIN_ROW_H, l5Need, l3Need, l4Need)
+        })
+
+        // ─── Chunk by HEIGHT, not by row count ───
+        const budget = TABLE_BOTTOM - TABLE_TOP - HEADER_H - GRAND_ROW_H
+        const chunks: { rows: L3L4L5Row[]; heights: number[] }[] = []
+        {
+          let cur: L3L4L5Row[] = []
+          let curH: number[] = []
+          let used = 0
+          rows.forEach((r, i) => {
+            const h = rowHeights[i]
+            if (cur.length > 0 && used + h > budget) {
+              chunks.push({ rows: cur, heights: curH })
+              cur = []; curH = []; used = 0
+            }
+            cur.push(r); curH.push(h); used += h
+          })
+          if (cur.length > 0) chunks.push({ rows: cur, heights: curH })
+        }
+
+        chunks.forEach((chunkObj, chunkIdx) => {
+          const chunk = chunkObj.rows
           const isLastChunk = chunkIdx === chunks.length - 1
+          const showL5Col = showL5Global
 
-          // Per-slide empty-L5 detection
-          const showL5Col = chunk.some((r) => !r.answerIsEmpty)
-
-          const hOpts = { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', fontFace: 'Arial', fontSize: 9 }
+          const hOpts = { bold: true, fill: '475569', color: 'FFFFFF', align: 'center', valign: 'middle', fontFace: 'Arial', fontSize: 9 }
           const headerRow: any[] = [
             { text: 'S.No', options: { ...hOpts } },
             { text: '(Subtopic)L3', options: { ...hOpts } },
@@ -7684,6 +8381,10 @@ export default function DashboardPage() {
           l3l4Slide.addText(mainTitle, { x: 0.3, y: 0.3, w: 7.0, h: 0.5, fontSize: 18, bold: true, color: '1E293B', fontFace: 'Arial' })
           l3l4Slide.addImage({ path: '/assets/logo.png', x: 8.72, y: 0.19, w: 1.0, h: 0.62 })
           l3l4Slide.addShape(pptx.shapes.LINE, { x: 0.3, y: 0.85, w: 9.4, h: 0.0, line: { color: '3B82F6', width: 2 } })
+          l3l4Slide.addText(l3l4ComplaintsText, {
+            x: 0.3, y: 5.15, w: 4.4, h: 0.3,
+            fontSize: 10, bold: true, color: '2B5797', fontFace: 'Arial', align: 'left', valign: 'middle',
+          })
 
           const pageRows: any[][] = [headerRow]
           const fillGray = 'F8F9FA'
@@ -7691,59 +8392,59 @@ export default function DashboardPage() {
           chunk.forEach((row, rowIdx) => {
             const prevRow = rowIdx > 0 ? chunk[rowIdx - 1] : null
             const isNewL3 = !prevRow || prevRow.sno !== row.sno
-            const isNewL4 = isNewL3 || !prevRow || prevRow.l3Key !== row.l3Key || prevRow.l4Key !== row.l4Key
+            const isNewL4 = isNewL3 || prevRow!.l4Key !== row.l4Key
             const cells: any[] = []
 
             if (isNewL3) {
               let span = 1
               while (rowIdx + span < chunk.length && chunk[rowIdx + span].sno === row.sno) span++
-              cells.push({ text: String(row.sno), options: { rowspan: span, bold: true, align: 'center', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray } })
-              cells.push({ text: row.l3Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray, wrap: true } })
+              cells.push({ text: String(row.sno), options: { rowspan: span, bold: true, align: 'center', valign: 'middle', fontSize: FONT_PT, fontFace: 'Arial', fill: fillGray } })
+              cells.push({ text: row.l3Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: FONT_PT, fontFace: 'Arial', fill: fillGray } })
             }
-
             if (isNewL4) {
               let span = 1
               while (rowIdx + span < chunk.length && chunk[rowIdx + span].sno === row.sno && chunk[rowIdx + span].l4Key === row.l4Key) span++
-              cells.push({ text: row.l4Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', fill: fillGray, wrap: true } })
+              cells.push({ text: row.l4Label, options: { rowspan: span, bold: true, align: 'left', valign: 'middle', fontSize: FONT_PT, fontFace: 'Arial', fill: fillGray } })
             }
-
             if (showL5Col) {
-              cells.push({ text: row.l5Label, options: { align: 'left', valign: 'middle', fontSize: 7.5, fontFace: 'Arial', wrap: true } })
+              cells.push({ text: row.l5Label, options: { align: 'left', valign: 'middle', fontSize: FONT_PT, fontFace: 'Arial' } })
             }
-
             orderedL3L4Brands.forEach((b) => {
               const cnt = row.brandCounts[b] || 0
-              const l3BrandTotal = (row.subBrands.find((br: any) => br.name === b)?.count) || 0
+              const l3BrandTotal = row.subBrands.find((br: any) => br.name === b)?.count || 0
               const pct = l3BrandTotal > 0 ? Math.round((cnt / l3BrandTotal) * 100) : 0
-              cells.push({ text: cnt === 0 ? '0' : `${cnt} (${pct}%)`, options: { align: 'right', valign: 'middle', fontSize: 7.5, fontFace: 'Arial' } })
+              cells.push({ text: cnt === 0 ? '0' : `${cnt} (${pct}%)`, options: { align: 'right', valign: 'middle', fontSize: FONT_PT, fontFace: 'Arial' } })
             })
-
             pageRows.push(cells)
           })
+
+          const rowHArr = [HEADER_H, ...chunkObj.heights]
 
           if (isLastChunk) {
             const grandRow: any[] = [
               { text: '', options: { fill: 'ECEFF1' } },
-              { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', fontSize: 7.5 } },
+              { text: 'Grand Total', options: { bold: true, fill: 'ECEFF1', color: '222222', align: 'left', valign: 'middle', fontSize: FONT_PT } },
               { text: '', options: { fill: 'ECEFF1' } },
             ]
             if (showL5Col) grandRow.push({ text: '', options: { fill: 'ECEFF1' } })
             orderedL3L4Brands.forEach((b) => {
-              grandRow.push({ text: String(overallBrandGrandTotals[b] || 0), options: { bold: true, fill: 'ECEFF1', align: 'right', fontSize: 7.5 } })
+              grandRow.push({ text: String(overallBrandGrandTotals[b] || 0), options: { bold: true, fill: 'ECEFF1', align: 'right', valign: 'middle', fontSize: FONT_PT } })
             })
             pageRows.push(grandRow)
+            rowHArr.push(GRAND_ROW_H)
           }
 
           l3l4Slide.addTable(pageRows, {
-            x: 0.3, y: 0.95, w: 9.4,
+            x: TABLE_X, y: TABLE_TOP, w: realTableW,
             border: { type: 'solid', color: '000000', size: 1 },
-            fontSize: 7.5, fontFace: 'Arial',
-            rowH: pageRows.map(() => 0.22),
+            fontSize: FONT_PT, fontFace: 'Arial',
+            colW,
+            rowH: rowHArr,
+            autoPage: false,
           })
         })
       }
 
-      // ─── Render L3/L4 slides from NEW endpoint data ───
       // ─── Render L3/L4 slides — ordered to match Betterments Next Level ───
       if (l3l4Data && l3l4Data.length > 0) {
         // Sort by the SAME rule used by Betterments Next Level:
@@ -9534,6 +10235,7 @@ export default function DashboardPage() {
       { id: 'tab-service-satisfaction', key: 'service-satisfaction', label: 'Service Satisfaction' },
       { id: 'tab-service-cps', key: 'service-cps', label: 'Customer Perception' },
       { id: 'tab-service-market-feedback', key: 'service-market-feedback', label: 'Market Feedback' },
+      { id: 'tab-service-csi', key: 'service-csi', label: 'CSI Score' },   // ← ADD
     ] : []),
   ]
 
@@ -10005,7 +10707,8 @@ export default function DashboardPage() {
                 activeTabKey === 'service-benefits' ? 2 :
                   activeTabKey === 'service-satisfaction' ? 3 :
                     activeTabKey === 'service-cps' ? 4 :
-                      activeTabKey === 'service-market-feedback' ? 5 : 0
+                      activeTabKey === 'service-market-feedback' ? 5 :
+                        activeTabKey === 'service-csi' ? 6 : 0     // ← ADD
           }
         />
       )}
