@@ -768,11 +768,11 @@ export default function DashboardPage() {
 
         // ─── Bajaj — purple family ───
         'Bajaj': '#7C3AED',
-        'Bajaj Pulsar': '#bd4b4bff',
-        'Bajaj Pulsar N 160': '#bd4b4bff',
-        'Bajaj Pulsar NS 125': '#bd4b4bff',
-        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
-        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj Pulsar': '#bd4b4b',
+        'Bajaj Pulsar N 160': '#bd4b4b',
+        'Bajaj Pulsar NS 125': '#bd4b4b',
+        'Bajaj Pulsar 150 NEON': '#bd4b4b',
+        'Bajaj Discover 125': '#bda9ea',
         'Bajaj BM 125': '#545454',
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
@@ -881,11 +881,11 @@ export default function DashboardPage() {
 
         // ─── Bajaj — purple family ───
         'Bajaj': '#7C3AED',
-        'Bajaj Pulsar': '#bd4b4bff',
-        'Bajaj Pulsar N 160': '#bd4b4bff',
-        'Bajaj Pulsar NS 125': '#bd4b4bff',
-        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
-        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj Pulsar': '#bd4b4b',
+        'Bajaj Pulsar N 160': '#bd4b4b',
+        'Bajaj Pulsar NS 125': '#bd4b4b',
+        'Bajaj Pulsar 150 NEON': '#bd4b4b',
+        'Bajaj Discover 125': '#bda9ea',
         'Bajaj BM 125': '#545454',
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
@@ -1324,7 +1324,7 @@ export default function DashboardPage() {
           ageGroupsToUse.forEach((ageGroup: string) => {
             subHeaderRow.push({
               text: ageGroup,
-              options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
+              options: { bold: true, fill, color: 'FFFFFF', align: 'center', fontSize: 6 }
             })
           })
           subHeaderRow.push({
@@ -4701,11 +4701,11 @@ export default function DashboardPage() {
 
         // ─── Bajaj — purple family ───
         'Bajaj': '#7C3AED',
-        'Bajaj Pulsar': '#bd4b4bff',
-        'Bajaj Pulsar N 160': '#bd4b4bff',
-        'Bajaj Pulsar NS 125': '#bd4b4bff',
-        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
-        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj Pulsar': '#bd4b4b',
+        'Bajaj Pulsar N 160': '#bd4b4b',
+        'Bajaj Pulsar NS 125': '#bd4b4b',
+        'Bajaj Pulsar 150 NEON': '#bd4b4b',
+        'Bajaj Discover 125': '#bda9ea',
         'Bajaj BM 125': '#545454',
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
@@ -4814,11 +4814,11 @@ export default function DashboardPage() {
 
         // ─── Bajaj — purple family ───
         'Bajaj': '#7C3AED',
-        'Bajaj Pulsar': '#bd4b4bff',
-        'Bajaj Pulsar N 160': '#bd4b4bff',
-        'Bajaj Pulsar NS 125': '#bd4b4bff',
-        'Bajaj Pulsar 150 NEON': '#bd4b4bff',
-        'Bajaj Discover 125': '#bda9eaff',
+        'Bajaj Pulsar': '#bd4b4b',
+        'Bajaj Pulsar N 160': '#bd4b4b',
+        'Bajaj Pulsar NS 125': '#bd4b4b',
+        'Bajaj Pulsar 150 NEON': '#bd4b4b',
+        'Bajaj Discover 125': '#bda9ea',
         'Bajaj BM 125': '#545454',
         'Bajaj BM 125 HD': '#545454',
         'Bajaj BM 100': '#545454',
@@ -5275,7 +5275,7 @@ export default function DashboardPage() {
           ageGroupsToUse.forEach((ageGroup: string) => {
             subHeaderRow.push({
               text: ageGroup,
-              options: { bold: true, fill, color: '333333', align: 'center', fontSize: 6 }
+              options: { bold: true, fill, color: 'FFFFFF', align: 'center', fontSize: 6 }
             })
           })
           subHeaderRow.push({

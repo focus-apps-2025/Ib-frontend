@@ -434,56 +434,84 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
         search: filters.search || undefined,
       }
 
-      const cacheKey = JSON.stringify({ v: 2, ...filterParams })   // ← bump version
+      const cacheKey = JSON.stringify({ v: 3, ...filterParams })
       const cached = serviceDataCache.get(cacheKey)
 
       if (cached) {
-        setFreqData(cached.freqData)
-        setNpsData(cached.npsData)
-        setBenefitsData(cached.benefitsData)
-        setSatisfactionData(cached.satisfactionData)
-        setCpsData(cached.cpsData)
+        if (cached.freqData) setFreqData(cached.freqData)
+        if (cached.npsData) setNpsData(cached.npsData)
+        if (cached.benefitsData) setBenefitsData(cached.benefitsData)
+        if (cached.satisfactionData) setSatisfactionData(cached.satisfactionData)
+        if (cached.cpsData) setCpsData(cached.cpsData)
+        if (cached.csiData) setCsiData(cached.csiData)
         setLoading(false)
-        setCsiData(cached.csiData)     // ← ADD
-
         return
       }
 
-      setLoading(true)
+      setFreqData(null)
+      setNpsData(null)
+      setBenefitsData(null)
+      setSatisfactionData(null)
+      setCpsData(null)
+      setCsiData(null)
+      setLoading(false)
       setError(null)
-      try {
-        const [freqRes, npsRes, benefitsRes, satisfactionRes, cpsRes, csiRes] = await Promise.all([
-          dashboardApi.serviceFrequency(filterParams),
-          dashboardApi.serviceNps(filterParams),
-          dashboardApi.serviceBenefitsBetterments(filterParams),
-          dashboardApi.serviceSatisfaction(filterParams),
-          dashboardApi.serviceCps(filterParams),
-          dashboardApi.serviceCsiScore(filterParams),        // ← ADD
-        ])
 
-        const payload = {
-          freqData: freqRes.data,
-          npsData: npsRes.data,
-          benefitsData: benefitsRes.data,
-          satisfactionData: satisfactionRes.data,
-          cpsData: cpsRes.data,
-          csiData: csiRes.data,           // ← ADD
+      const saveToCache = (key: string, data: any) => {
+        const current = serviceDataCache.get(cacheKey) || {
+          freqData: null,
+          npsData: null,
+          benefitsData: null,
+          satisfactionData: null,
+          cpsData: null,
+          csiData: null,
         }
-        serviceDataCache.set(cacheKey, payload)
-
-        setFreqData(freqRes.data)
-        setNpsData(npsRes.data)
-        setBenefitsData(benefitsRes.data)
-        setSatisfactionData(satisfactionRes.data)
-        setCpsData(cpsRes.data)
-        setCsiData(csiRes.data)        // ← ADD THIS LINE
-
-      } catch (err: any) {
-        console.error('Failed to fetch Service Dashboard data:', err)
-        setError(err?.response?.data?.detail || err?.message || 'Failed to load Service Dashboard data.')
-      } finally {
-        setLoading(false)
+        ;(current as any)[key] = data
+        serviceDataCache.set(cacheKey, current)
       }
+
+      // Stream each endpoint in parallel — render each tab as soon as its data is ready
+      dashboardApi.serviceFrequency(filterParams)
+        .then((res) => {
+          setFreqData(res.data)
+          saveToCache('freqData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceFrequency:', err))
+
+      dashboardApi.serviceNps(filterParams)
+        .then((res) => {
+          setNpsData(res.data)
+          saveToCache('npsData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceNps:', err))
+
+      dashboardApi.serviceBenefitsBetterments(filterParams)
+        .then((res) => {
+          setBenefitsData(res.data)
+          saveToCache('benefitsData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceBenefitsBetterments:', err))
+
+      dashboardApi.serviceSatisfaction(filterParams)
+        .then((res) => {
+          setSatisfactionData(res.data)
+          saveToCache('satisfactionData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceSatisfaction:', err))
+
+      dashboardApi.serviceCps(filterParams)
+        .then((res) => {
+          setCpsData(res.data)
+          saveToCache('cpsData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceCps:', err))
+
+      dashboardApi.serviceCsiScore({ ...filterParams, workshop: 'all' })
+        .then((res) => {
+          setCsiData(res.data)
+          saveToCache('csiData', res.data)
+        })
+        .catch((err) => console.error('Failed to fetch serviceCsiScore:', err))
     }
     fetchData()
   }, [
@@ -498,16 +526,14 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
     filters.search,
   ])
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-        <CircularProgress size={40} />
-        <Typography variant="body2" sx={{ ml: 2, color: c.textSecondary }}>
-          Loading Service Dashboard data...
-        </Typography>
-      </Box>
-    )
-  }
+  const renderTabLoader = (tabTitle: string) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', py: 10 }}>
+      <CircularProgress size={36} sx={{ color: c.primary, mb: 2 }} />
+      <Typography variant="body2" sx={{ color: c.textSecondary, fontWeight: 500 }}>
+        Loading {tabTitle}...
+      </Typography>
+    </Box>
+  )
 
   if (error) {
     return (
@@ -3655,7 +3681,7 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
 
 
       {/* Tab 0: Service Frequency (KMS & Time) */}
-      {activeTab === 0 && (
+      {activeTab === 0 && (!freqData ? renderTabLoader('Service Frequency') : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Section 1: KMS Frequency */}
           <Card sx={{ border: `1px solid ${c.border}` }}>
@@ -3929,10 +3955,10 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             </CardContent>
           </Card>
         </Box>
-      )}
+      ))}
 
       {/* Tab 1: Service NPS (Authorized Workshop vs PGM Mechanics) */}
-      {activeTab === 1 && (
+      {activeTab === 1 && (!npsData ? renderTabLoader('Service NPS') : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Section 1: Authorized Service Workshop NPS */}
           {renderSectionNps(
@@ -3952,10 +3978,10 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             '#7030A0'
           )}
         </Box>
-      )}
+      ))}
 
       {/* Tab 2: Benefits & Betterments (Authorized Workshop vs PGM Mechanics) */}
-      {activeTab === 2 && (
+      {activeTab === 2 && (!benefitsData ? renderTabLoader('Benefits & Betterments') : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {/* Section 1: Authorized Service Workshop */}
           {renderSectionBenefitsBetterments(
@@ -3979,18 +4005,19 @@ export default function ServiceDashboardTab(_props: ServiceDashboardTabProps = {
             setPgmSubSegment
           )}
         </Box>
-      )}
+      ))}
 
       {/* Tab 3: Service Satisfaction (Authorized Service Workshop) */}
-      {activeTab === 3 && renderServiceSatisfactionTab()}
+      {activeTab === 3 && (!satisfactionData ? renderTabLoader('Service Satisfaction') : renderServiceSatisfactionTab())}
 
       {/* Tab 4: Customer Perception Score */}
-      {activeTab === 4 && renderServiceCpsTab()}
+      {activeTab === 4 && (!cpsData ? renderTabLoader('Customer Perception Score') : renderServiceCpsTab())}
 
       {/* Tab 5: Feedback from market(Service) */}
-      {activeTab === 5 && renderMarketFeedbackServiceTab()}
+      {activeTab === 5 && (!benefitsData ? renderTabLoader('Feedback from the Market') : renderMarketFeedbackServiceTab())}
 
-      {activeTab === 6 && renderCsiScoreTab()}
+      {/* Tab 6: CSI Score */}
+      {activeTab === 6 && (!csiData ? renderTabLoader('CSI Score') : renderCsiScoreTab())}
 
     </Box>
   )
