@@ -8258,25 +8258,32 @@ export default function DashboardPage() {
 
         if (rows.length === 0) return
 
-        const tvsTotalCount = Number(issueItem.tvs_total || 0)
+        // ─── 1. Build overallBrandGrandTotals by summing L5-level counts ONCE ───
+        const overallBrandGrandTotals: Record<string, number> = {}
+        orderedL3L4Brands.forEach((b) => { overallBrandGrandTotals[b] = 0 })
+
+        rows.forEach((row) => {
+          orderedL3L4Brands.forEach((b) => {
+            overallBrandGrandTotals[b] += Number(row.brandCounts[b] || 0)
+          })
+        })
+
+        // ─── 2. TVS-only grand total (drives the title count) ───
+        const isTvsFamilyForTitle = (name: string): boolean =>
+          String(name || '').trim().toUpperCase().startsWith('TVS')
+
+        const tvsOnlyGrandTotal = orderedL3L4Brands.reduce((sum, b) => {
+          return sum + (isTvsFamilyForTitle(b) ? Number(overallBrandGrandTotals[b] || 0) : 0)
+        }, 0)
+
+        // ─── 3. Title ───
         const cleanTitle = (name: string): string => {
           const s = String(name || '').trim()
           return s.split(' ').map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
         }
-        const mainTitle = `${cleanTitle(issueItem.issue_name)} (${tvsTotalCount})`
+        const mainTitle = `${cleanTitle(issueItem.issue_name)} (${tvsOnlyGrandTotal})`
 
-        // Grand totals: sum L3 brand respondent counts across all sub-issues
-        const overallBrandGrandTotals: Record<string, number> = {}
-        orderedL3L4Brands.forEach((b) => { overallBrandGrandTotals[b] = 0 })
-        subIssues.forEach((sub: any) => {
-          ; (sub.brands || []).forEach((br: any) => {
-            if (br.name && overallBrandGrandTotals[br.name] !== undefined) {
-              overallBrandGrandTotals[br.name] += Number(br.count || 0)
-            }
-          })
-        })
-
-        // ─── Total number of complaints for this issue (all brands) ───
+        // ─── 4. All-brand total (kept for anything else that reads it) ───
         const l3l4TotalComplaints = orderedL3L4Brands.reduce(
           (sum, b) => sum + Number(overallBrandGrandTotals[b] || 0), 0
         )
