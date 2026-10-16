@@ -7880,6 +7880,89 @@ export default function DashboardPage() {
           )
           if (subIssues.length === 0) return
 
+          // ─── Match with l3l4Data so subtopic (L3) counts match renderL3L4Slide ───
+          const l3Issue = l3l4Data.find((item: any) => {
+            const a = cleanIssueName(item.issue_name || '').toLowerCase().trim()
+            const b = cleanIssueName(issueItem.issue_name || '').toLowerCase().trim()
+            return a === b || a.replace(/[^a-z0-9]/g, '') === b.replace(/[^a-z0-9]/g, '')
+          })
+
+          const findMatchingL3Sub = (sSubIssue: string) => {
+            if (!l3Issue || !Array.isArray(l3Issue.sub_issues)) return null
+            const sRaw = String(sSubIssue || '').trim().toLowerCase()
+            const sCleaned = cleanIssueName(sSubIssue).trim().toLowerCase()
+            const sFormatted = formatSubComplaint(sSubIssue).trim().toLowerCase()
+            const sAlpha = sFormatted.replace(/[^a-z0-9]/g, '')
+
+            // 1. Exact match on raw sub_issue
+            let found = l3Issue.sub_issues.find(
+              (sub: any) => String(sub.sub_issue || '').trim().toLowerCase() === sRaw
+            )
+            if (found) return found
+
+            // 2. Exact match on cleanIssueName
+            found = l3Issue.sub_issues.find(
+              (sub: any) => cleanIssueName(sub.sub_issue || '').trim().toLowerCase() === sCleaned
+            )
+            if (found) return found
+
+            // 3. Match on formatSubComplaint
+            found = l3Issue.sub_issues.find(
+              (sub: any) => formatSubComplaint(sub.sub_issue || '').trim().toLowerCase() === sFormatted
+            )
+            if (found) return found
+
+            // 4. Normalized alphanumeric match on formatSubComplaint
+            found = l3Issue.sub_issues.find((sub: any) => {
+              const subAlpha = formatSubComplaint(sub.sub_issue || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+              return subAlpha && subAlpha === sAlpha
+            })
+            if (found) return found
+
+            // 5. Normalized alphanumeric match on raw sub_issue
+            const sRawAlpha = sRaw.replace(/[^a-z0-9]/g, '')
+            found = l3Issue.sub_issues.find((sub: any) => {
+              const subAlpha = String(sub.sub_issue || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+              return subAlpha && (subAlpha === sRawAlpha || subAlpha === sAlpha)
+            })
+            if (found) return found
+
+            // 6. Substring / contains match
+            found = l3Issue.sub_issues.find((sub: any) => {
+              const subFormatted = formatSubComplaint(sub.sub_issue || '').trim().toLowerCase()
+              return (
+                (sFormatted && subFormatted && (sFormatted.includes(subFormatted) || subFormatted.includes(sFormatted))) ||
+                (sRaw && sub.sub_issue && (sRaw.includes(String(sub.sub_issue).toLowerCase()) || String(sub.sub_issue).toLowerCase().includes(sRaw)))
+              )
+            })
+            return found || null
+          }
+
+          const getSubIssueBrandCount = (s: any, brandName: string): number => {
+            const isTvs = cleanBrandStr(brandName).startsWith('TVS')
+            const l3Sub = findMatchingL3Sub(s.sub_issue)
+
+            if (isTvs) {
+              // TVS: Must match renderL3L4Slide Column Subtopic(L3) which uses sub.tvs_count
+              if (l3Sub && l3Sub.tvs_count !== undefined) {
+                return Number(l3Sub.tvs_count || 0)
+              }
+            } else if (l3Sub && Array.isArray(l3Sub.brands)) {
+              const l3BrandMatch = l3Sub.brands.find(
+                (br: any) => cleanBrandStr(br.name) === cleanBrandStr(brandName)
+              )
+              if (l3BrandMatch && l3BrandMatch.count !== undefined) {
+                return Number(l3BrandMatch.count || 0)
+              }
+            }
+
+            // Fallback to match from s.brands
+            const match = s.brands?.find(
+              (br: any) => cleanBrandStr(br.name) === cleanBrandStr(brandName)
+            )
+            return Number(match?.count || 0)
+          }
+
           // Collect unique brands for this main issue
           const brandSet = new Set<string>()
           subIssues.forEach((s: any) => {
@@ -7889,6 +7972,15 @@ export default function DashboardPage() {
               })
             }
           })
+          if (l3Issue && Array.isArray(l3Issue.sub_issues)) {
+            l3Issue.sub_issues.forEach((sub: any) => {
+              if (Array.isArray(sub.brands)) {
+                sub.brands.forEach((b: any) => {
+                  if (b.name && b.name !== 'Blank') brandSet.add(b.name)
+                })
+              }
+            })
+          }
 
           let currentBrands = getOrderedBrands(Array.from(brandSet))
           if (currentBrands.length === 0) {
@@ -7908,10 +8000,7 @@ export default function DashboardPage() {
 
           subIssues.forEach((s: any) => {
             currentBrands.forEach((b) => {
-              const match = s.brands?.find(
-                (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
-              )
-              brandGrandTotals[b] += match?.count || 0
+              brandGrandTotals[b] += getSubIssueBrandCount(s, b)
             })
           })
 
@@ -7988,10 +8077,7 @@ export default function DashboardPage() {
                 }
               ]
               currentBrands.forEach((b) => {
-                const match = s.brands?.find(
-                  (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
-                )
-                const count = match?.count || 0
+                const count = getSubIssueBrandCount(s, b)
                 dataRow.push({
                   text: String(count),
                   options: {
@@ -8114,10 +8200,7 @@ export default function DashboardPage() {
                 name: b,
                 labels: reversedChunkSubIssues.map((s: any) => formatSubComplaint(s.sub_issue)),
                 values: reversedChunkSubIssues.map((s: any) => {
-                  const match = s.brands?.find(
-                    (br: any) => cleanBrandStr(br.name) === cleanBrandStr(b)
-                  )
-                  const count = match?.count || 0
+                  const count = getSubIssueBrandCount(s, b)
                   return brandTotal > 0 ? Math.round((count / brandTotal) * 100) : 0
                 }),
               }
@@ -8276,12 +8359,12 @@ export default function DashboardPage() {
           return sum + (isTvsFamilyForTitle(b) ? Number(overallBrandGrandTotals[b] || 0) : 0)
         }, 0)
 
-        // ─── 3. Title ───
+        const tvsTotalCount = Number(issueItem.tvs_total || 0)
         const cleanTitle = (name: string): string => {
           const s = String(name || '').trim()
           return s.split(' ').map((w) => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ')
         }
-        const mainTitle = `${cleanTitle(issueItem.issue_name)} (${tvsOnlyGrandTotal})`
+        const mainTitle = `${cleanTitle(issueItem.issue_name)} (${tvsTotalCount})`
 
         // ─── 4. All-brand total (kept for anything else that reads it) ───
         const l3l4TotalComplaints = orderedL3L4Brands.reduce(
