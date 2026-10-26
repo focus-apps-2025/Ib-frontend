@@ -3366,12 +3366,21 @@ export default function DashboardPage() {
       // ═══════════════════════════════════════════════════════════════════
       // SLIDE: CSI Score — Authorised Workshop (All Brands Only)
       // ═══════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════════════════════
+
+
       setPptProgress('Generating Slide: CSI Score — Authorised Workshop...')
       const renderCsiScoreSlide = () => {
         const authBreakdown = csiData?.authorized_brand_breakdown || []
 
+        // ── 1. FILTER: Keep ONLY TVS brands ──
         const validRows = authBreakdown
-          .filter((r: any) => r && r.brand && Number(r.count || 0) > 0)
+          .filter((r: any) =>
+            r &&
+            r.brand &&
+            String(r.brand).trim().toUpperCase().startsWith('TVS') &&
+            Number(r.count || 0) > 0
+          )
           .map((r: any) => ({
             brand: String(r.brand),
             avg_csi: Number(r.avg_csi || 0),
@@ -3382,14 +3391,15 @@ export default function DashboardPage() {
         slide.background = { fill: 'FFFFFF' }
         addSlideTitle(slide, 'CSI Score — Authorised Workshop', '')
 
-        const overallAuthCount = Number(csiData?.authorized_count || 0)
+        // Overall count = only TVS respondents
+        const overallAuthCount = validRows.reduce((sum, r) => sum + r.count, 0)
 
         const orderedRows = getOrderedBrands(validRows.map((r) => r.brand))
           .map((b) => validRows.find((r) => r.brand === b))
           .filter(Boolean) as { brand: string; avg_csi: number; count: number }[]
 
         if (orderedRows.length === 0) {
-          slide.addText('No CSI data available for Authorised Workshop.', {
+          slide.addText('No CSI data available for Authorised Workshop (TVS brands).', {
             x: 0.5, y: 2.5, w: 9.0, h: 0.5,
             fontSize: 14, color: '94A3B8', align: 'center', valign: 'middle', fontFace: 'Arial',
           })
@@ -3397,21 +3407,13 @@ export default function DashboardPage() {
         }
 
         // ═════════════════════════════════════════════════════════
-        // 1) TOP-LEFT: MODEL / BASE table (smaller + bordered)
+        // 2) TOP-LEFT: MODEL / BASE table
         // ═════════════════════════════════════════════════════════
         const tableStartX = 0.3
         const tableStartY = 1.05
         const modelColW = 1.5
         const baseColW = 0.7
         const tableRowH = 0.22
-
-        // Border style — thin gray
-        const cellBorder = [
-          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
-          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
-          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
-          { type: 'solid' as const, color: 'B0B0B0', pt: 0.75 },
-        ]
 
         // Header row
         slide.addText('MODEL', {
@@ -3446,25 +3448,32 @@ export default function DashboardPage() {
         })
 
         // ═════════════════════════════════════════════════════════
-        // 2) TOP-CENTER: "Overall" label
+        // 3) TOP-CENTER: "CSI Score" title box (bordered)
         // ═════════════════════════════════════════════════════════
-        slide.addText('Overall', {
-          x: 4.1, y: 1.15, w: 2.4, h: 0.28,
+        slide.addText('CSI Score', {
+          x: 4.1, y: 1.10, w: 2.4, h: 0.30,
           color: '1E293B', bold: true,
-          align: 'center', valign: 'middle', fontSize: 11, fontFace: 'Calibri',
+          align: 'center', valign: 'middle',
+          fontSize: 11, fontFace: 'Calibri',
+          fill: 'FFFFFF',
+          line: { color: 'B0B0B0', width: 0.75 },
         })
 
         // ═════════════════════════════════════════════════════════
-        // 3) CENTER: Column chart — with axis lines
+        // 4) CENTER: Column chart
         // ═════════════════════════════════════════════════════════
         const chartX = 1.4
         const chartY = 2.25
         const chartW = 8.0
         const chartH = 2.8
 
+        // ── FIX: If there's only 1 brand, make the series name match the brand ──
+        // so the legend shows "TVS HLX 125" instead of "Avg CSI".
+        const seriesName = orderedRows.length === 1 ? orderedRows[0].brand : 'Avg CSI'
+
         const chartSeries = [
           {
-            name: 'Avg CSI',
+            name: seriesName,
             labels: orderedRows.map((r) => r.brand),
             values: orderedRows.map((r) => Number(r.avg_csi.toFixed(2))),
           },
@@ -3479,10 +3488,13 @@ export default function DashboardPage() {
             chartColors: brandChartColors,
             chartColorsOpacity: 100,
             showTitle: false,
+
+            // Legend at top
             showLegend: true,
-            legendPos: 'b',
+            legendPos: 't',
             legendFontSize: 9,
             legendFontFace: 'Arial',
+
             showValue: true,
             dataLabelPosition: 'outEnd',
             dataLabelFormatCode: '0.0',
@@ -3490,7 +3502,7 @@ export default function DashboardPage() {
             dataLabelColor: '333333',
             dataLabelFontFace: 'Arial',
 
-            // ── Category (x) axis — hide brand names ──
+            // Category (x) axis — hidden labels
             catAxisLabelFontSize: 1,
             catAxisLabelColor: 'FFFFFF',
             catAxisLabelFontFace: 'Arial',
@@ -3500,7 +3512,7 @@ export default function DashboardPage() {
             catAxisLineSize: 1,
             catGridLine: { style: 'none' },
 
-            // ── Value (y) axis — show line ──
+            // Value (y) axis
             valAxisHidden: false,
             valAxisMinVal: 0,
             valAxisMaxVal: 10,
@@ -3526,28 +3538,25 @@ export default function DashboardPage() {
           })
         }
 
-        // ─── MANUAL "CSI Score" label — drawn below the chart, above legend ───
-        slide.addText('CSI Score', {
+        // ═════════════════════════════════════════════════════════
+        // 5) ADD MANUAL X-AXIS TITLE
+        // ═════════════════════════════════════════════════════════
+        // Because PptxGenJS drops `catAxisTitle` for single-series charts, 
+        // we place it manually just below the x-axis line.
+        slide.addText('Average CSI Score', {
           x: chartX,
-          y: chartY + chartH - 0.50,       // ← tweak this if position needs shifting
+          y: chartY + chartH - 0.1,
           w: chartW,
-          h: 0.30,
+          h: 0.3,
           color: '333333',
           bold: false,
           align: 'center',
-          valign: 'middle',
-          fontSize: 11,
+          valign: 'top',
+          fontSize: 10,
           fontFace: 'Arial',
         })
-        // ═════════════════════════════════════════════════════════
-        // 4) BOTTOM-LEFT: Overall Authorized Workshop count
-        // ═════════════════════════════════════════════════════════
-        slide.addText(`Overall Authorized Workshop : ${overallAuthCount}`, {
-          x: 0.3, y: 5.25, w: 4.0, h: 0.28,
-          color: '1E293B', bold: false,
-          align: 'left', valign: 'middle',
-          fontSize: 8, fontFace: 'Arial',
-        })
+
+
       }
       renderCsiScoreSlide()
 
