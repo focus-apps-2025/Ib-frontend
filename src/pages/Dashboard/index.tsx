@@ -2518,6 +2518,8 @@ export default function DashboardPage() {
         const sampleSize = secData.sample_size || 0
         const overallSeg = secData.overall || {}
 
+        const bettermentBannerText = sectionKey === 'pgm' ? 'Reason for not choosing the Authorized Service Centers' : 'AREAS FOR BETTERMENT'
+
         type FbItem = { name: string; count: number; percentage: number }
 
         const isJunkTopicName = (name: string) => {
@@ -2647,7 +2649,11 @@ export default function DashboardPage() {
         type Col = { label: string; color: string; benefits: FbItem[]; issues: FbItem[]; base: number }
 
         // ─── One slide for up to 3 columns ───
-        const createFeedbackSlide = (slideTitle: string, cols: Col[]) => {
+        const createFeedbackSlide = (
+          slideTitle: string,
+          cols: Col[],
+          bettermentBannerText: string = 'AREAS FOR BETTERMENT'   // ← new param
+        ) => {
           const hasBenefits = cols.some((c) => c.benefits.length > 0)
           const hasIssues = cols.some((c) => c.issues.length > 0)
           if (!hasBenefits && !hasIssues) return
@@ -2703,7 +2709,8 @@ export default function DashboardPage() {
             drawSection(slide, {
               cols: issCols, x: X, w: W,
               bannerY: issueBannerY, bannerH: BANNER_H, panelY: issuePanelY, panelH: BOTTOM - issuePanelY,
-              bannerText: 'AREAS FOR BETTERMENT', color: 'DC3545', bg: 'FFF1F2', fontSize: 7.5, maxPct,
+              bannerText: bettermentBannerText,          // ← USE THE PARAMETER
+              color: 'DC3545', bg: 'FFF1F2', fontSize: 7.5, maxPct,
             })
           } else if (hasIssues) {
             // Betterment only → moved to top, full height
@@ -2712,7 +2719,8 @@ export default function DashboardPage() {
             drawSection(slide, {
               cols: issCols, x: X, w: W,
               bannerY: topY, bannerH: BANNER_H, panelY, panelH: BOTTOM - panelY,
-              bannerText: 'AREAS FOR BETTERMENT', color: 'DC3545', bg: 'FFF1F2', fontSize: 8, maxPct,
+              bannerText: bettermentBannerText,          // ← USE THE PARAMETER
+              color: 'DC3545', bg: 'FFF1F2', fontSize: 8, maxPct,
             })
           } else {
             const maxPct = Math.max(1, ...cols.flatMap((c) => c.benefits.map((x) => x.percentage)))
@@ -2756,13 +2764,18 @@ export default function DashboardPage() {
           const isOverall = key === 'overall'
 
           // Section-wide slide (single full-width column)
-          createFeedbackSlide(`${sectionName} | ${titleSuffix}`, [{
-            label: sectionName,
-            color: '475569',
-            benefits: formatFeedbackItems(seg.top_benefits || [], overallSeg.top_benefits || [], isOverall, segBase),
-            issues: formatFeedbackItems(seg.top_issues || [], overallSeg.top_issues || [], isOverall, segBase),
-            base: segBase,
-          }])
+          // Section-wide slide (single full-width column)
+          createFeedbackSlide(
+            `${sectionName} | ${titleSuffix}`,
+            [{
+              label: titleSuffix,         // <--- CHANGED THIS (will say "Overall Customer Feedback" instead of repeating the section name)
+              color: '475569',
+              benefits: formatFeedbackItems(seg.top_benefits || [], overallSeg.top_benefits || [], isOverall, segBase),
+              issues: formatFeedbackItems(seg.top_issues || [], overallSeg.top_issues || [], isOverall, segBase),
+              base: segBase,
+            }],
+            bettermentBannerText,
+          )
 
           // Brand slides: up to 3 brands side by side (reference layout)
           const brandCols: Col[] = orderedSectionBrands.map((brand) => ({
@@ -2781,7 +2794,8 @@ export default function DashboardPage() {
             const multi = brandCols.length > CHUNK
             createFeedbackSlide(
               `${sectionName} | ${titleSuffix}${multi ? ` (${Math.floor(i / CHUNK) + 1})` : ''}`,
-              chunk
+              chunk,
+              bettermentBannerText,          // ← new argument
             )
           }
         })
@@ -3997,8 +4011,8 @@ export default function DashboardPage() {
                 text: match[0],
                 options: {
                   fontSize: BULLET_FONT,
-                  color: '166534',
-                  bold: true,
+                  color: '334155',
+                  bold: false,
                   fontFace: 'Arial',
                   lineSpacingMultiple: LINE_SPACING,
                 },
